@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifying Payment Status</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #ffffff; /* Green background color */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .loading-container {
+            text-align: center;
+            color: #000000; /* White text color for better contrast */
+        }
+
+        .loading-text {
+            font-size: 30px;
+            margin-bottom: 30px;
+        }
+
+        .loading-bubbles {
+            display: inline-block;
+            margin: 0 auto;
+        }
+
+        .loading-bubble-left,
+        .loading-bubble-middle,
+        .loading-bubble-right {
+            background-color: #000000; /* Black bubble color */
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 5px;
+            width: 20px;
+            height: 20px;
+            animation: loading-animation 1.5s infinite ease-in-out;
+        }
+
+        .loading-bubble-middle {
+            animation-delay: 0.2s;
+        }
+
+        .loading-bubble-right {
+            animation-delay: 0.4s;
+        }
+        .image-boarder {
+        width: auto;
+        height: 50px;
+        border: 2px solid black;
+        border-radius: 10px;
+        }
+        .top-left {
+            position: absolute; /* Change from padding to absolute positioning */
+            top: 0; /* Align to the top edge */
+            left: 0; /* Align to the left edge */
+            padding: 20px; /* Add some padding to move it slightly from the very edge */
+        }
+
+        @keyframes loading-animation {
+            0%, 25% {
+                transform: scale(1);
+            }
+            50%, 75% {
+                transform: scale(1.5);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+{% load static %}
+<body>
+    <div class="top-left">
+        <a href="{% url 'homepage' %}">
+        <img src="{% static 'home.png' %}" alt="logo" class="image-boarder">
+        </a>
+    </div>
+    <div class="loading-container">
+        <h1 class="loading-text">Thanks for signing up!  We will call for a survey soon!</h1>
+    </div>
+</body>
+</html>

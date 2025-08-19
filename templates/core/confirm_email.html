@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up Success</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+</head>
+<body class="text-center">
+
+<!-- Modal -->
+<div class="modal fade" id="signupSuccessModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="exampleModalLongTitle">Please check your EMAIL AND JUNK MAIL to confirm your account.  Email: {{ email }}</h5>
+      </div>
+      <div class="modal-body">
+        <form action="{% url 'core:confirm_email' email=email %}" method="post">
+          {% csrf_token %}  
+          <button id="resendEmail" type="submit" class="btn btn-primary">Resend Email</button>
+          <p id="timer">Please wait 30 seconds before resending.</p>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <!-- Footer content here, if necessary -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+$(document).ready(function(){
+    $('#signupSuccessModal').modal({
+        backdrop: 'static',
+        keyboard: false
+    });
+
+    var timer = 30;
+    $('#resendEmail').prop('disabled', true); // Initially disable the button
+    $('#timer').text('Please wait ' + timer + ' seconds');
+
+    var interval = setInterval(function() {
+        timer--;
+        $('#timer').text('Please wait ' + timer + ' seconds');
+        if (timer <= 0) {
+            clearInterval(interval);
+            $('#resendEmail').prop('disabled', false);
+            $('#timer').text(''); // Clear the timer text
+        }
+    }, 1000);
+});
+</script>
+
+</body>
+</html>

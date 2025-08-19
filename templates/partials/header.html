@@ -1,0 +1,15 @@
+<header>
+  <nav class="navbar">
+    <div class="navbar-content">
+      {% block trophy %}
+      {% endblock %}
+      <div class="dropdown-menu">
+          <a href="{% url 'core:signin' %}" class="dropdown-item">Sign In</a>
+          <a href="{% url 'core:signup' %}" class="dropdown-item">Sign Up</a>
+      </div>
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+      </ul>
+    </div>
+  </nav>
+</header>
