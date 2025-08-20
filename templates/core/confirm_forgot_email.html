@@ -42,7 +42,7 @@
 
       <!-- Body -->
       <div class="px-6 py-6">
-        <form action="{% url 'core:confirm_email' email=email %}" method="post" class="space-y-4">
+        <form action="{% url 'core:confirm_forgot_email' email=email %}" method="post" class="space-y-4">
           {% csrf_token %}
           <button id="resendEmail" type="submit"
                   class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -99,4 +99,4 @@
   </script>
 </body>
 </html>
-
+ 

@@ -16,5 +16,6 @@ urlpatterns = [
 	path('forgotPassEmail',views.forgotPassEmail,name='forgotPassEmail'),
 	path('passreset/<uidb64>/<token>',views.passreset,name='passreset'),
 	path('confirm-email/<str:email>/',views.confirm_email,name='confirm_email'),
+	path('confirm-forgot-email/<str:email>/',views.confirm_forgot_email,name='confirm_forgot_email'),
 	path('questions',views.questions,name='questions')
 ]

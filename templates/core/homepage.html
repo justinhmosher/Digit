@@ -1,211 +1,169 @@
 <!doctype html>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
-<html lang="en" data-bs-theme="auto">
-  <head><script src="/docs/5.3/assets/js/color-modes.js"></script>
-
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="">
-    <meta name="author" content="Mark Otto, Jacob Thornton, and Bootstrap contributors">
-    <meta name="generator" content="Hugo 0.118.2">
-    <title>Album example · Bootstrap v5.3</title>
-
-    <link rel="canonical" href="https://getbootstrap.com/docs/5.3/examples/album/">
-
-    
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@docsearch/css@3">
-
-<link href="/docs/5.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-
-    <!-- Favicons -->
-<link rel="apple-touch-icon" href="/docs/5.3/assets/img/favicons/apple-touch-icon.png" sizes="180x180">
-<link rel="icon" href="/docs/5.3/assets/img/favicons/favicon-32x32.png" sizes="32x32" type="image/png">
-<link rel="icon" href="/docs/5.3/assets/img/favicons/favicon-16x16.png" sizes="16x16" type="image/png">
-<link rel="manifest" href="/docs/5.3/assets/img/favicons/manifest.json">
-<link rel="mask-icon" href="/docs/5.3/assets/img/favicons/safari-pinned-tab.svg" color="#712cf9">
-<link rel="icon" href="/docs/5.3/assets/img/favicons/favicon.ico">
-<meta name="theme-color" content="#712cf9">
-
-
-    <style>
-      .bd-placeholder-img {
-        font-size: 1.125rem;
-        text-anchor: middle;
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        user-select: none;
-      }
-
-      @media (min-width: 768px) {
-        .bd-placeholder-img-lg {
-          font-size: 3.5rem;
-        }
-      }
-
-      .b-example-divider {
-        width: 100%;
-        height: 3rem;
-        background-color: rgba(0, 0, 0, .1);
-        border: solid rgba(0, 0, 0, .15);
-        border-width: 1px 0;
-        box-shadow: inset 0 .5em 1.5em rgba(0, 0, 0, .1), inset 0 .125em .5em rgba(0, 0, 0, .15);
-      }
-
-      .b-example-vr {
-        flex-shrink: 0;
-        width: 1.5rem;
-        height: 100vh;
-      }
-
-      .bi {
-        vertical-align: -.125em;
-        fill: currentColor;
-      }
-
-      .nav-scroller {
-        position: relative;
-        z-index: 2;
-        height: 2.75rem;
-        overflow-y: hidden;
-      }
-
-      .nav-scroller .nav {
-        display: flex;
-        flex-wrap: nowrap;
-        padding-bottom: 1rem;
-        margin-top: -1px;
-        overflow-x: auto;
-        text-align: center;
-        white-space: nowrap;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      .btn-bd-primary {
-        --bd-violet-bg: #712cf9;
-        --bd-violet-rgb: 112.520718, 44.062154, 249.437846;
-
-        --bs-btn-font-weight: 600;
-        --bs-btn-color: var(--bs-white);
-        --bs-btn-bg: var(--bd-violet-bg);
-        --bs-btn-border-color: var(--bd-violet-bg);
-        --bs-btn-hover-color: var(--bs-white);
-        --bs-btn-hover-bg: #6528e0;
-        --bs-btn-hover-border-color: #6528e0;
-        --bs-btn-focus-shadow-rgb: var(--bd-violet-rgb);
-        --bs-btn-active-color: var(--bs-btn-hover-color);
-        --bs-btn-active-bg: #5a23c8;
-        --bs-btn-active-border-color: #5a23c8;
-      }
-
-      .bd-mode-toggle {
-        z-index: 1500;
-      }
-
-      .bd-mode-toggle .dropdown-menu .active .bi {
-        display: block !important;
-      }
-        .confetti {
-            width: 10px;
-            height: 10px;
-            background-color: #ffcc00; /* Confetti color */
-            position: absolute;
-        }
-        .btn-custom {
-           background-color: green;
-            border-color: green;
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dine N Dash — Seamless Dining Payments</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: "#0f172a" }, // slate-900
+            accent: { DEFAULT: "#10b981" } // emerald-500
           }
-
-
-    </style>
-
-    
-  </head>
-  <body>
-     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fireworks</title>
-    <script src="https://cdn.jsdelivr.net/npm/fireworks@1.0.0/dist/fireworks.min.js"></script>
-    <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
-      <symbol id="check2" viewBox="0 0 16 16">
-        <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
-      </symbol>
-      <symbol id="circle-half" viewBox="0 0 16 16">
-        <path d="M8 15A7 7 0 1 0 8 1v14zm0 1A8 8 0 1 1 8 0a8 8 0 0 1 0 16z"/>
-      </symbol>
-      <symbol id="moon-stars-fill" viewBox="0 0 16 16">
-        <path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z"/>
-        <path d="M10.794 3.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387a1.734 1.734 0 0 0-1.097 1.097l-.387 1.162a.217.217 0 0 1-.412 0l-.387-1.162A1.734 1.734 0 0 0 9.31 6.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387a1.734 1.734 0 0 0 1.097-1.097l.387-1.162zM13.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732l-.774-.258a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L13.863.1z"/>
-      </symbol>
-      <symbol id="sun-fill" viewBox="0 0 16 16">
-        <path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"/>
-      </symbol>
-    </svg>
-
-    <div class="dropdown position-fixed bottom-0 end-0 mb-3 me-3 bd-mode-toggle">
-      <button class="btn btn-bd-primary py-2 dropdown-toggle d-flex align-items-center"
-              id="bd-theme"
-              type="button"
-              aria-expanded="false"
-              data-bs-toggle="dropdown"
-              aria-label="Toggle theme (auto)">
-        <svg class="bi my-1 theme-icon-active" width="1em" height="1em"><use href="#circle-half"></use></svg>
-        <span class="visually-hidden" id="bd-theme-text">Toggle theme</span>
-      </button>
-      <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="bd-theme-text">
-        <li>
-          <button type="button" class="dropdown-item d-flex align-items-center" data-bs-theme-value="light" aria-pressed="false">
-            <svg class="bi me-2 opacity-50 theme-icon" width="1em" height="1em"><use href="#sun-fill"></use></svg>
-            Light
-            <svg class="bi ms-auto d-none" width="1em" height="1em"><use href="#check2"></use></svg>
-          </button>
-        </li>
-        <li>
-          <button type="button" class="dropdown-item d-flex align-items-center" data-bs-theme-value="dark" aria-pressed="false">
-            <svg class="bi me-2 opacity-50 theme-icon" width="1em" height="1em"><use href="#moon-stars-fill"></use></svg>
-            Dark
-            <svg class="bi ms-auto d-none" width="1em" height="1em"><use href="#check2"></use></svg>
-          </button>
-        </li>
-        <li>
-          <button type="button" class="dropdown-item d-flex align-items-center active" data-bs-theme-value="auto" aria-pressed="true">
-            <svg class="bi me-2 opacity-50 theme-icon" width="1em" height="1em"><use href="#circle-half"></use></svg>
-            Auto
-            <svg class="bi ms-auto d-none" width="1em" height="1em"><use href="#check2"></use></svg>
-          </button>
-        </li>
-      </ul>
-    </div>
-
-
-<main>
-
-
-  <section class="py-5 text-center container">
-    <div class="row py-lg-5">
-      <div class="col-lg-6 col-md-8 mx-auto">
-{% load static %}
-<div class="text-center">
-            <img src="{% static 'Clover_letters.png' %}" alt="logo" style="width: auto; height: 200px;" class="img-fluid"/>
-</div>
-<div class="text-center">
-        <a href="/">
-            <img src="{% static 'Clover_picture.png' %}" alt="logo" style="width: auto; height: 400px;" class="img-fluid"/>
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gradient-to-b from-white to-slate-50 text-slate-900 antialiased">
+  <!-- NAV -->
+  <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
+        <span class="font-semibold tracking-tight">Dine N Dash</span>
+      </a>
+      <!-- Top-right CTAs: now visible on mobile too (no hidden class) -->
+      <nav class="hidden md:flex items-center gap-8 text-sm">
+        <a href="#how" class="hover:text-slate-700">How it works</a>
+        <a href="#features" class="hover:text-slate-700">Features</a>
+        <a href="#faq" class="hover:text-slate-700">FAQ</a>
+      </nav>
+      <div class="flex items-center gap-2">
+        <a href="/restaurant/signin" class="inline-block">
+          <button class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">Restaurant Sign In</button>
         </a>
-</div>
-<br>
-<br>
-<a href="signin" class="btn btn-lg my-2 w-50 btn-custom">Sign In</a>
-<div class="d-flex justify-content-center">
-  <p>Don't have an account? <a href="signup">Sign up!</a></p>
-</div>
+        <a href="/signin" class="inline-block">
+          <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Customer Sign In</button>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="relative">
+    <div class="mx-auto max-w-7xl px-4 py-16 md:py-24 grid md:grid-cols-2 gap-10 items-center">
+      <div>
+        <div class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs mb-4">
+          <span class="h-2 w-2 rounded-full bg-accent"></span> Live in select cities
+        </div>
+        <h1 class="text-4xl md:text-6xl font-bold tracking-tight leading-tight">
+          Dine smarter. Pay faster. <span class="text-slate-500">No checks, no cards.</span>
+        </h1>
+        <p class="mt-5 text-slate-600 text-lg">
+          Dine N Dash is a seamless dining payment system designed to make paying at restaurants effortless.
+          Instead of waiting for the check or pulling out a credit card, diners simply provide their member
+          number at the start of the meal. The restaurant bills them directly through a secure account, so there’s
+          no need for cards, cash, or waiting at the table. This makes the dining experience faster, smoother, and
+          more enjoyable for both customers and staff. By removing the friction of traditional payment, Dine N Dash
+          turns the end of a meal into a truly hassle-free experience.
+        </p>
+
+        <!-- Primary CTAs (hero) -->
+        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+          <a href="/signin">
+            <button class="h-12 rounded-2xl bg-brand text-white px-6 font-medium hover:bg-brand/90 w-full sm:w-auto">
+              Customer Sign In
+            </button>
+          </a>
+          <a href="/restaurant/signin">
+            <button class="h-12 rounded-2xl border px-6 font-medium hover:bg-slate-50 w-full sm:w-auto">
+              Restaurant Sign In
+            </button>
+          </a>
+        </div>
+
+        <!-- Optional waitlist -->
+        <form action="#" method="post" class="mt-6 flex flex-col sm:flex-row gap-3">
+          <input type="email" name="email" required placeholder="Join the waitlist with your email"
+                 class="h-12 rounded-2xl border px-4 w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-accent/50" />
+          <button class="h-12 rounded-2xl bg-accent text-white px-6 font-medium hover:bg-emerald-600">
+            Get early access
+          </button>
+        </form>
+        <div class="mt-3 text-xs text-slate-500">No spam. Cancel anytime.</div>
+      </div>
+
+      <!-- Product visual (no points/rewards language) -->
+      <div class="md:pl-10">
+        <div class="relative rounded-3xl overflow-hidden shadow-2xl">
+          <img src="https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=2069&auto=format&fit=crop"
+               alt="Dining scene" class="h-full w-full object-cover" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+          <div class="absolute bottom-4 left-4 right-4 grid grid-cols-2 gap-3">
+            <div class="rounded-xl bg-white/90 backdrop-blur p-4">
+              <div class="text-sm font-semibold">Active Tab</div>
+              <ul class="mt-2 text-sm text-slate-600 space-y-1">
+                <li class="flex items-center gap-2">✅ Table 12 · Member #4829</li>
+                <li class="flex items-center gap-2">✅ Auto-billed on close</li>
+              </ul>
+            </div>
+            <div class="rounded-xl bg-white/90 backdrop-blur p-4">
+              <div class="text-sm font-semibold">Secure Billing</div>
+              <div class="text-slate-600 text-sm">Tokenized charges • Instant receipt • No cards on table</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
- 
-<script src="/docs/5.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+  <!-- HOW IT WORKS (no points mentioned) -->
+  <section id="how" class="mx-auto max-w-7xl px-4 py-16">
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="rounded-2xl border p-6">
+        <div class="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center">1</div>
+        <h3 class="mt-3 text-xl font-semibold">Check in with member #</h3>
+        <p class="mt-2 text-slate-600">Provide your member number when seated. Your tab opens automatically.</p>
+      </div>
+      <div class="rounded-2xl border p-6">
+        <div class="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center">2</div>
+        <h3 class="mt-3 text-xl font-semibold">Enjoy the meal</h3>
+        <p class="mt-2 text-slate-600">No cards on the table. Your account stays linked in the background.</p>
+      </div>
+      <div class="rounded-2xl border p-6">
+        <div class="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center">3</div>
+        <h3 class="mt-3 text-xl font-semibold">Walk out—you're billed</h3>
+        <p class="mt-2 text-slate-600">When the server closes the check, you’re securely charged and sent a receipt.</p>
+      </div>
+    </div>
+  </section>
 
-    </body>
+  <!-- FAQ -->
+  <section id="faq" class="mx-auto max-w-5xl px-4 pb-16">
+    <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-6">Frequently asked</h2>
+    <div class="space-y-4">
+      <details class="rounded-xl border bg-white p-5">
+        <summary class="font-medium cursor-pointer">Do I need my card at the table?</summary>
+        <p class="mt-3 text-slate-600">No. Give your member number at seating; we handle billing securely on the backend.</p>
+      </details>
+      <details class="rounded-xl border bg-white p-5">
+        <summary class="font-medium cursor-pointer">Is this secure?</summary>
+        <p class="mt-3 text-slate-600">Yes—tokenized charges, encrypted transport, and PCI-compliant processors.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-slate-200">
+    <div class="mx-auto max-w-7xl px-4 py-10 grid md:grid-cols-3 gap-6 items-center">
+      <div class="text-sm text-slate-600">© <script>document.write(new Date().getFullYear())</script> Dine N Dash. All rights reserved.</div>
+      <div class="text-center text-sm">
+        <a href="/terms" class="hover:underline">Terms</a> · <a href="/privacy" class="hover:underline">Privacy</a>
+      </div>
+      <div class="flex justify-end gap-3">
+        <a href="/restaurant/signin">
+          <button class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">Restaurant Sign In</button>
+        </a>
+        <a href="/signin">
+          <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Customer Sign In</button>
+        </a>
+      </div>
+    </div>
+  </footer>
+</body>
 </html>
+

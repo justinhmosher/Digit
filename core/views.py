@@ -166,40 +166,71 @@ def signout(request):
 
 def forgotPassEmail(request):
 	if request.method == "POST":
-		username = request.POST.get('email')
+		email = request.POST.get('email')
 
-		if User.objects.filter(username=username).exists():
+		if User.objects.filter(email=email).exists():
+			myuser = User.objects.get(email = email)
+			if myuser.is_active == False:
+				messages.error(request,'Please Sign Up again.')
+				return redirect('core:signup')
+			else:
+				num = create_forgot_email(request, myuser = myuser)
+				if num == 1:
+					return redirect('core:confirm_forgot_email',email = email)
+				else:
+					messages.error(request, "There was a problem sending your confirmation email.  Please try again.")
+					return redirect('core:signup')
 
-			myuser = User.objects.get(username = username)
-
-			olApp = win32.Dispatch('Outlook.Application',pythoncom.CoInitialize())
-			olNS = olApp.GetNameSpace('MAPI')
-
-			mail_item1 = olApp.createItem(0)
-
-			current_site = get_current_site(request)
-
-			mail_item1.Subject = "Confirm your email for Digit"
-			mail_item1.BodyFormat = 1
-			mail_item1.Body = render_to_string('core/email_change.html',{
-				'domain' : current_site.domain,
-				'uid' : urlsafe_base64_encode(force_bytes(myuser.pk)),
-				'token' : generate_token.make_token(myuser),
-				})
-
-			mail_item1.Sender = "commissioner@bigballzdfsl.com"
-			mail_item1.To = email
-
-			mail_item1.Display()
-			mail_item1.Save()
-			mail_item1.Send()
-
-			messages.success(request,"We sent password change instructions over email")
-			return redirect('core:forgotPassEmail')
 		else:
-			messages.error(request,"Please provide a valid email")
+			messages.error(request, "Email does not exist.")
+			return redirect('core:forgotPassEmail')
 
 	return render(request,'core/forgotPassEmail.html')
+
+def create_forgot_email(request, myuser):
+
+	sender_email = config('SENDER_EMAIL')
+	sender_name = "The Chosen Fantasy Games"
+	sender_password = config('SENDER_PASSWORD')
+	receiver_email = myuser.username
+
+	smtp_server = config('SMTP_SERVER')
+	smtp_port = config('SMTP_PORT')
+
+	current_site = get_current_site(request)
+
+	message = MIMEMultipart()
+	message['From'] = f"{sender_name} <{sender_email}>"
+	message['To'] = receiver_email
+	message['Subject'] = "Change Your Password for The Chosen"
+	body = render_to_string('core/email_change.html',{
+		'domain' : current_site.domain,
+		'uid' : urlsafe_base64_encode(force_bytes(myuser.pk)),
+		'token' : generate_token.make_token(myuser),
+		})
+	message.attach(MIMEText(body, "html"))
+	text = message.as_string()
+	try:
+		server = smtplib.SMTP(smtp_server, smtp_port)
+		server.starttls()  # Secure the connection
+		server.login(sender_email, sender_password)
+		server.sendmail(sender_email, receiver_email, text)
+	except Exception as e:
+		print(f"Failed to send email: {e}")
+		messages.error(request, "There was a problem sending your email.  Please try again.")
+		return 2
+		#redirect('signup')
+	finally:
+		server.quit()
+
+	return 1
+
+
+def confirm_forgot_email(request, email):
+	user = User.objects.get(username = email)
+	if request.method == "POST":
+		create_forgot_email(request, myuser = user)
+	return render(request, "core/confirm_forgot_email.html",{"email":email})
 
 def passreset(request, uidb64, token):
 	try:
@@ -215,11 +246,10 @@ def passreset(request, uidb64, token):
 			if pass1 == pass2:
 				myuser.set_password(pass1)
 				myuser.save()
-
 				return redirect('core:signin')
 			else:
-				messages.error("Passwors do not match")
-				return redirect('corepassreset',uidb64=uidb64,token=token)
+				messages.error(request,"Passwords do not match.")
+				return redirect('core:passreset',uidb64=uidb64,token=token)
 	return render(request,'core/passreset.html',{'uidb64':uidb64,'token':token})
 
 def questions(request):
