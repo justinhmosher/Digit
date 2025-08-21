@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Restaurant Sign In</title>
+  <style>
+    .tabs { display:flex; gap:12px; margin:24px auto; justify-content:center; }
+    .tab { padding:10px 16px; border:1px solid #e5e7eb; border-radius:10px; text-decoration:none; color:#111; }
+    .tab.active { background:#0f172a; color:#fff; border-color:#0f172a; }
+    .card { max-width:420px; margin:0 auto; padding:28px; border:1px solid #e5e7eb; border-radius:16px; }
+    .row { margin-bottom:14px; }
+    input { width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:10px; }
+    button { width:100%; padding:12px; border-radius:10px; background:#0f172a; color:#fff; border:none; }
+    .muted { color:#6b7280; font-size:14px; }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center">Dine N Dash</h2>
+
+  {% if messages %}
+    <ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <div class="tabs">
+    <a class="tab {% if active_tab != 'manager' %}active{% endif %}" href="?tab=owner">Owner Portal</a>
+    <a class="tab {% if active_tab == 'manager' %}active{% endif %}" href="?tab=manager">Manager Portal</a>
+  </div>
+
+  <div class="card">
+    <h3 style="text-align:center">
+      {% if active_tab == 'manager' %}Manager Sign In{% else %}Owner Sign In{% endif %}
+    </h3>
+    <p class="muted" style="text-align:center">Enter your email and password to continue.</p>
+
+    <form method="post" action="">
+      {% csrf_token %}
+      <input type="hidden" name="portal" value="{% if active_tab == 'manager' %}manager{% else %}owner{% endif %}">
+      <div class="row">
+        <label>Email</label><br>
+        <input type="email" name="email" required>
+      </div>
+      <div class="row">
+        <label>Password</label><br>
+        <input type="password" name="password" required>
+      </div>
+      <button type="submit">Submit</button>
+    </form>
+
+    <p class="muted" style="margin-top:16px;">
+      {% if active_tab == 'manager' %}
+        Managers are invited by the owner. Check your email for an invite link.
+      {% else %}
+        Don’t have an account? <a href="{% url 'core:owner_signup' %}">Sign Up</a>
+      {% endif %}
+      <br>
+      Forgot your password? <a href="#">Click here</a>
+    </p>
+  </div>
+</body>
+</html>

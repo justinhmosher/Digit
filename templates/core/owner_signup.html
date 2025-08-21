@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Owner Sign Up</title>
+  <style>
+    .card { max-width:520px; margin: 0 auto; padding:28px; border:1px solid #e5e7eb; border-radius:16px; }
+    .row { margin-bottom:14px; }
+    input, textarea, select { width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:10px; }
+    button { width:100%; padding:12px; border-radius:10px; background:#0f172a; color:#fff; border:none; }
+    .muted { color:#6b7280; font-size:14px; }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center">Dine N Dash</h2>
+
+  {% if messages %}
+    <ul>
+      {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <div class="card">
+    <h3 style="text-align:center">Owner Sign Up</h3>
+    <p class="muted" style="text-align:center">Create your account and set up basic restaurant details.</p>
+
+    <form method="post" action="{% url 'core:owner_signup' %}">
+      {% csrf_token %}
+
+      <!-- Account -->
+      <div class="row">
+        <label>Email</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="row">
+        <label>Password</label>
+        <input type="password" name="password1" required>
+      </div>
+      <div class="row">
+        <label>Confirm Your Password</label>
+        <input type="password" name="password2" required>
+      </div>
+
+      <hr>
+
+      <!-- Restaurant details -->
+      <div class="row">
+        <label>Legal Business Name *</label>
+        <input type="text" name="legal_name" required>
+      </div>
+      <div class="row">
+        <label>DBA (Public Name)</label>
+        <input type="text" name="dba_name">
+      </div>
+      <div class="row">
+        <label>Phone</label>
+        <input type="text" name="phone">
+      </div>
+      <div class="row">
+        <label>Street Address</label>
+        <textarea name="address" rows="3"></textarea>
+      </div>
+
+      <button type="submit">Submit</button>
+    </form>
+
+    <p class="muted" style="margin-top:16px;">
+      Already have an account? <a href="{% url 'core:restaurant_signin' %}?tab=owner">Sign In</a>
+    </p>
+  </div>
+</body>
+</html>

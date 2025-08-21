@@ -1,3 +1,6 @@
 from django.contrib import admin
+from .models import RestaurantProfile,ManagerProfile,ManagerInvite
 
-# Register your models here.
+admin.site.register(RestaurantProfile)
+admin.site.register(ManagerProfile)
+admin.site.register(ManagerInvite)

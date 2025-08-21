@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Accept Manager Invite</title>
+  <style>
+    .card { max-width:520px; margin:0 auto; padding:28px; border:1px solid #e5e7eb; border-radius:16px; }
+    .row { margin-bottom:14px; }
+    input { width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:10px; }
+    button { width:100%; padding:12px; border-radius:10px; background:#0f172a; color:#fff; border:none; }
+    .muted { color:#6b7280; font-size:14px; }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center">Dine N Dash</h2>
+
+  {% if messages %}
+    <ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <div class="card">
+    <h3 style="text-align:center">Accept Manager Invite</h3>
+    <p class="muted" style="text-align:center">
+      You are accepting an invite for <strong>{{ invite.restaurant.dba_name|default:invite.restaurant.legal_name }}</strong><br>
+      Invited email: <strong>{{ invite.email }}</strong>
+    </p>
+
+    <form method="post" action="{% url 'core:manager_accept_invite' %}">
+      {% csrf_token %}
+      <input type="hidden" name="token" value="{{ invite.token }}">
+      <div class="row">
+        <label>Full Name</label>
+        <input type="text" name="full_name" required>
+      </div>
+      <div class="row">
+        <label>Phone</label>
+        <input type="text" name="phone">
+      </div>
+      <div class="row">
+        <label>Email (must match invite)</label>
+        <input type="email" name="email" value="{{ invite.email }}" required>
+      </div>
+      <div class="row">
+        <label>Password</label>
+        <input type="password" name="password1" required>
+      </div>
+      <div class="row">
+        <label>Confirm Password</label>
+        <input type="password" name="password2" required>
+      </div>
+      <button type="submit">Create Account</button>
+    </form>
+  </div>
+</body>
+</html>

@@ -1,0 +1,533 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dine N Dash — Customer Dashboard</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { brand: "#0f172a" },
+          borderRadius: { "2xl": "1rem" }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gradient-to-b from-white to-slate-50 text-slate-900 antialiased min-h-screen">
+
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
+        <span class="font-semibold tracking-tight">Dine N Dash</span>
+      </a>
+      <nav class="hidden md:flex items-center gap-1">
+        <button data-tab="rec" class="px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
+        <button data-tab="txn" class="px-4 py-2 rounded-2xl text-sm border hover:bg-slate-50">Transactions</button>
+        <button data-tab="profile" class="px-4 py-2 rounded-2xl text-sm border hover:bg-slate-50">Profile</button>
+      </nav>
+      <div class="flex items-center gap-2">
+        <a href="{% url 'core:signout' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Sign out</a>
+        <button id="openDrawer" class="md:hidden inline-flex rounded-xl border p-2" aria-label="Open menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div id="swipeEdge" class="fixed left-0 top-0 h-full w-2 z-40 md:hidden"></div>
+
+  <div id="drawerWrap" class="fixed inset-0 z-40 md:hidden pointer-events-none" aria-hidden="true">
+    <div id="drawerBackdrop" class="absolute inset-0 bg-black/30 opacity-0 transition-opacity"></div>
+    <aside id="drawer" role="dialog" aria-modal="true"
+           class="absolute top-0 left-0 h-full w-80 max-w-[85%] bg-white shadow-xl border-r border-slate-200 transform -translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-4 py-4 border-b">
+        <div class="flex items-center gap-3">
+          <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
+          <span class="font-semibold">Dine N Dash</span>
+        </div>
+        <button id="closeDrawer" class="rounded-xl border p-2" aria-label="Close menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="p-4 space-y-2">
+        <button data-tab="rec" class="w-full text-left px-4 py-3 rounded-xl text-base border">Recommendations</button>
+        <button data-tab="txn" class="w-full text-left px-4 py-3 rounded-xl text-base border">Transactions</button>
+        <button data-tab="profile" class="w-full text-left px-4 py-3 rounded-xl text-base border">Profile</button>
+        <div class="pt-4">
+          <a href="{% url 'core:signout' %}" class="w-full inline-flex rounded-xl border px-4 py-3 text-left hover:bg-slate-50">Sign out</a>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <main class="mx-auto max-w-7xl px-4 py-8">
+    <section id="tab-rec" class="grid lg:grid-cols-12 gap-6">
+      <div class="lg:col-span-8">
+        <div class="flex items-start justify-between">
+          <div>
+            <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Where everyone’s going</h1>
+            <p class="text-slate-600 mt-1">Ranked by transaction volume • Filter by location & type</p>
+          </div>
+          <button id="infoBtn" class="rounded-full border w-9 h-9 grid place-items-center text-slate-700 hover:bg-slate-50" aria-label="About">?</button>
+        </div>
+
+        <div id="infoBox" class="hidden mt-3 rounded-2xl border bg-white p-4 text-sm shadow-sm">
+          <p><span class="font-semibold">Restaurants:</span> past 14 days volume.
+             <span class="font-semibold">Bars:</span> tonight’s volume signal. New openings are tagged “New”.</p>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center gap-3">
+          <button id="useGeo" class="rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Use Current Location</button>
+          <input id="locationInput" type="text" placeholder="Filter by city or ZIP"
+                 class="rounded-2xl border px-3 py-2 text-sm w-64" />
+          <div class="ml-auto flex items-center gap-2 rounded-2xl border px-1 py-1 bg-white">
+            <button id="modeRestaurants" class="px-3 py-1.5 text-sm rounded-2xl">Restaurants</button>
+            <button id="modeBars" class="px-3 py-1.5 text-sm rounded-2xl hover:bg-slate-50">Bars</button>
+          </div>
+        </div>
+
+        <div id="cuisineChips" class="mt-4 flex flex-wrap gap-2"></div>
+        <div id="barTypeChips" class="hidden mt-4 flex flex-wrap gap-2"></div>
+
+        <ul id="rankingsList" class="divide-y mt-4"></ul>
+      </div>
+
+      <aside class="lg:col-span-4">
+        <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="text-lg font-semibold">Details</h2>
+          <div id="detailsEmpty" class="mt-2 text-sm text-slate-600">Tap any row to see more info and open in Maps.</div>
+          <div id="detailsCard" class="hidden mt-4 space-y-2"></div>
+        </div>
+
+        <div class="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">New openings</h2>
+            <span class="text-xs text-slate-500">Last 60 days</span>
+          </div>
+          <ul id="newOpenings" class="mt-3 space-y-3"></ul>
+        </div>
+      </aside>
+    </section>
+
+    <section id="tab-txn" class="hidden">
+      <div class="rounded-3xl border bg-white p-6">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <h2 class="text-2xl font-bold tracking-tight">Your Transactions</h2>
+          <div id="txnCount" class="text-sm text-slate-600"></div>
+        </div>
+
+        <div class="mt-4 overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="text-left text-slate-500">
+              <tr>
+                <th class="py-3 pr-4">Date</th>
+                <th class="py-3 pr-4">Restaurant</th>
+                <th class="py-3 pr-4">City</th>
+                <th class="py-3 pr-4 text-right">Subtotal</th>
+                <th class="py-3 pr-4 text-right">Tip</th>
+                <th class="py-3 pr-4 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="txnBody" class="divide-y"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-profile" class="hidden grid gap-6 max-w-3xl">
+      <div class="rounded-3xl border bg-white p-6">
+        <h2 class="text-xl font-semibold">Member Info</h2>
+        <div class="mt-4 flex items-center justify-between">
+          <div>
+            <div class="text-sm text-slate-500">Member number</div>
+            <div id="memberNum" class="text-2xl font-bold tracking-wider">4829-73</div>
+          </div>
+          <button id="copyMember" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Copy</button>
+        </div>
+      </div>
+
+      <div class="rounded-3xl border bg-white p-6">
+        <h2 class="text-xl font-semibold">Card on file</h2>
+        <div class="mt-4 flex items-center justify-between">
+          <div>
+            <div class="text-sm text-slate-500">Default payment method</div>
+            <div id="cardOnFile" class="text-lg font-semibold">Visa •••• 4242</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Update</button>
+            <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Remove</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-slate-200">
+    <div class="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-slate-600">
+      © <span id="year"></span> Dine N Dash
+    </div>
+  </footer>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const restaurants = [
+      { name: "Kumo Izakaya", tx: 312, cuisine: "Japanese", address: "221 Market St, San Francisco, CA", opened: "2024-11-12", city: "san francisco" },
+      { name: "Café Verona", tx: 289, cuisine: "Italian", address: "48 Clement Ave, San Francisco, CA", opened: "2023-04-04", city: "san francisco" },
+      { name: "Sol y Mar", tx: 251, cuisine: "Mexican", address: "901 Sunset Blvd, Los Angeles, CA", opened: "2023-08-10", city: "los angeles" },
+      { name: "The Garden Room", tx: 198, cuisine: "Vegetarian", address: "12 Fern Way, Oakland, CA", opened: "2022-03-28", city: "oakland" },
+      { name: "Front Porch BBQ", tx: 176, cuisine: "Barbecue", address: "77 King St, San Mateo, CA", opened: "2021-07-19", city: "san mateo" },
+      { name: "Neon Noodles", tx: 165, cuisine: "Thai", address: "5 Battery St, San Francisco, CA", opened: "2025-08-01", city: "san francisco" },
+      { name: "Mar y Tierra", tx: 142, cuisine: "Spanish", address: "300 Pier Point, San Francisco, CA", opened: "2025-07-29", city: "san francisco" },
+      { name: "Fire & Fig", tx: 138, cuisine: "American", address: "41 Canvas Ln, San Jose, CA", opened: "2025-07-25", city: "san jose" },
+      { name: "Tamarind Hall", tx: 132, cuisine: "Indian", address: "16 Cedar St, Berkeley, CA", opened: "2024-02-03", city: "berkeley" },
+      { name: "Blue Finch", tx: 129, cuisine: "New American", address: "600 Grove St, Palo Alto, CA", opened: "2023-11-02", city: "palo alto" },
+      { name: "Porto 9", tx: 121, cuisine: "Seafood", address: "9 Embarcadero, San Francisco, CA", opened: "2022-12-12", city: "san francisco" },
+      { name: "No. 17 Bistro", tx: 117, cuisine: "French", address: "17 Olive Ave, Mountain View, CA", opened: "2025-04-14", city: "mountain view" },
+      { name: "Citrus & Oak", tx: 112, cuisine: "Californian", address: "450 Park Rd, Burlingame, CA", opened: "2023-06-09", city: "burlingame" },
+      { name: "Umami Bay", tx: 106, cuisine: "Sushi", address: "19 Harbor Dr, Sausalito, CA", opened: "2025-06-30", city: "sausalito" },
+      { name: "Nova Pizzeria", tx: 101, cuisine: "Pizza", address: "88 Mission St, San Francisco, CA", opened: "2022-01-21", city: "san francisco" },
+      { name: "Spice Alley", tx: 96, cuisine: "Chinese", address: "431 Palm St, San Jose, CA", opened: "2024-08-18", city: "san jose" },
+      { name: "Tide & Tonic", tx: 93, cuisine: "Seafood", address: "73 Beach Rd, Santa Cruz, CA", opened: "2025-07-12", city: "santa cruz" },
+      { name: "Morning Glory", tx: 90, cuisine: "Brunch", address: "10 Sunrise Ave, Oakland, CA", opened: "2023-09-09", city: "oakland" },
+      { name: "Echo Ramen", tx: 85, cuisine: "Japanese", address: "55 Sound St, Daly City, CA", opened: "2025-07-30", city: "daly city" },
+      { name: "Birch & Bone", tx: 82, cuisine: "Steakhouse", address: "22 Grove Ter, San Francisco, CA", opened: "2025-08-08", city: "san francisco" },
+    ];
+
+    const bars = [
+      { name: "Velvet Room", txTonight: 212, type: "Upscale", address: "41 Pearl St, San Francisco, CA", opened: "2025-07-10", city: "san francisco" },
+      { name: "Lucky’s Tap", txTonight: 184, type: "Dive", address: "12 7th St, San Francisco, CA", opened: "2023-06-02", city: "san francisco" },
+      { name: "Club Nova", txTonight: 260, type: "Club", address: "900 King St, San Jose, CA", opened: "2025-06-30", city: "san jose" },
+      { name: "Harbor Lights", txTonight: 145, type: "Upscale", address: "3 Wharf Rd, Sausalito, CA", opened: "2025-08-05", city: "sausalito" },
+      { name: "The Brass Key", txTonight: 168, type: "Dive", address: "88 Maple Ave, Oakland, CA", opened: "2022-08-18", city: "oakland" },
+      { name: "Pulse", txTonight: 231, type: "Club", address: "551 Grove St, Palo Alto, CA", opened: "2025-07-28", city: "palo alto" },
+      { name: "Blue Hour", txTonight: 199, type: "Upscale", address: "71 Mission St, San Francisco, CA", opened: "2024-11-21", city: "san francisco" },
+      { name: "Side Pocket", txTonight: 120, type: "Dive", address: "220 Elm St, San Mateo, CA", opened: "2024-05-05", city: "san mateo" },
+      { name: "Orbit", txTonight: 205, type: "Club", address: "77 Neon Ave, Los Angeles, CA", opened: "2025-07-15", city: "los angeles" },
+      { name: "Golden Finch", txTonight: 132, type: "Upscale", address: "18 Cedar Rd, Berkeley, CA", opened: "2025-07-25", city: "berkeley" },
+    ];
+
+    const transactions = [
+      { id:"t1007", date:"2025-08-18", restaurant:"Kumo Izakaya", city:"San Francisco", subtotal:64.2, tipPct:18 },
+      { id:"t1006", date:"2025-08-12", restaurant:"Café Verona", city:"San Francisco", subtotal:49.9, tipPct:20 },
+      { id:"t1005", date:"2025-08-09", restaurant:"Sol y Mar", city:"Los Angeles", subtotal:77.35, tipPct:18 },
+      { id:"t1004", date:"2025-08-03", restaurant:"Front Porch BBQ", city:"San Mateo", subtotal:37.1, tipPct:15 },
+      { id:"t1003", date:"2025-07-28", restaurant:"Blue Finch", city:"Palo Alto", subtotal:68.0, tipPct:20 },
+    ];
+
+    // Elements
+    const tabElems = {
+      rec: document.getElementById("tab-rec"),
+      txn: document.getElementById("tab-txn"),
+      profile: document.getElementById("tab-profile")
+    };
+    const drawerWrap = document.getElementById("drawerWrap");
+    const drawer = document.getElementById("drawer");
+    const backdrop = document.getElementById("drawerBackdrop");
+    const openDrawerBtn = document.getElementById("openDrawer");
+    const closeDrawerBtn = document.getElementById("closeDrawer");
+    const swipeEdge = document.getElementById("swipeEdge");
+
+    const rankingsList = document.getElementById("rankingsList");
+    const newOpeningsList = document.getElementById("newOpenings");
+    const detailsEmpty = document.getElementById("detailsEmpty");
+    const detailsCard = document.getElementById("detailsCard");
+    const locInput = document.getElementById("locationInput");
+    const useGeo = document.getElementById("useGeo");
+    const cuisineChips = document.getElementById("cuisineChips");
+    const barTypeChips = document.getElementById("barTypeChips");
+    const modeRestaurants = document.getElementById("modeRestaurants");
+    const modeBars = document.getElementById("modeBars");
+    const txnBody = document.getElementById("txnBody");
+    const txnCount = document.getElementById("txnCount");
+    document.getElementById("year").textContent = new Date().getFullYear();
+    document.getElementById("copyMember").addEventListener("click", () => {
+      const txt = document.getElementById("memberNum").textContent.trim();
+      navigator.clipboard?.writeText(txt);
+    });
+
+    // Drawer helpers (declared before use)
+    function openDrawer() {
+      drawerWrap.classList.remove("pointer-events-none");
+      backdrop.style.opacity = "1";
+      drawer.style.transform = "translateX(0)";
+      drawerWrap.setAttribute("aria-hidden","false");
+    }
+    function closeDrawer() {
+      backdrop.style.opacity = "0";
+      drawer.style.transform = "translateX(-100%)";
+      drawerWrap.setAttribute("aria-hidden","true");
+      setTimeout(()=>drawerWrap.classList.add("pointer-events-none"), 300);
+    }
+
+    // Drawer events
+    openDrawerBtn.addEventListener("click", openDrawer);
+    closeDrawerBtn.addEventListener("click", closeDrawer);
+    backdrop.addEventListener("click", closeDrawer);
+    let touchStartX = null;
+    swipeEdge.addEventListener("touchstart", e => { touchStartX = e.touches[0]?.clientX ?? 0; }, {passive:true});
+    swipeEdge.addEventListener("touchend", e => {
+      const endX = e.changedTouches[0]?.clientX ?? 0;
+      if ((touchStartX ?? 0) <= 24 && endX - (touchStartX ?? 0) > 50) openDrawer();
+      touchStartX = null;
+    }, {passive:true});
+    drawer.addEventListener("touchstart", e => { touchStartX = e.touches[0]?.clientX ?? 0; }, {passive:true});
+    drawer.addEventListener("touchend", e => {
+      const endX = e.changedTouches[0]?.clientX ?? 0;
+      if ((endX - (touchStartX ?? 0)) < -50) closeDrawer();
+      touchStartX = null;
+    }, {passive:true});
+
+    // Tabs
+    const tabs = ["rec","txn","profile"];
+    function activateTab(name) {
+      tabs.forEach(t => {
+        tabElems[t].classList.toggle("hidden", t !== name);
+        document.querySelectorAll(`[data-tab="${t}"]`).forEach(btn=>{
+          btn.className = "px-4 py-2 rounded-2xl text-sm border " + (t===name ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
+        });
+      });
+      closeDrawer();
+    }
+    document.querySelectorAll("[data-tab]").forEach(btn=>{
+      btn.addEventListener("click", ()=> activateTab(btn.dataset.tab));
+    });
+
+    // Info box
+    document.getElementById("infoBtn").addEventListener("click", ()=>{
+      document.getElementById("infoBox").classList.toggle("hidden");
+    });
+
+    // Filters & mode
+    let mode = "restaurants";
+    let locationQuery = "";
+    const cuisineOptions = Array.from(new Set(restaurants.map(r => r.cuisine))).sort();
+    let selectedCuisines = [];
+    const barTypeOptions = ["All","Upscale","Dive","Club"];
+    let selectedBarType = "All";
+
+    modeRestaurants.addEventListener("click", ()=>{ mode="restaurants"; setModeButtons(); renderChips(); renderRankings(); renderNewOpenings(); });
+    modeBars.addEventListener("click", ()=>{ mode="bars"; setModeButtons(); renderChips(); renderRankings(); renderNewOpenings(); });
+
+    function setModeButtons(){
+      modeRestaurants.className = "px-3 py-1.5 text-sm rounded-2xl " + (mode==="restaurants" ? "bg-slate-900 text-white":"hover:bg-slate-50");
+      modeBars.className        = "px-3 py-1.5 text-sm rounded-2xl " + (mode==="bars" ? "bg-slate-900 text-white":"hover:bg-slate-50");
+    }
+
+    function renderChips(){
+      if (mode==="restaurants"){
+        barTypeChips.classList.add("hidden");
+        cuisineChips.classList.remove("hidden");
+        cuisineChips.innerHTML = "";
+        cuisineOptions.forEach(c=>{
+          const on = selectedCuisines.includes(c);
+          const btn = document.createElement("button");
+          btn.textContent = c;
+          btn.className = `px-3 py-1.5 rounded-2xl text-sm border ${on? 'bg-amber-100 border-amber-300 text-amber-900' : 'hover:bg-slate-50'}`;
+          btn.addEventListener("click", ()=>{
+            selectedCuisines = on ? selectedCuisines.filter(x=>x!==c) : [...selectedCuisines, c];
+            renderChips(); renderRankings(); renderNewOpenings();
+          });
+          cuisineChips.appendChild(btn);
+        });
+        if (selectedCuisines.length){
+          const clr = document.createElement("button");
+          clr.textContent = "Clear";
+          clr.className = "px-3 py-1.5 rounded-2xl text-sm border hover:bg-slate-50";
+          clr.addEventListener("click", ()=>{
+            selectedCuisines = [];
+            renderChips(); renderRankings(); renderNewOpenings();
+          });
+          cuisineChips.appendChild(clr);
+        }
+      } else {
+        cuisineChips.classList.add("hidden");
+        barTypeChips.classList.remove("hidden");
+        barTypeChips.innerHTML = "";
+        barTypeOptions.forEach(t=>{
+          const on = (selectedBarType === t);
+          const btn = document.createElement("button");
+          btn.textContent = t;
+          btn.className = `px-3 py-1.5 rounded-2xl text-sm border ${on? 'bg-indigo-100 border-indigo-300 text-indigo-900' : 'hover:bg-slate-50'}`;
+          btn.addEventListener("click", ()=>{
+            selectedBarType = t;
+            renderChips(); renderRankings(); renderNewOpenings();
+          });
+          barTypeChips.appendChild(btn);
+        });
+      }
+    }
+
+    function filterByLocation(list){
+      const q = (locationQuery||"").toLowerCase();
+      if (!q) return list.slice();
+      return list.filter(r => (r.city||"").includes(q) || (r.address||"").toLowerCase().includes(q));
+    }
+    function isNew(item){
+      try { return new Date(item.opened) >= new Date("2025-07-01"); } catch(e){ return false; }
+    }
+
+    function showDetails(item){
+      detailsEmpty.classList.add("hidden");
+      detailsCard.classList.remove("hidden");
+      const rows = [];
+      rows.push(`<div class="text-sm"><span class="text-slate-500">Name:</span> <span class="font-medium">${item.name}</span></div>`);
+      if (item.cuisine) rows.push(`<div class="text-sm"><span class="text-slate-500">Cuisine:</span> <span class="font-medium">${item.cuisine}</span></div>`);
+      if (item.type) rows.push(`<div class="text-sm"><span class="text-slate-500">Type:</span> <span class="font-medium">${item.type}</span></div>`);
+      rows.push(`<div class="text-sm"><span class="text-slate-500">Address:</span> <span class="font-medium">${item.address}</span></div>`);
+      if (typeof item.tx === "number") rows.push(`<div class="text-sm"><span class="text-slate-500">Transactions:</span> <span class="font-medium">${item.tx}</span></div>`);
+      if (typeof item.txTonight === "number") rows.push(`<div class="text-sm"><span class="text-slate-500">Tonight:</span> <span class="font-medium">${item.txTonight}</span></div>`);
+      rows.push(`<div class="text-sm"><span class="text-slate-500">Opened:</span> <span class="font-medium">${new Date(item.opened).toLocaleDateString()}</span></div>`);
+      rows.push(`<div class="pt-2"><a target="_blank" rel="noreferrer" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.address)}" class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Open in Maps</a></div>`);
+      detailsCard.innerHTML = rows.join("");
+    }
+
+    function renderRankings(){
+      rankingsList.innerHTML = "";
+      if (mode==="restaurants"){
+        let list = filterByLocation(restaurants);
+        if (selectedCuisines.length){
+          const set = new Set(selectedCuisines);
+          list = list.filter(d => set.has(d.cuisine));
+        }
+        list = list.sort((a,b)=> b.tx - a.tx).slice(0,20);
+        const max = list[0]?.tx || 1;
+        list.forEach((r,i)=>{
+          const top = i < 5;
+          const li = document.createElement("li");
+          li.className = "py-3";
+          li.innerHTML = `
+            <button class="w-full text-left group rounded-2xl p-3 hover:bg-white hover:shadow-sm transition border ${top ? "border-amber-300 bg-gradient-to-r from-amber-50/70 to-white" : "border-slate-200 bg-white/70"}">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold ${top ? "bg-amber-400 text-white":"bg-slate-900 text-white"}">${i+1}</div>
+                  <div class="min-w-0">
+                    <div class="font-semibold truncate flex items-center gap-2">
+                      ${r.name}
+                      ${top ? `<span class="text-amber-600 text-xs font-semibold">Top 5</span>`:""}
+                      ${isNew(r) ? `<span class="text-emerald-600 text-xs font-semibold">New</span>`:""}
+                    </div>
+                    <div class="text-xs text-slate-500 truncate">${r.cuisine} • ${r.address}</div>
+                  </div>
+                </div>
+                <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx} tx</div>
+              </div>
+              <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full ${top ? "bg-amber-400":"bg-slate-900/80"} transition-[width] duration-700" style="width:${Math.round((r.tx/max)*100)}%"></div>
+              </div>
+            </button>`;
+          li.querySelector("button").addEventListener("click", ()=> showDetails(r));
+          rankingsList.appendChild(li);
+        });
+      } else {
+        let list = filterByLocation(bars);
+        if (selectedBarType !== "All") list = list.filter(d=> d.type === selectedBarType);
+        list = list.sort((a,b)=> b.txTonight - a.txTonight).slice(0,20);
+        const max = list[0]?.txTonight || 1;
+        list.forEach((r,i)=>{
+          const top = i < 5;
+          const li = document.createElement("li");
+          li.className = "py-3";
+          li.innerHTML = `
+            <button class="w-full text-left group rounded-2xl p-3 hover:bg-white hover:shadow-sm transition border ${top ? "border-indigo-300 bg-gradient-to-r from-indigo-50/70 to-white" : "border-slate-200 bg-white/70"}">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold ${top ? "bg-indigo-500 text-white":"bg-slate-900 text-white"}">${i+1}</div>
+                  <div class="min-w-0">
+                    <div class="font-semibold truncate flex items-center gap-2">
+                      ${r.name}
+                      ${top ? `<span class="text-indigo-600 text-xs font-semibold">Top 5</span>`:""}
+                      ${isNew(r) ? `<span class="text-emerald-600 text-xs font-semibold">New</span>`:""}
+                    </div>
+                    <div class="text-xs text-slate-500 truncate">${r.type} • ${r.address}</div>
+                  </div>
+                </div>
+                <div class="text-sm text-slate-600 whitespace-nowrap">${r.txTonight} tx (tonight)</div>
+              </div>
+              <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full ${top ? "bg-indigo-500":"bg-slate-900/80"} transition-[width] duration-700" style="width:${Math.round((r.txTonight/max)*100)}%"></div>
+              </div>
+            </button>`;
+          li.querySelector("button").addEventListener("click", ()=> showDetails(r));
+          rankingsList.appendChild(li);
+        });
+      }
+    }
+
+    function renderNewOpenings(){
+      newOpeningsList.innerHTML = "";
+      let list = (mode==="restaurants" ? restaurants : bars).slice();
+      if (mode==="restaurants" && selectedCuisines.length){
+        const set = new Set(selectedCuisines);
+        list = list.filter(d => set.has(d.cuisine));
+      }
+      if (mode==="bars" && selectedBarType !== "All"){
+        list = list.filter(d => d.type === selectedBarType);
+      }
+      list = list.filter(isNew);
+      list.forEach(r=>{
+        const li = document.createElement("li");
+        li.className = "rounded-2xl border border-slate-200 p-3 hover:bg-slate-50";
+        li.innerHTML = `
+          <div class="font-medium flex items-center gap-2">${r.name}<span class="text-emerald-600 text-xs font-semibold">New</span></div>
+          <div class="text-xs text-slate-500">${r.address}</div>
+          <div class="text-xs text-slate-500">Opened ${new Date(r.opened).toLocaleDateString()}</div>`;
+        newOpeningsList.appendChild(li);
+      });
+    }
+
+    function renderTransactions(){
+      txnBody.innerHTML = "";
+      txnCount.textContent = `${transactions.length} total`;
+      transactions.forEach(t=>{
+        const tip = +(t.subtotal * (t.tipPct/100)).toFixed(2);
+        const total = +(t.subtotal + tip).toFixed(2);
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-3 pr-4">${t.date}</td>
+          <td class="py-3 pr-4">${t.restaurant}</td>
+          <td class="py-3 pr-4">${t.city}</td>
+          <td class="py-3 pr-4 text-right">$${t.subtotal.toFixed(2)}</td>
+          <td class="py-3 pr-4 text-right">${t.tipPct}% ($${tip.toFixed(2)})</td>
+          <td class="py-3 pr-4 text-right font-semibold">$${total.toFixed(2)}</td>`;
+        txnBody.appendChild(tr);
+      });
+    }
+
+    document.getElementById("infoBtn").addEventListener("click", ()=>{
+      document.getElementById("infoBox").classList.toggle("hidden");
+    });
+    locInput.addEventListener("input", ()=>{
+      locationQuery = locInput.value.trim().toLowerCase();
+      renderRankings(); renderNewOpenings();
+    });
+    useGeo.addEventListener("click", ()=>{
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(pos=>{
+        locationQuery = `${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)}`;
+        locInput.value = locationQuery;
+        renderRankings(); renderNewOpenings();
+      });
+    });
+
+    setModeButtons();
+    renderChips();
+    renderRankings();
+    renderNewOpenings();
+    renderTransactions();
+    activateTab("rec");
+  });
+  </script>
+</body>
+</html>
+

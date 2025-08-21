@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<hr>
+<h3>Invite a Manager</h3>
+<form method="post" action="{% url 'core:owner_invite_manager' %}">
+  {% csrf_token %}
+  <label>Email</label><br>
+  <input type="email" name="email" required style="width:300px;padding:8px;">
+  <input type="hidden" name="expires_minutes" value="120">
+  <button type="submit" style="padding:8px 12px;">Send Invite</button>
+</form>
+</html>
