@@ -1,6 +1,6 @@
 from Digit import settings
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, get_user_model
@@ -31,168 +31,80 @@ import json, random
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.conf import settings
-from .utils import send_otp, to_e164_us, check_otp
+from .utils import send_sms_otp, to_e164_us, check_sms_otp, send_email_otp, check_email_otp
+from allauth.socialaccount.models import SocialLogin
+from allauth.socialaccount.helpers import complete_social_login
+from allauth.core.exceptions import ImmediateHttpResponse
+from allauth.account.utils import perform_login
+
+def debug_session(request):
+    return JsonResponse({"keys": list(request.session.keys())}, safe=False)
 
 def homepage(request):
 	return render(request,"core/homepage.html")
-
-def confirm_email(request, email):
-	user = User.objects.get(username = email)
-	if request.method == "POST":
-		create_email(request, myuser = user)
-	return render(request, "core/confirm_email.html",{"email":email})
-
-def create_email(request, myuser, type):
-
-	sender_email = config('SENDER_EMAIL')
-	sender_name = "The Chosen Fantasy Games"
-	sender_password = config('SENDER_PASSWORD')
-	receiver_email = myuser.username
-
-	smtp_server = config('SMTP_SERVER')
-	smtp_port = config('SMTP_PORT')
-
-	current_site = get_current_site(request)
-
-	message = MIMEMultipart()
-	message['From'] = f"{sender_name} <{sender_email}>"
-	message['To'] = receiver_email
-	message['Subject'] = "Your Confirmation Email"
-	if type == "customer":
-		body = render_to_string('core/email_confirmation.html',{
-			'domain' : current_site.domain,
-			'uid' : urlsafe_base64_encode(force_bytes(myuser.pk)),
-			'token' : generate_token.make_token(myuser),
-		})
-	elif type == "owner":
-		body = render_to_string('core/owner_email_confirmation.html',{
-			'domain' : current_site.domain,
-			'uid' : urlsafe_base64_encode(force_bytes(myuser.pk)),
-			'token' : generate_token.make_token(myuser),
-		})
-	elif type == "manager":
-		body = render_to_string('core/manager_email_confirmation.html',{
-			'domain' : current_site.domain,
-			'uid' : urlsafe_base64_encode(force_bytes(myuser.pk)),
-			'token' : generate_token.make_token(myuser),
-		})
-	else:
-		return 3
-	message.attach(MIMEText(body, "html"))
-	text = message.as_string()
-	try:
-		server = smtplib.SMTP(smtp_server, smtp_port)
-		server.starttls()  # Secure the connection
-		server.login(sender_email, sender_password)
-		# Send the email
-		server.sendmail(sender_email, receiver_email, text)
-		#redirect('confirm_email',email = receiver_email)
-	except Exception as e:
-		print(f"Failed to send email: {e}")
-		messages.error(request, "There was a problem sending your confirmation email.  Please try again.")
-		return 2
-	finally:
-		server.quit()
-
-	return 1
-
-def activate(request, uidb64, token):
-	try:
-		uid = force_str(urlsafe_base64_decode(uidb64))
-		myuser = User.objects.get(pk=uid)
-	except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-		myuser = None
-
-	if myuser is not None and generate_token.check_token(myuser,token):
-		myuser.is_active = True
-		myuser.save()
-		login(request, myuser)
-		return redirect('core:signin')
-	else:
-		return render(request, 'core/activation_failed.html')
-
 
 def _generate_code(n=6):
     return "".join(str(random.randint(0,9)) for _ in range(n))
 
 def signup(request):
     if request.method != "POST":
-        return render(request, "core/signup.html")  # initial GET renders your page
+        return render(request, "core/signup.html")
 
-    # JSON body (since the JS uses fetch with JSON)
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
-        data = request.POST  # fallback
+        data = request.POST
 
     email = (data.get('email') or "").strip().lower()
-    phone = (data.get('phone') or "").strip()
+    phone_raw = (data.get('phone') or "").strip()
     password1 = data.get('password1') or ""
     password2 = data.get('password2') or ""
     next_url = request.GET.get('next') or "/"
 
-    if not email or not phone:
+    if not email or not phone_raw:
         return JsonResponse({"ok": False, "error": "Email and phone are required."}, status=400)
-
     if password1 != password2:
         return JsonResponse({"ok": False, "error": "Passwords didn't match!"}, status=400)
 
     try:
-        phone_e164 = to_e164_us(phone)
+        phone_e164 = to_e164_us(phone_raw)  # or replace with a full E.164 normalizer if you want intl later
     except Exception:
         return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
 
-
-    # Create or update user (inactive until OTP verified)
-    myuser = User.objects.filter(email=email).first()
-    if myuser:
-        if myuser.is_active:
+    # Create/update inactive user
+    user = User.objects.filter(email=email).first()
+    if user:
+        if user.is_active:
             return JsonResponse({"ok": False, "error": "Email already registered with an active account."}, status=400)
-        # update creds
-        myuser.username = email
-        myuser.email = email
-        myuser.set_password(password1)
-        myuser.is_active = False
-        myuser.save()
+        user.username = email
+        user.email = email
+        user.set_password(password1)
+        user.is_active = False
+        user.save()
     else:
-        myuser = User.objects.create_user(email, email, password1)
-        myuser.is_active = False
-        myuser.save()
+        user = User.objects.create_user(username=email, email=email, password=password1)
+        user.is_active = False
+        user.save()
 
-    # Upsert customer profile with phone
-    profile, _ = CustomerProfile.objects.get_or_create(user=myuser)
+    profile, _ = CustomerProfile.objects.get_or_create(user=user)
     profile.phone = phone_e164
+    # optional: track flags if you added them
+    # profile.phone_verified = False
+    # profile.email_verified = False
     try:
         profile.save()
     except Exception:
         return JsonResponse({"ok": False, "error": "Phone already in use."}, status=400)
 
-    # Issue OTP
-    # Cooldown (optional)
-    recent = PhoneOTP.objects.filter(
-        phone=phone_e164, is_used=False, expires_at__gt=timezone.now()
-    ).order_by("-created_at").first()
-    if recent:
-        seconds_since = (timezone.now() - recent.created_at).total_seconds()
-        if seconds_since < int(config("OTP_RESEND_COOLDOWN")):
-            return JsonResponse({"ok": False, "error": "Please wait before requesting another code."}, status=429)
-
-    code = _generate_code(int(config("OTP_CODE_LENGTH")))
-    otp = PhoneOTP.objects.create(
-        phone=phone_e164,
-        purpose="signup",
-        code_hash=PhoneOTP.hash_code(code),
-        expires_at=timezone.now() + timezone.timedelta(seconds= int(config("OTP_TTL_SECONDS")))
-    )
-
+    # Send phone OTP via Verify
     try:
-        resp = send_otp(phone_e164)  # status 'pending'
+        send_sms_otp(phone_e164)
     except Exception as e:
-        otp.delete()
         return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
-    # Success: front-end will reveal OTP form
+    # IMPORTANT: return normalized phone so the client uses the same value
     return JsonResponse({"ok": True, "message": "OTP sent", "phone_e164": phone_e164, "next": next_url})
+
 
 @require_POST
 def request_otp(request):
@@ -203,7 +115,7 @@ def request_otp(request):
     except Exception:
         return JsonResponse({"ok": False, "error": "Enter a valid phone number."}, status=400)
     try:
-        resp = send_otp(phone_e164)
+        resp = send_sms_otp(phone_e164)
         # print("VERIFY RESEND ->", phone_e164, resp.sid, resp.status)
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Failed to resend SMS: {e}"}, status=500)
@@ -214,7 +126,6 @@ def verify_otp(request):
     data = json.loads(request.body.decode() or "{}")
     phone_raw = (data.get("phone") or "").strip()
     code = (data.get("code") or "").strip()
-    next_url = data.get("next") or "/"
 
     if not phone_raw or not code:
         return JsonResponse({"ok": False, "error": "Phone and code are required."}, status=400)
@@ -224,28 +135,187 @@ def verify_otp(request):
     except Exception:
         return JsonResponse({"ok": False, "error": "Invalid phone."}, status=400)
 
+    # 1) Verify PHONE via Verify
     try:
-        status = check_otp(phone_e164, code)  # 'approved' when correct
-        # print("VERIFY CHECK ->", phone_e164, code, status)
+        status = check_sms_otp(phone_e164, code)
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
 
     if status != "approved":
         return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
+    # Mark phone as verified and fetch user
     try:
-        user = CustomerProfile.objects.select_related('user').get(phone=phone_e164).user
+        profile = CustomerProfile.objects.select_related('user').get(phone=phone_e164)
     except CustomerProfile.DoesNotExist:
         return JsonResponse({"ok": False, "error": "Profile not found."}, status=400)
 
-    user.is_active = True
-    user.save(update_fields=["is_active"])
+    # optional flags
+    if hasattr(profile, "phone_verified"):
+        profile.phone_verified = True
+        profile.save(update_fields=["phone_verified"])
+
+    # 2) Kick off EMAIL verification
+    email = (profile.user.email or "").strip().lower()
+    if not email:
+        return JsonResponse({"ok": False, "error": "User has no email on file."}, status=400)
+
+    try:
+        send_email_otp(email)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Could not send email code: {e}"}, status=500)
+
+    # Tell FE to switch to email step
     return JsonResponse({
         "ok": True,
-        "message": "Verified. Please sign in.",
-        "redirect": "/signin"   # force them back to sign in page
+        "stage": "email",
+        "email": email,
+        "message": "Phone verified. We sent a 6-digit code to your email."
     })
-    return JsonResponse({"ok": True, "message": "Verified", "next": next_url})
+
+@require_POST
+def verify_email_otp(request):
+    data = json.loads(request.body.decode() or "{}")
+    email = (data.get("email") or "").strip().lower()
+    code  = (data.get("code") or "").strip()
+
+    if not email or not code:
+        return JsonResponse({"ok": False, "error": "Email and code are required."}, status=400)
+
+    # Verify EMAIL via Verify
+    try:
+        status = check_email_otp(email, code)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+
+    if status != "approved":
+        return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+
+    # Mark flags + activate user
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "User not found."}, status=400)
+
+    profile = CustomerProfile.objects.filter(user=user).first()
+    if profile and hasattr(profile, "email_verified"):
+        profile.email_verified = True
+        profile.save(update_fields=["email_verified"])
+
+    if not user.is_active:
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+    return JsonResponse({
+        "ok": True,
+        "message": "Email verified. Please sign in.",
+        "redirect": "/profile"
+    })
+
+def oauth_phone_page(request):
+	print("DEBUG session keys:", list(request.session.keys()))
+	if "pending_sociallogin" not in request.session:
+		return HttpResponseBadRequest("No pending social signup. Start with Google.")
+	email = request.session.get("pending_email", "")
+	return render(request, "core/oauth_phone.html", {"email": email})
+
+@require_POST
+def oauth_phone_init(request):
+    """
+    POST {phone} (JSON or form) -> send OTP via Twilio Verify.
+    Stores normalized phone in session for the next step.
+    """
+    if "pending_sociallogin" not in request.session:
+        return JsonResponse({"ok": False, "error": "No pending social signup."}, status=400)
+
+    # Accept JSON or form-POST
+    raw = ""
+    try:
+        payload = json.loads((request.body or b"").decode() or "{}")
+        raw = (payload.get("phone") or "").strip()
+    except Exception:
+        pass
+    if not raw:
+        raw = (request.POST.get("phone") or "").strip()
+
+    if not raw:
+        return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
+
+    try:
+        phone_e164 = to_e164_us(raw)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
+
+    try:
+        send_sms_otp(phone_e164)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
+
+    request.session["pending_phone"] = phone_e164
+    request.session.modified = True
+    return JsonResponse({"ok": True, "phone_e164": phone_e164})
+
+@require_POST
+def oauth_phone_verify(request):
+    sess = request.session
+    if "pending_sociallogin" not in sess or "pending_phone" not in sess:
+        return JsonResponse({"ok": False, "error": "Session expired. Restart Google sign-up."}, status=400)
+
+    # 1) Read input
+    data = json.loads(request.body.decode() or "{}")
+    code = (data.get("code") or "").strip()
+    phone_e164 = sess["pending_phone"]
+    if not code:
+        return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
+
+    # 2) Verify phone via Twilio
+    try:
+        status = check_sms_otp(phone_e164, code)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+    if status != "approved":
+        return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+
+    # 3) Restore the pending SocialLogin
+    try:
+        sociallogin = SocialLogin.deserialize(sess["pending_sociallogin"])
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Could not restore pending login."}, status=400)
+
+    # 4) Ensure we have a *saved* Django user, then attach the social account
+    email = (sess.get("pending_email") or sociallogin.user.email or "").lower()
+    if not email:
+        return JsonResponse({"ok": False, "error": "Missing email from Google."}, status=400)
+
+    user = User.objects.filter(email=email).first()
+    if not user:
+        # create a minimal saved user; we activate after phone verified
+        user = User.objects.create_user(username=email, email=email)
+        user.set_unusable_password()
+        user.is_active = True  # phone verified => allow login
+        user.save(update_fields=["is_active"])
+
+    # Link this Google account to the user (works for new or existing users)
+    sociallogin.connect(request, user)  # creates/updates SocialAccount & token
+
+    # 5) Create/update the profile
+    profile, _ = CustomerProfile.objects.get_or_create(user=user)
+    profile.phone = phone_e164
+    if hasattr(profile, "phone_verified"):
+        profile.phone_verified = True
+    if hasattr(profile, "email_verified"):
+        profile.email_verified = True
+    profile.save()
+
+    # 6) Log the user in and clean session
+    perform_login(request, user, email_verification="none")
+
+    for k in ("pending_sociallogin", "pending_phone", "pending_email"):
+        sess.pop(k, None)
+    sess.modified = True
+
+    return JsonResponse({"ok": True, "redirect": "/profile"})
+
 
 def owner_signup(request):
     """

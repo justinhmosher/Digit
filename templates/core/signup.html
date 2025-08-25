@@ -1,4 +1,4 @@
-{% load static %}
+{% load static socialaccount %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -29,7 +29,6 @@
     <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-3">
         <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
-        <span class="font-semibold tracking-tight">Dine N Dash</span>
       </a>
       <div class="flex items-center gap-2">
         <a href="/restaurant/signin"
@@ -39,11 +38,6 @@
   </header>
 
   <main class="relative flex-1 flex items-center justify-center px-10">
-    <h1 class="pointer-events-none select-none absolute left-1/2 -translate-x-1/2 top-16 md:top-20 lg:top-24
-           text-3xl md:text-4xl font-bold text-slate-900">
-      Dine N Dash
-    </h1>
-
     <!-- Sign-up / OTP Card -->
     <section class="mx-auto max-w-md px-6 pt-16 w-full">
       <div class="rounded-3xl border border-slate-200 bg-white shadow-sm p-10">
@@ -51,14 +45,37 @@
         <!-- Alert -->
         <div id="alert" class="hidden mb-4 text-sm px-4 py-3 rounded-md"></div>
 
+        <!-- Title -->
+        <div class="text-center">
+          <h1 class="mt-2 text-2xl font-bold tracking-tight">Customer Sign Up</h1>
+          <p class="mt-2 text-sm text-slate-600">Enter your details to continue.</p>
+        </div>
+
+        <!-- Google OAuth button -->
+        <div class="mt-6">
+          <a href="{% provider_login_url 'google' process='login' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <!-- Google "G" icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="h-5 w-5">
+              <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.826 32.91 29.337 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.652-.389-3.917z"/>
+              <path fill="#FF3D00" d="M6.306 14.691l6.571 4.818C14.618 16.108 18.955 13 24 13c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 16.318 4 9.708 8.337 6.306 14.691z"/>
+              <path fill="#4CAF50" d="M24 44c5.258 0 10.054-2.016 13.66-5.303l-6.305-5.333C29.329 35.445 26.789 36 24 36c-5.311 0-9.813-3.441-11.418-8.216l-6.5 5.01C9.393 39.658 16.142 44 24 44z"/>
+              <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.063 3.147-3.352 5.635-6.648 7.05l.004-.003 6.305 5.333C37.527 38.824 40 34.018 40 28c0-1.341-.138-2.652-.389-3.917z"/>
+            </svg>
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
+
+        <!-- Divider -->
+        <div class="my-6 flex items-center gap-3">
+          <div class="h-px flex-1 bg-slate-200"></div>
+          <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+          <div class="h-px flex-1 bg-slate-200"></div>
+        </div>
+
         <!-- Signup form -->
         <form id="signupForm" class="space-y-4">
           {% csrf_token %}
-          <div class="text-center">
-            <h1 class="mt-2 text-2xl font-bold tracking-tight">Customer Sign Up</h1>
-            <p class="mt-2 text-sm text-slate-600">Enter your details to continue.</p>
-          </div>
-
           <div>
             <label for="email" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
             <input id="email" name="email" type="email" required
@@ -125,6 +142,33 @@
         <div class="mt-6 text-center text-sm">
           <p>Already have an account? <a href="{% url 'core:signin' %}" class="text-brand underline hover:no-underline">Sign In</a></p>
         </div>
+
+        <!-- EMAIL OTP form (hidden by default) -->
+        <form id="emailForm" class="space-y-4 hidden mt-6">
+          <div class="text-center">
+            <h1 class="mt-2 text-2xl font-bold tracking-tight">Verify Your Email</h1>
+            <p class="mt-2 text-sm text-slate-600">Enter the 6-digit code we emailed you.</p>
+          </div>
+
+          <div>
+            <label for="emailField" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+            <input id="emailField" type="email" readonly
+                   class="w-full h-14 rounded-2xl border px-4 bg-slate-50">
+          </div>
+
+          <div>
+            <label for="emailCode" class="block text-sm font-medium text-slate-700 mb-1">Verification Code</label>
+            <input id="emailCode" type="text" maxlength="6" required
+                   class="w-full h-14 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                   placeholder="123456">
+          </div>
+
+          <button type="submit"
+                  class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
+            Verify Email
+          </button>
+        </form>
+
       </div>
     </section>
   </main>
@@ -139,78 +183,105 @@
     </div>
   </footer>
 
-  <script>
-    function getCsrf() {
-      const m = document.cookie.match(/csrftoken=([^;]+)/);
-      return m ? m[1] : '';
+<script>
+  function getCsrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+  function showAlert(msg, ok=false) {
+    const el = document.getElementById('alert');
+    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  const signupForm = document.getElementById('signupForm');
+  const otpForm    = document.getElementById('otpForm');
+  const emailForm  = document.getElementById('emailForm');
+  const otpPhone   = document.getElementById('otpPhone');
+  const resendBtn  = document.getElementById('resendBtn');
+
+  signupForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      email: document.getElementById('email').value.trim(),
+      phone: document.getElementById('phone').value.trim(),
+      password1: document.getElementById('password1').value,
+      password2: document.getElementById('password2').value,
+    };
+    const res = await fetch("{% url 'core:signup' %}", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // *** use normalized phone from server ***
+      otpPhone.value = data.phone_e164;
+      signupForm.classList.add('hidden');
+      otpForm.classList.remove('hidden');
+      showAlert('Code sent. Check your phone.', true);
+    } else {
+      showAlert(data.error || 'Something went wrong.');
     }
-    function showAlert(msg, ok=false) {
-      const el = document.getElementById('alert');
-      el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' +
-        (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-      el.textContent = msg;
-      el.classList.remove('hidden');
+  });
+
+  otpForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      phone: otpPhone.value, // already E.164
+      code: document.getElementById('otpCode').value.trim()
+    };
+    const res = await fetch("{% url 'core:verify_otp' %}", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf() },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok && data.stage === 'email') {
+      // Switch to email step
+      document.getElementById('emailField').value = data.email;
+      otpForm.classList.add('hidden');
+      emailForm.classList.remove('hidden');
+      showAlert(data.message, true);
+    } else if (data.ok && data.redirect) {
+      // Some flows may send you straight to signin/dashboard
+      window.location.href = data.redirect;
+    } else {
+      showAlert(data.error || 'Invalid code.');
     }
+  });
 
-    const signupForm = document.getElementById('signupForm');
-    const otpForm = document.getElementById('otpForm');
-    const otpPhone = document.getElementById('otpPhone');
-    const resendBtn = document.getElementById('resendBtn');
-
-    signupForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const body = {
-        email: document.getElementById('email').value.trim(),
-        phone: document.getElementById('phone').value.trim(),
-        password1: document.getElementById('password1').value,
-        password2: document.getElementById('password2').value,
-      };
-      const res = await fetch("{% url 'core:signup' %}", {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        otpPhone.value = body.phone;
-        signupForm.classList.add('hidden');
-        otpForm.classList.remove('hidden');
-        showAlert('Code sent. Check your phone.', true);
-      } else {
-        showAlert(data.error || 'Something went wrong.');
-      }
+  emailForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      email: document.getElementById('emailField').value.trim().toLowerCase(),
+      code:  document.getElementById('emailCode').value.trim()
+    };
+    const res = await fetch("{% url 'core:verify_email_otp' %}", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
+      body: JSON.stringify(body),
     });
+    const data = await res.json();
+    if (data.ok) {
+      showAlert(data.message || 'Verified. Redirecting…', true);
+      window.location.href = data.redirect || '/signin';
+    } else {
+      showAlert(data.error || 'Invalid code.');
+    }
+  });
 
-    otpForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const body = {
-        phone: otpPhone.value,
-        code: document.getElementById('otpCode').value.trim(),
-        purpose: 'signup'
-      };
-      const res = await fetch("{% url 'core:verify_otp' %}", {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        showAlert('Verified. Redirecting…', true);
-        window.location.href = data.next || '/';
-      } else {
-        showAlert(data.error || 'Invalid code.');
-      }
+  resendBtn.addEventListener('click', async () => {
+    const res = await fetch("{% url 'core:request_otp' %}", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
+      body: JSON.stringify({ phone: otpPhone.value }),
     });
+    const data = await res.json();
+    showAlert(data.ok ? 'Code re-sent.' : (data.error || 'Failed to resend.'));
+  });
+</script>
 
-    resendBtn.addEventListener('click', async () => {
-      const res = await fetch("{% url 'core:request_otp' %}", {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
-        body: JSON.stringify({ phone: otpPhone.value, purpose: 'signup' }),
-      });
-      const data = await res.json();
-      showAlert(data.ok ? 'Code re-sent.' : (data.error || 'Failed to resend.'));
-    });
-  </script>
 </body>
 </html>

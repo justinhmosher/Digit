@@ -1,0 +1,157 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Verify your phone — Dine N Dash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- expose CSRF token for JS -->
+  <meta name="csrf-token" content="{{ csrf_token }}">
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6">
+
+  <div class="w-full max-w-md bg-white rounded-2xl shadow border p-8">
+    <h1 class="text-2xl font-bold text-slate-900">Finish sign-up</h1>
+    <p class="mt-2 text-sm text-slate-600">
+      Your Google email <span class="font-medium">{{ email }}</span> is verified.
+      Now verify your phone to activate your account.
+    </p>
+
+    <!-- alert -->
+    <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
+
+    <!-- STEP 1: phone -->
+    <div id="phoneStep" class="mt-6 space-y-4">
+      <label class="block text-sm font-medium text-slate-700">Phone</label>
+      <input id="phone" type="tel" required
+             placeholder="+15551234567"
+             class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400" />
+      <button id="sendBtn" type="button"
+              class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+        Send code
+      </button>
+    </div>
+
+    <!-- STEP 2: otp -->
+    <div id="otpStep" class="mt-6 space-y-4 hidden">
+      <label class="block text-sm font-medium text-slate-700">Verification code</label>
+      <input id="code" maxlength="6" inputmode="numeric" pattern="[0-9]*" required
+             placeholder="123456"
+             class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400" />
+      <button id="verifyBtn" type="button"
+              class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+        Verify & activate
+      </button>
+      <button id="resendBtn" type="button"
+              class="w-full h-12 rounded-xl border border-slate-900 text-slate-900 font-medium hover:bg-slate-50">
+        Resend code
+      </button>
+    </div>
+
+    <p class="mt-6 text-center text-sm text-slate-500">
+      Already have an account?
+      <a href="{% url 'core:signin' %}" class="text-slate-900 underline">Sign in</a>
+    </p>
+  </div>
+
+<script>
+  // -------- helpers
+  const csrf = () =>
+    (document.querySelector('meta[name="csrf-token"]')?.content || '')
+      .replace(/^['"]|['"]$/g, ''); // sometimes rendered with quotes in dev
+
+  function flash(msg, ok=false){
+    const el = document.getElementById('alert');
+    el.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  const phoneStep = document.getElementById('phoneStep');
+  const otpStep   = document.getElementById('otpStep');
+  const phoneEl   = document.getElementById('phone');
+  const codeEl    = document.getElementById('code');
+  const sendBtn   = document.getElementById('sendBtn');
+  const verifyBtn = document.getElementById('verifyBtn');
+  const resendBtn = document.getElementById('resendBtn');
+
+  // -------- send code
+  let sending = false;
+  sendBtn.addEventListener('click', async () => {
+    if (sending) return;
+    const phone = phoneEl.value.trim();
+    if (!phone) { flash('Enter your phone number.'); return; }
+
+    sending = true; sendBtn.disabled = true; const label = sendBtn.textContent; sendBtn.textContent = 'Sending…';
+    try {
+      const r = await fetch("{% url 'core:oauth_phone_init' %}", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ phone })
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok && data.ok) {
+        // keep normalized phone if backend returns it
+        if (data.phone_e164) phoneEl.value = data.phone_e164;
+        phoneStep.classList.add('hidden');
+        otpStep.classList.remove('hidden');
+        flash('Code sent. Check your phone.', true);
+      } else {
+        flash(data.error || 'Could not send code.');
+      }
+    } catch { flash('Network error.'); }
+    finally { sending = false; sendBtn.disabled = false; sendBtn.textContent = label; }
+  });
+
+  // -------- verify code
+  let verifying = false;
+  verifyBtn.addEventListener('click', async () => {
+    if (verifying) return;
+    const code = codeEl.value.trim();
+    if (!/^\d{6}$/.test(code)) { flash('Enter the 6-digit code.'); return; }
+
+    verifying = true; verifyBtn.disabled = true; const label = verifyBtn.textContent; verifyBtn.textContent = 'Verifying…';
+    try {
+      const r = await fetch("{% url 'core:oauth_phone_verify' %}", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ code })
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok && data.ok) {
+        window.location.href = data.redirect || "/dashboard/";
+      } else {
+        flash(data.error || 'Verification failed.');
+      }
+    } catch { flash('Network error.'); }
+    finally { verifying = false; verifyBtn.disabled = false; verifyBtn.textContent = label; }
+  });
+
+  // -------- resend
+  let resending = false;
+  resendBtn.addEventListener('click', async () => {
+    if (resending) return;
+    const phone = phoneEl.value.trim();
+    if (!phone) { flash('Session lost. Please restart sign-up.'); return; }
+
+    resending = true; resendBtn.disabled = true; const label = resendBtn.textContent; resendBtn.textContent = 'Sending…';
+    try {
+      const r = await fetch("{% url 'core:oauth_phone_init' %}", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ phone })
+      });
+      const data = await r.json().catch(()=>({}));
+      flash(data.ok ? 'Code re-sent.' : (data.error || 'Failed to resend.'));
+    } catch { flash('Network error.'); }
+    finally { resending = false; resendBtn.disabled = false; resendBtn.textContent = label; }
+  });
+</script>
+
+</body>
+</html>
+

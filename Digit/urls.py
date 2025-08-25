@@ -23,5 +23,6 @@ app_name = 'core'
 
 urlpatterns = [
     path('', include('core.urls', namespace='core')),
+    path("accounts/", include("allauth.urls")),  # /accounts/google/login/
     path('admin/', admin.site.urls),
 ]

@@ -31,7 +31,6 @@
     <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-3">
         <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
-        <span class="font-semibold tracking-tight">Dine N Dash</span>
       </a>
       <div class="flex items-center gap-2">
         <a href="/restaurant/signin"
@@ -41,10 +40,6 @@
   </header>
 
   <main class="relative flex-1 flex items-center justify-center px-10">
-    <h1 class="pointer-events-none select-none absolute left-1/2 -translate-x-1/2 top-16 md:top-20 lg:top-24
-           text-3xl md:text-4xl font-bold text-slate-900">
-  Dine N Dash
-</h1>
     <!-- Flash messages (Django messages) -->
 
     <!-- Sign-in card -->
@@ -89,7 +84,6 @@
 
         <div class="mt-6 text-center text-sm">
           <p>Don’t have an account? <a href="{% url 'core:signup' %}" class="text-brand underline hover:no-underline">Sign Up</a></p>
-          <p class="mt-2">Forgot your password? <a href="{% url 'core:forgotPassEmail' %}" class="text-brand underline hover:no-underline">Click here</a></p>
         </div>
       </div>
     </section>

@@ -8,23 +8,28 @@ VERIFY_SID  = config("TWILIO_VERIFY_SERVICE_SID")
 
 _client = Client(config("TWILIO_ACCOUNT_SID"), config("TWILIO_AUTH_TOKEN"))
 
-def send_otp(phone: str):
-    """
-    Initiate a Verify SMS to the phone in E.164 format, e.g. +15551234567
-    """
+def send_sms_otp(phone_e164: str):
     return _client.verify.v2.services(VERIFY_SID).verifications.create(
-        to=phone, channel="sms"
+        to=phone_e164, channel="sms"
     )
 
-def check_otp(phone: str, code: str):
-    """
-    Check a user-supplied code against Verify.
-    Returns verification_check.status (approved, pending) and validity.
-    """
+def check_sms_otp(phone_e164: str, code: str) -> str:
     vc = _client.verify.v2.services(VERIFY_SID).verification_checks.create(
-        to=phone, code=code
+        to=phone_e164, code=code
     )
-    return vc.status  # 'approved' when correct
+    return vc.status  # 'approved' on success
+
+# NEW — email channel
+def send_email_otp(email: str):
+    return _client.verify.v2.services(VERIFY_SID).verifications.create(
+        to=email, channel="email"
+    )
+
+def check_email_otp(email: str, code: str) -> str:
+    vc = _client.verify.v2.services(VERIFY_SID).verification_checks.create(
+        to=email, code=code
+    )
+    return vc.status
 
 def to_e164_us(raw: str) -> str:
     s = "".join(ch for ch in raw if ch.isdigit())   # strip spaces, dashes, ()

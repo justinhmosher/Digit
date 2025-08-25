@@ -3,11 +3,32 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 import uuid
 import hashlib, os
+from django.utils.encoding import force_str
 
 
 class CustomerProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='customer_profile')
-    phone = models.CharField(max_length=20, unique=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    phone = models.CharField(max_length=32, unique=True)
+    phone_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+    def __str__(self):
+        return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
+
+class ManagerProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    phone = models.CharField(max_length=32, unique=True)
+    phone_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+    def __str__(self):
+        return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
+
+class OwnerProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    phone = models.CharField(max_length=32, unique=True)
+    phone_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+    def __str__(self):
+        return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
 
 class RestaurantProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="restaurant_profile")
@@ -25,12 +46,6 @@ class RestaurantProfile(models.Model):
 
     def __str__(self):
         return self.dba_name or self.legal_name
-
-class ManagerProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="manager_profile")
-    full_name = models.CharField(max_length=255)
-    phone     = models.CharField(max_length=20, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
 class ManagerInvite(models.Model):
     """Owner invites a manager by email. One-time link with expiry."""
