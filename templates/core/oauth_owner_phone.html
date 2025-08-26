@@ -1,44 +1,133 @@
+{% load static %}
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Verify your phone — Dine N Dash (Owner)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Verify your phone — Owner</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="csrf-token" content="{{ csrf_token }}">
 </head>
-<body class="bg-slate-50 min-h-screen p-8">
-  <div class="max-w-xl mx-auto bg-white border rounded-2xl p-8">
-    <h1 class="text-2xl font-bold">Finish Owner Sign Up</h1>
-    <p class="text-sm text-slate-600 mt-2">
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6">
+  <div class="w-full max-w-md bg-white rounded-2xl shadow border p-8">
+    <h1 class="text-2xl font-bold text-slate-900">Owner sign-up</h1>
+    <p class="mt-2 text-sm text-slate-600">
       Google verified <span class="font-medium">{{ email }}</span>. Now verify your phone.
     </p>
-    <div id="alert" class="hidden mt-3 text-sm px-3 py-2 rounded"></div>
 
-    <div class="mt-6 space-y-3" id="phoneStep">
-      <input id="phone" class="border rounded p-3 w-full" placeholder="+15551234567">
-      <button id="send" class="bg-black text-white rounded p-3 w-full">Send code</button>
+    <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
+
+    <!-- STEP 1: phone -->
+    <div id="phoneStep" class="mt-6 space-y-4">
+      <label class="block text-sm font-medium text-slate-700">Phone</label>
+      <input id="phone" type="tel" required
+             placeholder="+15551234567"
+             class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400" />
+      <button id="sendBtn" type="button"
+              class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+        Send code
+      </button>
     </div>
 
-    <div class="mt-6 space-y-3 hidden" id="otpStep">
-      <input id="code" class="border rounded p-3 w-full" maxlength="6" placeholder="123456">
-      <button id="verify" class="bg-black text-white rounded p-3 w-full">Verify & continue</button>
+    <!-- STEP 2: code -->
+    <div id="otpStep" class="mt-6 space-y-4 hidden">
+      <label class="block text-sm font-medium text-slate-700">Verification code</label>
+      <input id="code" maxlength="6" inputmode="numeric" pattern="[0-9]*" required
+             placeholder="123456"
+             class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400" />
+      <button id="verifyBtn" type="button"
+              class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+        Verify & continue
+      </button>
+      <button id="resendBtn" type="button"
+              class="w-full h-12 rounded-xl border border-slate-900 text-slate-900 font-medium hover:bg-slate-50">
+        Resend code
+      </button>
     </div>
   </div>
 
 <script>
-const A=(m,ok=false)=>{const e=document.getElementById('alert');e.className='mt-3 text-sm px-3 py-2 rounded '+(ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');e.textContent=m;e.classList.remove('hidden')}
-const phoneStep=document.getElementById('phoneStep'), otpStep=document.getElementById('otpStep');
+  const csrf = () => (document.querySelector('meta[name="csrf-token"]')?.content || '').replace(/^['"]|['"]$/g, '');
+  function flash(msg, ok=false){
+    const el = document.getElementById('alert');
+    el.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
 
-document.getElementById('send').onclick=async()=>{
-  const phone=phoneEl.value.trim(); if(!phone) return A('Enter your phone.');
-  const r=await fetch("{% url 'core:oauth_owner_phone_init' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
-  const d=await r.json(); if(d.ok){ A('Code sent.',true); phoneStep.classList.add('hidden'); otpStep.classList.remove('hidden'); } else { A(d.error||'Error') }
-};
-document.getElementById('verify').onclick=async()=>{
-  const code=codeEl.value.trim(); if(!/^\d{6}$/.test(code)) return A('Enter the 6-digit code.');
-  const r=await fetch("{% url 'core:oauth_owner_phone_verify' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
-  const d=await r.json(); if(d.ok && d.redirect){ location.href=d.redirect } else { A(d.error||'Error') }
-};
-const phoneEl=document.getElementById('phone'), codeEl=document.getElementById('code');
+  const phoneStep = document.getElementById('phoneStep');
+  const otpStep   = document.getElementById('otpStep');
+  const phoneEl   = document.getElementById('phone');
+  const codeEl    = document.getElementById('code');
+  const sendBtn   = document.getElementById('sendBtn');
+  const verifyBtn = document.getElementById('verifyBtn');
+  const resendBtn = document.getElementById('resendBtn');
+
+  let sending = false;
+  sendBtn.addEventListener('click', async () => {
+    if (sending) return;
+    const phone = phoneEl.value.trim();
+    if (!phone) { flash('Enter your phone.'); return; }
+    sending = true; sendBtn.disabled = true; const label = sendBtn.textContent; sendBtn.textContent = 'Sending…';
+    try {
+      const r = await fetch("{% url 'core:oauth_owner_phone_init' %}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ phone })
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok && data.ok) {
+        if (data.phone_e164) phoneEl.value = data.phone_e164;
+        phoneStep.classList.add('hidden');
+        otpStep.classList.remove('hidden');
+        flash('Code sent. Check your phone.', true);
+      } else {
+        flash(data.error || 'Could not send code.');
+      }
+    } catch { flash('Network error.'); }
+    finally { sending = false; sendBtn.disabled = false; sendBtn.textContent = label; }
+  });
+
+  let verifying = false;
+  verifyBtn.addEventListener('click', async () => {
+    if (verifying) return;
+    const code = codeEl.value.trim();
+    if (!/^\d{6}$/.test(code)) { flash('Enter the 6-digit code.'); return; }
+    verifying = true; verifyBtn.disabled = true; const label = verifyBtn.textContent; verifyBtn.textContent = 'Verifying…';
+    try {
+      const r = await fetch("{% url 'core:oauth_owner_phone_verify' %}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ code })
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok && data.ok) {
+        window.location.href = data.redirect || "/restaurant/onboard";
+      } else {
+        flash(data.error || 'Verification failed.');
+      }
+    } catch { flash('Network error.'); }
+    finally { verifying = false; verifyBtn.disabled = false; verifyBtn.textContent = label; }
+  });
+
+  let resending = false;
+  resendBtn.addEventListener('click', async () => {
+    if (resending) return;
+    const phone = phoneEl.value.trim();
+    if (!phone) { flash('Enter your phone first.'); return; }
+    resending = true; resendBtn.disabled = true; const label = resendBtn.textContent; resendBtn.textContent = 'Sending…';
+    try {
+      const r = await fetch("{% url 'core:oauth_owner_phone_init' %}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ phone })
+      });
+      const data = await r.json().catch(()=>({}));
+      flash(data.ok ? 'Code re-sent.' : (data.error || 'Failed to resend.'));
+    } catch { flash('Network error.'); }
+    finally { resending = false; resendBtn.disabled = false; resendBtn.textContent = label; }
+  });
 </script>
 </body>
 </html>
+

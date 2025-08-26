@@ -566,33 +566,39 @@ def owner_restaurant_save_api(request):
 # -------------------------
 
 def oauth_owner_phone_page(request):
-    if "pending_sociallogin" not in request.session or request.session.get("gate_role") != "owner":
-        return HttpResponseBadRequest("No pending owner signup.")
+    """
+    Page shown right after Google for OWNERS. Requires pending_sociallogin in session.
+    """
+    if "pending_sociallogin" not in request.session:
+        return HttpResponseBadRequest("No pending owner signup. Start with Google.")
+    if request.session.get("auth_role") != "owner":
+        return HttpResponseBadRequest("Wrong flow.")
+
     email = request.session.get("pending_email", "")
     return render(request, "core/oauth_owner_phone.html", {"email": email})
 
-@login_required
-def post_login_owner(request):
-    role = request.session.pop("auth_role", None)
-    if role == "owner":
-        rp = getattr(request.user, "restaurant_profile", None)
-        if not rp:
-            return redirect("core:restaurant_onboard")
-        return redirect("core:owner_dashboard")
-    return redirect("core:profile")
 
 @require_POST
 def oauth_owner_phone_init(request):
-    if "pending_sociallogin" not in request.session or request.session.get("gate_role") != "owner":
+    """
+    POST { phone } -> send OTP for owner flow. Stores normalized phone in session.
+    """
+    sess = request.session
+    if "pending_sociallogin" not in sess or sess.get("auth_role") != "owner":
         return JsonResponse({"ok": False, "error": "No pending owner signup."}, status=400)
 
+    # JSON or form
+    raw = ""
     try:
-        payload = json.loads(request.body.decode() or "{}")
+        raw = (json.loads((request.body or b"").decode() or "{}").get("phone") or "").strip()
     except Exception:
-        payload = {}
-    raw = (payload.get("phone") or "").strip()
+        pass
+    if not raw:
+        raw = (request.POST.get("phone") or "").strip()
+
     if not raw:
         return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
+
     try:
         phone_e164 = to_e164_us(raw)
     except Exception:
@@ -603,23 +609,31 @@ def oauth_owner_phone_init(request):
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
-    request.session["pending_phone"] = phone_e164
-    request.session.modified = True
+    sess["pending_owner_phone"] = phone_e164
+    sess.modified = True
     return JsonResponse({"ok": True, "phone_e164": phone_e164})
+
 
 @require_POST
 def oauth_owner_phone_verify(request):
+    """
+    POST { code } -> verify OTP, attach Google account, create OwnerProfile, log in,
+    then send owner to restaurant onboarding.
+    """
     sess = request.session
-    if "pending_sociallogin" not in sess or sess.get("gate_role") != "owner" or "pending_phone" not in sess:
+    if "pending_sociallogin" not in sess or sess.get("auth_role") != "owner":
         return JsonResponse({"ok": False, "error": "Session expired. Restart Google sign-up."}, status=400)
+    if "pending_owner_phone" not in sess:
+        return JsonResponse({"ok": False, "error": "No phone on file. Send code first."}, status=400)
 
-    payload = json.loads(request.body.decode() or "{}")
-    code = (payload.get("code") or "").strip()
-    phone_e164 = sess["pending_phone"]
+    data = json.loads(request.body.decode() or "{}")
+    code = (data.get("code") or "").strip()
     if not code:
         return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
 
-    # Verify phone
+    phone_e164 = sess["pending_owner_phone"]
+
+    # Verify with Twilio
     try:
         status = check_sms_otp(phone_e164, code)
     except Exception as e:
@@ -627,13 +641,17 @@ def oauth_owner_phone_verify(request):
     if status != "approved":
         return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
-    # Restore Google identity
-    sociallogin = SocialLogin.deserialize(sess["pending_sociallogin"])
+    # Restore Google login
+    try:
+        sociallogin = SocialLogin.deserialize(sess["pending_sociallogin"])
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Could not restore pending login."}, status=400)
+
     email = (sess.get("pending_email") or sociallogin.user.email or "").lower()
     if not email:
         return JsonResponse({"ok": False, "error": "Missing email from Google."}, status=400)
 
-    # Ensure a saved user
+    # Ensure saved user
     user = User.objects.filter(email=email).first()
     if not user:
         user = User.objects.create_user(username=email, email=email)
@@ -641,18 +659,36 @@ def oauth_owner_phone_verify(request):
         user.is_active = True
         user.save(update_fields=["is_active"])
 
-    # Link Google account to user
+    # Link Google account to this user
     sociallogin.connect(request, user)
 
-    # Temp-store phone for next step (restaurant)
-    sess["oauth_owner_ready"] = {"user_id": user.id, "phone": phone_e164}
-    # Clean temporary login bits; keep oauth_owner_ready
-    for k in ("pending_sociallogin", "pending_phone", "pending_email", "gate_role"):
+    # Ensure OwnerProfile with verified phone
+    owner, _ = OwnerProfile.objects.get_or_create(user=user)
+    owner.phone = phone_e164
+    if hasattr(owner, "phone_verified"):
+        owner.phone_verified = True
+    if hasattr(owner, "email_verified"):
+        owner.email_verified = True
+    owner.save()
+
+    # Log in and clean up
+    perform_login(request, user, email_verification="none")
+    for k in ("pending_sociallogin", "pending_email", "pending_owner_phone", "auth_role"):
         sess.pop(k, None)
     sess.modified = True
 
-    # Next step: restaurant details page
-    return JsonResponse({"ok": True, "redirect": "/owner/restaurant"})
+    # Send to owner onboarding to create the RestaurantProfile
+    return JsonResponse({"ok": True, "redirect": "/restaurant/onboard"})
+
+@login_required
+def post_login_owner(request):
+    role = request.session.pop("auth_role", None)
+    if role == "owner":
+        rp = getattr(request.user, "restaurant_profile", None)
+        if not rp:
+            return redirect("core:restaurant_onboard")
+        return redirect("core:owner_dashboard")
+    return redirect("core:profile")
 
 # core/views.py (add near your other imports)
 from datetime import timedelta
