@@ -1,59 +1,181 @@
-<!DOCTYPE html>
-<html>
+{% load static %}
+{% load socialaccount %}
+
+<!doctype html>
+<html lang="en">
 <head>
-  <title>Restaurant Sign In</title>
-  <style>
-    .tabs { display:flex; gap:12px; margin:24px auto; justify-content:center; }
-    .tab { padding:10px 16px; border:1px solid #e5e7eb; border-radius:10px; text-decoration:none; color:#111; }
-    .tab.active { background:#0f172a; color:#fff; border-color:#0f172a; }
-    .card { max-width:420px; margin:0 auto; padding:28px; border:1px solid #e5e7eb; border-radius:16px; }
-    .row { margin-bottom:14px; }
-    input { width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:10px; }
-    button { width:100%; padding:12px; border-radius:10px; background:#0f172a; color:#fff; border:none; }
-    .muted { color:#6b7280; font-size:14px; }
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Restaurant Sign In — Dine N Dash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { brand: { DEFAULT: "#0f172a" }, accent: { DEFAULT: "#10b981" } },
+          borderRadius: { '2xl': '1rem' }
+        }
+      }
+    }
+  </script>
 </head>
-<body>
-  <h2 style="text-align:center">Dine N Dash</h2>
+<body class="bg-slate-50 min-h-screen flex flex-col text-slate-900">
 
-  {% if messages %}
-    <ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
-  {% endif %}
-
-  <div class="tabs">
-    <a class="tab {% if active_tab != 'manager' %}active{% endif %}" href="?tab=owner">Owner Portal</a>
-    <a class="tab {% if active_tab == 'manager' %}active{% endif %}" href="?tab=manager">Manager Portal</a>
-  </div>
-
-  <div class="card">
-    <h3 style="text-align:center">
-      {% if active_tab == 'manager' %}Manager Sign In{% else %}Owner Sign In{% endif %}
-    </h3>
-    <p class="muted" style="text-align:center">Enter your email and password to continue.</p>
-
-    <form method="post" action="">
-      {% csrf_token %}
-      <input type="hidden" name="portal" value="{% if active_tab == 'manager' %}manager{% else %}owner{% endif %}">
-      <div class="row">
-        <label>Email</label><br>
-        <input type="email" name="email" required>
+  <!-- Header -->
+  <header class="border-b border-slate-200 bg-white/80 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
+      </a>
+      <div class="flex items-center gap-2">
+        <a href="{% url 'core:signin' %}" class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">
+          Customer Sign In
+        </a>
       </div>
-      <div class="row">
-        <label>Password</label><br>
-        <input type="password" name="password" required>
-      </div>
-      <button type="submit">Submit</button>
-    </form>
+    </div>
+  </header>
 
-    <p class="muted" style="margin-top:16px;">
-      {% if active_tab == 'manager' %}
-        Managers are invited by the owner. Check your email for an invite link.
-      {% else %}
-        Don’t have an account? <a href="{% url 'core:owner_signup' %}">Sign Up</a>
-      {% endif %}
-      <br>
-      Forgot your password? <a href="#">Click here</a>
-    </p>
-  </div>
+  <main class="flex-1 flex items-center justify-center px-6 py-12">
+    <section class="w-full max-w-2xl">
+      <div class="bg-white border border-slate-200 rounded-3xl shadow-sm p-8">
+
+        <!-- Tabs -->
+        <div class="flex gap-2 mb-6">
+          <button id="tabOwner"
+                  class="tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white">
+            Owner
+          </button>
+          <button id="tabManager"
+                  class="tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">
+            Manager
+          </button>
+        </div>
+
+        <!-- OWNER PANEL -->
+        <div id="panelOwner" class="space-y-6">
+          <div>
+            <h1 class="text-2xl font-bold">Owner Sign In</h1>
+            <p class="text-sm text-slate-600 mt-1">
+              Sign in to your owner dashboard. Don’t have an account?
+              <a href="{% url 'core:owner_signup' %}" class="text-brand underline">Create owner account</a>.
+            </p>
+          </div>
+
+          <form action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="portal" value="owner">
+
+            <div>
+              <label class="block text-sm font-medium mb-1" for="ownerEmail">Email</label>
+              <input id="ownerEmail" name="email" type="email" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="owner@restaurant.com">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1" for="ownerPassword">Password</label>
+              <input id="ownerPassword" name="password" type="password" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="••••••••">
+            </div>
+
+            <button type="submit"
+                    class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
+              Sign In
+            </button>
+          </form>
+
+          <!-- Divider -->
+          <div class="flex items-center gap-3">
+            <div class="h-px flex-1 bg-slate-200"></div>
+            <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+            <div class="h-px flex-1 bg-slate-200"></div>
+          </div>
+
+          <!-- Google OAuth (Owner) -->
+          <a href="{% provider_login_url 'google' process='login' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="">
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
+
+        <!-- MANAGER PANEL -->
+        <div id="panelManager" class="space-y-6 hidden">
+          <div>
+            <h2 class="text-2xl font-bold">Manager Sign In</h2>
+            <p class="text-sm text-slate-600 mt-1">
+              Managers must first accept an invite from an owner. After accepting, sign in here.
+            </p>
+          </div>
+
+          <form action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="portal" value="manager">
+
+            <div>
+              <label class="block text-sm font-medium mb-1" for="mgrEmail">Email</label>
+              <input id="mgrEmail" name="email" type="email" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="you@example.com">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1" for="mgrPassword">Password</label>
+              <input id="mgrPassword" name="password" type="password" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="••••••••">
+            </div>
+
+            <button type="submit"
+                    class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
+              Sign In
+            </button>
+          </form>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="mt-10 border-t border-slate-200">
+    <div class="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-slate-600">
+      <p><a href="/terms" class="hover:underline">Terms and Conditions</a> ·
+         <a href="/privacy" class="hover:underline">Privacy Policy</a> ·
+         <a href="mailto:commissioner@thechosenfg.com" class="hover:underline">Contact Us</a></p>
+      <p class="mt-2">&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</p>
+    </div>
+  </footer>
+
+  <script>
+    const tabOwner   = document.getElementById('tabOwner');
+    const tabManager = document.getElementById('tabManager');
+    const panelOwner = document.getElementById('panelOwner');
+    const panelMgr   = document.getElementById('panelManager');
+
+    function activate(tab) {
+      const ownerActive = tab === 'owner';
+
+      // panels
+      panelOwner.classList.toggle('hidden', !ownerActive);
+      panelMgr.classList.toggle('hidden', ownerActive);
+
+      // tab styles
+      if (ownerActive) {
+        tabOwner.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white";
+        tabManager.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
+      } else {
+        tabManager.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white";
+        tabOwner.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
+      }
+    }
+
+    tabOwner.addEventListener('click', () => activate('owner'));
+    tabManager.addEventListener('click', () => activate('manager'));
+
+    // Optional: start on Manager tab if ?tab=manager is present
+    const params = new URLSearchParams(location.search);
+    if (params.get('tab') === 'manager') activate('manager');
+  </script>
 </body>
 </html>

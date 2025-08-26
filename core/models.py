@@ -20,7 +20,7 @@ class ManagerProfile(models.Model):
     phone_verified = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
     def __str__(self):
-        return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
+        return force_str(getattr(self, "label", None) or f"ManagerProfile {self.pk}")
 
 class OwnerProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -28,7 +28,7 @@ class OwnerProfile(models.Model):
     phone_verified = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
     def __str__(self):
-        return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
+        return force_str(getattr(self, "label", None) or f"OwnerProfile {self.pk}")
 
 class RestaurantProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="restaurant_profile")

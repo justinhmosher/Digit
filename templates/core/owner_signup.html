@@ -1,71 +1,90 @@
-<!DOCTYPE html>
+{% load static %}
+{% load socialaccount %}
+<!doctype html>
 <html>
 <head>
-  <title>Owner Sign Up</title>
-  <style>
-    .card { max-width:520px; margin: 0 auto; padding:28px; border:1px solid #e5e7eb; border-radius:16px; }
-    .row { margin-bottom:14px; }
-    input, textarea, select { width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:10px; }
-    button { width:100%; padding:12px; border-radius:10px; background:#0f172a; color:#fff; border:none; }
-    .muted { color:#6b7280; font-size:14px; }
-  </style>
+  <meta charset="utf-8">
+  <title>Owner Sign Up — Dine N Dash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h2 style="text-align:center">Dine N Dash</h2>
+<body class="bg-slate-50 min-h-screen p-8">
+  <div class="max-w-xl mx-auto bg-white border rounded-2xl p-8">
+    <h1 class="text-2xl font-bold">Owner Sign Up</h1>
+    <div id="alert" class="hidden mt-3 text-sm px-3 py-2 rounded"></div>
 
-  {% if messages %}
-    <ul>
-      {% for m in messages %}<li>{{ m }}</li>{% endfor %}
-    </ul>
-  {% endif %}
+    <!-- Step 1: fields -->
+    <div id="step1" class="mt-6 grid grid-cols-2 gap-3">
+      <input id="first_name" class="border rounded p-3 col-span-1" placeholder="First name">
+      <input id="last_name" class="border rounded p-3 col-span-1" placeholder="Last name">
+      <input id="email" class="border rounded p-3 col-span-2" placeholder="Email">
+      <input id="phone" class="border rounded p-3 col-span-2" placeholder="+15551234567">
+      <input id="username" class="border rounded p-3 col-span-2" placeholder="Username">
+      <input id="p1" type="password" class="border rounded p-3 col-span-1" placeholder="Password">
+      <input id="p2" type="password" class="border rounded p-3 col-span-1" placeholder="Confirm password">
+      <button id="go" class="col-span-2 bg-black text-white rounded p-3">Create account</button>
 
-  <div class="card">
-    <h3 style="text-align:center">Owner Sign Up</h3>
-    <p class="muted" style="text-align:center">Create your account and set up basic restaurant details.</p>
+<div class="mt-6 text-center">
+  <p class="text-sm text-slate-500">— or —</p>
+  <a href="{% url 'core:owner_google_start' %}"
+     class="mt-3 inline-flex items-center justify-center w-full h-12 rounded-2xl border border-slate-300 text-slate-700 hover:bg-slate-50">
+    <img src="{% static 'core/google-icon.svg' %}" alt="Google" class="h-5 w-5 mr-2"/>
+    Continue with Google
+  </a>
+</div>
 
-    <form method="post" action="{% url 'core:owner_signup' %}">
-      {% csrf_token %}
-
-      <!-- Account -->
-      <div class="row">
-        <label>Email</label>
-        <input type="email" name="email" required>
+    <!-- Step 2: phone -->
+    <div id="step2" class="mt-6 hidden">
+      <p class="text-sm text-slate-600 mb-2">Enter the 6-digit code sent to your phone.</p>
+      <input id="code_phone" class="border rounded p-3 w-full" maxlength="6" placeholder="123456">
+      <div class="mt-3 flex gap-2">
+        <button id="verify_phone" class="bg-black text-white rounded p-3 flex-1">Verify phone</button>
+        <button id="resend" class="border rounded p-3 flex-1">Resend code</button>
       </div>
-      <div class="row">
-        <label>Password</label>
-        <input type="password" name="password1" required>
-      </div>
-      <div class="row">
-        <label>Confirm Your Password</label>
-        <input type="password" name="password2" required>
-      </div>
+    </div>
 
-      <hr>
-
-      <!-- Restaurant details -->
-      <div class="row">
-        <label>Legal Business Name *</label>
-        <input type="text" name="legal_name" required>
-      </div>
-      <div class="row">
-        <label>DBA (Public Name)</label>
-        <input type="text" name="dba_name">
-      </div>
-      <div class="row">
-        <label>Phone</label>
-        <input type="text" name="phone">
-      </div>
-      <div class="row">
-        <label>Street Address</label>
-        <textarea name="address" rows="3"></textarea>
-      </div>
-
-      <button type="submit">Submit</button>
-    </form>
-
-    <p class="muted" style="margin-top:16px;">
-      Already have an account? <a href="{% url 'core:restaurant_signin' %}?tab=owner">Sign In</a>
-    </p>
+    <!-- Step 3: email -->
+    <div id="step3" class="mt-6 hidden">
+      <p class="text-sm text-slate-600 mb-2">Enter the 6-digit code we emailed you.</p>
+      <input id="code_email" class="border rounded p-3 w-full" maxlength="6" placeholder="123456">
+      <button id="verify_email" class="mt-3 bg-black text-white rounded p-3 w-full">Verify email</button>
+    </div>
   </div>
+
+<script>
+const A=(m,ok=false)=>{const e=document.getElementById('alert');e.className='mt-3 text-sm px-3 py-2 rounded '+(ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');e.textContent=m;e.classList.remove('hidden')}
+const step1=document.getElementById('step1'), step2=document.getElementById('step2'), step3=document.getElementById('step3');
+
+document.getElementById('go').onclick=async()=>{
+  const payload={
+    first_name: first_name.value.trim(),
+    last_name: last_name.value.trim(),
+    email: email.value.trim().toLowerCase(),
+    phone: phone.value.trim(),
+    username: username.value.trim().toLowerCase(),
+    password1: p1.value, password2: p2.value
+  };
+  const r=await fetch("{% url 'core:owner_signup_api' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json(); if(d.ok){ A('Code sent to your phone.',true); step1.classList.add('hidden'); step2.classList.remove('hidden'); } else { A(d.error||'Error') }
+};
+
+document.getElementById('verify_phone').onclick=async()=>{
+  const code = code_phone.value.trim();
+  if(!/^\d{6}$/.test(code)) return A('Enter the 6-digit code.');
+  const r=await fetch("{% url 'core:owner_verify_phone_api' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+  const d=await r.json(); if(d.ok && d.stage==='email'){ A('Phone verified. Check your email.',true); step2.classList.add('hidden'); step3.classList.remove('hidden'); } else { A(d.error||'Error') }
+};
+
+document.getElementById('resend').onclick=async()=>{
+  // reuse signup_api to trigger another SMS? You can add a dedicated resend if you prefer.
+  A('If you need to change your phone, go back and re-submit step 1.');
+};
+
+document.getElementById('verify_email').onclick=async()=>{
+  const code = code_email.value.trim();
+  if(!/^\d{6}$/.test(code)) return A('Enter the 6-digit code.');
+  const r=await fetch("{% url 'core:owner_verify_email_api' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+  const d=await r.json(); if(d.ok && d.redirect){ location.href=d.redirect } else { A(d.error||'Error') }
+};
+</script>
 </body>
 </html>

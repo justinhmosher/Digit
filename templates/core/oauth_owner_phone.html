@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Verify your phone — Dine N Dash (Owner)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen p-8">
+  <div class="max-w-xl mx-auto bg-white border rounded-2xl p-8">
+    <h1 class="text-2xl font-bold">Finish Owner Sign Up</h1>
+    <p class="text-sm text-slate-600 mt-2">
+      Google verified <span class="font-medium">{{ email }}</span>. Now verify your phone.
+    </p>
+    <div id="alert" class="hidden mt-3 text-sm px-3 py-2 rounded"></div>
+
+    <div class="mt-6 space-y-3" id="phoneStep">
+      <input id="phone" class="border rounded p-3 w-full" placeholder="+15551234567">
+      <button id="send" class="bg-black text-white rounded p-3 w-full">Send code</button>
+    </div>
+
+    <div class="mt-6 space-y-3 hidden" id="otpStep">
+      <input id="code" class="border rounded p-3 w-full" maxlength="6" placeholder="123456">
+      <button id="verify" class="bg-black text-white rounded p-3 w-full">Verify & continue</button>
+    </div>
+  </div>
+
+<script>
+const A=(m,ok=false)=>{const e=document.getElementById('alert');e.className='mt-3 text-sm px-3 py-2 rounded '+(ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');e.textContent=m;e.classList.remove('hidden')}
+const phoneStep=document.getElementById('phoneStep'), otpStep=document.getElementById('otpStep');
+
+document.getElementById('send').onclick=async()=>{
+  const phone=phoneEl.value.trim(); if(!phone) return A('Enter your phone.');
+  const r=await fetch("{% url 'core:oauth_owner_phone_init' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+  const d=await r.json(); if(d.ok){ A('Code sent.',true); phoneStep.classList.add('hidden'); otpStep.classList.remove('hidden'); } else { A(d.error||'Error') }
+};
+document.getElementById('verify').onclick=async()=>{
+  const code=codeEl.value.trim(); if(!/^\d{6}$/.test(code)) return A('Enter the 6-digit code.');
+  const r=await fetch("{% url 'core:oauth_owner_phone_verify' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+  const d=await r.json(); if(d.ok && d.redirect){ location.href=d.redirect } else { A(d.error||'Error') }
+};
+const phoneEl=document.getElementById('phone'), codeEl=document.getElementById('code');
+</script>
+</body>
+</html>

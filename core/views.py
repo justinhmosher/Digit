@@ -9,6 +9,7 @@ from django.core.mail import send_mail
 import win32com.client as win32
 import pythoncom
 import smtplib
+from django.urls import reverse
 from . tokens import generate_token
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -28,7 +29,7 @@ from itertools import chain
 from collections import defaultdict
 from datetime import datetime
 import json, random
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.utils import timezone
 from django.conf import settings
 from .utils import send_sms_otp, to_e164_us, check_sms_otp, send_email_otp, check_email_otp
@@ -317,245 +318,532 @@ def oauth_phone_verify(request):
     return JsonResponse({"ok": True, "redirect": "/profile"})
 
 
+# core/views.py
+import json, random
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.shortcuts import render, redirect
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
+from django.db import transaction
+from django.utils import timezone
+from allauth.socialaccount.models import SocialLogin
+from allauth.account.utils import perform_login
+
+from .models import OwnerProfile, RestaurantProfile, CustomerProfile
+from .utils import (
+    send_sms_otp, check_sms_otp,
+    send_email_otp, check_email_otp,
+    to_e164_us
+)
+
+# -------------------------
+# OWNER STANDARD SIGN-UP
+# -------------------------
+
 def owner_signup(request):
+    if request.method != "POST":
+        return render(request, "core/owner_signup.html")
+
+    data = request.POST
+    first_name = data.get("first_name", "").strip()
+    last_name = data.get("last_name", "").strip()
+    email = data.get("email", "").lower().strip()
+    username = data.get("username", "").strip()
+    phone_raw = data.get("phone", "").strip()
+    p1, p2 = data.get("p1"), data.get("p2")
+
+    if not (first_name and last_name and email and username and phone_raw):
+        return JsonResponse({"ok": False, "error": "All fields are required"}, status=400)
+    if p1 != p2:
+        return JsonResponse({"ok": False, "error": "Passwords did not match"}, status=400)
+
+    try:
+        phone = to_e164_us(phone_raw)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Invalid phone"}, status=400)
+
+    # create inactive user
+    user = User.objects.create_user(username=username, email=email, password=p1,
+                                    first_name=first_name, last_name=last_name)
+    user.is_active = False
+    user.save()
+
+    # stash owner profile (inactive until verified)
+    OwnerProfile.objects.create(user=user, phone=phone)
+
+    # send phone OTP
+    send_sms_otp(phone)
+
+    # store phone in session for verification step
+    request.session["pending_owner_phone"] = phone
+    request.session["pending_owner_email"] = email
+
+    return JsonResponse({"ok": True, "stage": "phone", "phone": phone})
+
+@require_POST
+def owner_signup_api(request):
     """
-    Similar to your customer signup, but we also capture basic restaurant info
-    and create a RestaurantProfile immediately (status is pending until Stripe).
+    Body JSON: {first_name, last_name, email, phone, username, password1, password2}
+    Do NOT create the user yet. Send phone OTP, stash data in session.
     """
-    if request.method == "POST":
-        email = (request.POST.get('email') or "").strip().lower()
-        password1 = request.POST.get('password1')
-        password2 = request.POST.get('password2')
+    data = json.loads(request.body.decode() or "{}")
+    first_name = (data.get("first_name") or "").strip()
+    last_name  = (data.get("last_name") or "").strip()
+    email      = (data.get("email") or "").strip().lower()
+    phone_raw  = (data.get("phone") or "").strip()
+    username   = (data.get("username") or "").strip().lower()
+    p1 = data.get("password1") or ""
+    p2 = data.get("password2") or ""
 
-        # extra owner questions
-        legal_name = (request.POST.get("legal_name") or "").strip()
-        dba_name = (request.POST.get("dba_name") or "").strip()
-        phone = (request.POST.get("phone") or "").strip()
-        address = (request.POST.get("address") or "").strip()
+    if not (first_name and last_name and email and phone_raw and username and p1 and p2):
+        return JsonResponse({"ok": False, "error": "All fields are required."}, status=400)
+    if p1 != p2:
+        return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({"ok": False, "error": "Username already taken."}, status=400)
+    if User.objects.filter(email=email).exists():
+        return JsonResponse({"ok": False, "error": "Email already registered."}, status=400)
 
-        if password1 != password2:
-            messages.error(request, "Passwords didn't match!")
-            return redirect('core:owner_signup')
+    try:
+        phone_e164 = to_e164_us(phone_raw)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
 
-        if not legal_name:
-            messages.error(request, "Please enter your restaurant's legal name.")
-            return redirect('core:owner_signup')
+    # Send phone OTP
+    try:
+        send_sms_otp(phone_e164)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
-        myuser = User.objects.filter(email=email).first()
-        if myuser:
-        	if myuser.is_active:
-        		pass
-        	else:
-        		myuser.username = username
-        		myuser.email = email
-        		myuser.set_password(password1)
-        		myuser.is_active = False
-        		myuser.save()
-        else:
-        	myuser = User.objects.create_user(username, email, password1)
-        	myuser.is_active = False
-        	myuser.save()
+    # Stash into session until OTPs complete
+    request.session["owner_signup"] = {
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "phone": phone_e164,
+        "username": username,
+        "password1": p1,
+    }
+    request.session.modified = True
 
-        owner = RestaurantProfile.objects.filter(email=email).first()
-        if owner:
-        	if owner.is_active:
-        		messages.error(request, "Email already registered with an active account! Please try another.")
-        		return redirect('core:owner_signup')
-        	else:
-        		rp, created = RestaurantProfile.objects.get_or_create(
-            		user = myuser,
-            		defaults={
-            			"email":email,
-            			"legal_name": legal_name,
-            			"dba_name":dba_name,
-            			"phone": phone,
-            			"address": address,
-            			"is_active": False,
-            		})
-        		if not created:
-        			rp.email = email
-        			rp.legal_name = legal_name
-        			rp.dba_name = dba_name
-        			rp.phone = phone
-        			rp.address = address
-        			rp.is_active = False
-        else:
-        	rp, created = RestaurantProfile.objects.get_or_create(
-            	user = myuser,
-            	defaults={
-            		"email":email,
-            		"legal_name": legal_name,
-            		"dba_name":dba_name,
-            		"phone": phone,
-            		"address": address,
-            		"is_active": False,
-            		},
-            	)
-        	if not created:
-        		rp.email = email
-        		rp.legal_name = legal_name
-        		rp.dba_name = dba_name
-        		rp.phone = phone
-        		rp.address = address
-        		rp.is_active = False
+    return JsonResponse({"ok": True, "stage": "phone", "phone_e164": phone_e164})
 
-        num = create_email(request, myuser, "owner")
-        if num == 1:
-            return redirect('core:confirm_email', email=email)
-        else:
-            messages.error(request, "There was a problem sending your confirmation email. Please try again.")
-            return redirect('core:owner_signup')
+@require_POST
+def owner_verify_phone_api(request):
+    """
+    Body: {code}
+    On success, send email OTP and return stage=email.
+    """
+    payload = json.loads(request.body.decode() or "{}")
+    code = (payload.get("code") or "").strip()
+    ss = request.session.get("owner_signup")
+    if not ss:
+        return JsonResponse({"ok": False, "error": "Session expired. Start again."}, status=400)
+    phone_e164 = ss["phone"]
 
-    # GET
-    return render(request, "core/owner_signup.html")
+    if not code:
+        return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
 
+    try:
+        status = check_sms_otp(phone_e164, code)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+    if status != "approved":
+        return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
+    # Send email OTP now
+    try:
+        send_email_otp(ss["email"])
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Could not send email code: {e}"}, status=500)
 
-# ---------- Restaurant Sign In (Owner | Manager tabs) ----------
-def restaurant_signin(request):
-    if request.method == "POST":
-        portal = (request.POST.get("portal") or "owner").strip()
-        email = (request.POST.get("email") or "").strip().lower()
-        password = request.POST.get("password") or ""
+    # Flag phone verified in session
+    ss["phone_verified"] = True
+    request.session["owner_signup"] = ss
+    request.session.modified = True
 
-        user = authenticate(request, username=email, password=password)
-        if not user:
-            messages.error(request, "Invalid email or password.")
-            return redirect("core:restaurant_signin")
+    return JsonResponse({"ok": True, "stage": "email", "email": ss["email"]})
 
-        login(request, user)
+@require_POST
+def owner_verify_email_api(request):
+    """
+    Body: {code}
+    On success, redirect to /owner/restaurant (HTML form). Still no User created yet.
+    """
+    payload = json.loads(request.body.decode() or "{}")
+    code = (payload.get("code") or "").strip()
+    ss = request.session.get("owner_signup")
+    if not ss:
+        return JsonResponse({"ok": False, "error": "Session expired. Start again."}, status=400)
 
-        if portal == "manager":
-            return redirect("core:manager_dashboard")
-        else:
-            if hasattr(user, "restaurant_profile"):
-                return redirect("core:owner_dashboard")
+    if not code:
+        return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
+
+    try:
+        status = check_email_otp(ss["email"], code)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+    if status != "approved":
+        return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+
+    ss["email_verified"] = True
+    request.session["owner_signup"] = ss
+    request.session.modified = True
+
+    return JsonResponse({"ok": True, "redirect": "/owner/restaurant"})
+
+def owner_restaurant_page(request):
+    # must have passed both OTPs
+    ss = request.session.get("owner_signup")
+    if not (ss and ss.get("phone_verified") and ss.get("email_verified")):
+        return HttpResponseBadRequest("Complete verification first.")
+    return render(request, "core/owner_restaurant.html")
+
+@require_POST
+@transaction.atomic
+def owner_restaurant_save_api(request):
+    """
+    Body: {legal_name, dba_name, phone, address}
+    Now we finally CREATE the User + RestaurantProfile + OwnerProfile.
+    """
+    ss = request.session.get("owner_signup")
+    if not (ss and ss.get("phone_verified") and ss.get("email_verified")):
+        return JsonResponse({"ok": False, "error": "Complete verification first."}, status=400)
+
+    data = json.loads(request.body.decode() or "{}")
+    legal_name = (data.get("legal_name") or "").strip()
+    dba_name   = (data.get("dba_name") or "").strip()
+    phone      = (data.get("phone") or "").strip()
+    address    = (data.get("address") or "").strip()
+
+    if not legal_name:
+        return JsonResponse({"ok": False, "error": "Legal name is required."}, status=400)
+
+    # Create final user
+    if User.objects.filter(username=ss["username"]).exists() or User.objects.filter(email=ss["email"]).exists():
+        return JsonResponse({"ok": False, "error": "This account already exists."}, status=400)
+
+    user = User.objects.create_user(
+        username=ss["username"],
+        email=ss["email"],
+        password=ss["password1"],
+        first_name=ss["first_name"],
+        last_name=ss["last_name"],
+        is_active=True
+    )
+
+    # Create restaurant
+    RestaurantProfile.objects.create(
+        user=user,
+        legal_name=legal_name,
+        email=ss["email"],
+        dba_name=dba_name,
+        phone=phone or ss["phone"],
+        address=address,
+        processor="stripe",
+        processor_verification="pending",
+        payout_status="pending",
+        is_active=False,
+    )
+
+    # Create owner profile AFTER both OTPs + restaurant
+    OwnerProfile.objects.create(
+        user=user,
+        phone=ss["phone"],
+        phone_verified=True,
+        email_verified=True
+    )
+
+    # Clear the session bundle
+    request.session.pop("owner_signup", None)
+    request.session.modified = True
+
+    return JsonResponse({"ok": True, "redirect": "/owner/dashboard"})
+
+# -------------------------
+# OWNER GOOGLE OAuth
+# -------------------------
+
+def oauth_owner_phone_page(request):
+    if "pending_sociallogin" not in request.session or request.session.get("gate_role") != "owner":
+        return HttpResponseBadRequest("No pending owner signup.")
+    email = request.session.get("pending_email", "")
+    return render(request, "core/oauth_owner_phone.html", {"email": email})
+
+@login_required
+def post_login_owner(request):
+    role = request.session.pop("auth_role", None)
+    if role == "owner":
+        rp = getattr(request.user, "restaurant_profile", None)
+        if not rp:
             return redirect("core:restaurant_onboard")
+        return redirect("core:owner_dashboard")
+    return redirect("core:profile")
 
-    active_tab = request.GET.get("tab", "owner")
+@require_POST
+def oauth_owner_phone_init(request):
+    if "pending_sociallogin" not in request.session or request.session.get("gate_role") != "owner":
+        return JsonResponse({"ok": False, "error": "No pending owner signup."}, status=400)
+
+    try:
+        payload = json.loads(request.body.decode() or "{}")
+    except Exception:
+        payload = {}
+    raw = (payload.get("phone") or "").strip()
+    if not raw:
+        return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
+    try:
+        phone_e164 = to_e164_us(raw)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
+
+    try:
+        send_sms_otp(phone_e164)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
+
+    request.session["pending_phone"] = phone_e164
+    request.session.modified = True
+    return JsonResponse({"ok": True, "phone_e164": phone_e164})
+
+@require_POST
+def oauth_owner_phone_verify(request):
+    sess = request.session
+    if "pending_sociallogin" not in sess or sess.get("gate_role") != "owner" or "pending_phone" not in sess:
+        return JsonResponse({"ok": False, "error": "Session expired. Restart Google sign-up."}, status=400)
+
+    payload = json.loads(request.body.decode() or "{}")
+    code = (payload.get("code") or "").strip()
+    phone_e164 = sess["pending_phone"]
+    if not code:
+        return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
+
+    # Verify phone
+    try:
+        status = check_sms_otp(phone_e164, code)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+    if status != "approved":
+        return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+
+    # Restore Google identity
+    sociallogin = SocialLogin.deserialize(sess["pending_sociallogin"])
+    email = (sess.get("pending_email") or sociallogin.user.email or "").lower()
+    if not email:
+        return JsonResponse({"ok": False, "error": "Missing email from Google."}, status=400)
+
+    # Ensure a saved user
+    user = User.objects.filter(email=email).first()
+    if not user:
+        user = User.objects.create_user(username=email, email=email)
+        user.set_unusable_password()
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+    # Link Google account to user
+    sociallogin.connect(request, user)
+
+    # Temp-store phone for next step (restaurant)
+    sess["oauth_owner_ready"] = {"user_id": user.id, "phone": phone_e164}
+    # Clean temporary login bits; keep oauth_owner_ready
+    for k in ("pending_sociallogin", "pending_phone", "pending_email", "gate_role"):
+        sess.pop(k, None)
+    sess.modified = True
+
+    # Next step: restaurant details page
+    return JsonResponse({"ok": True, "redirect": "/owner/restaurant"})
+
+# core/views.py (add near your other imports)
+from datetime import timedelta
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
+from django.core.mail import send_mail
+from django.conf import settings
+
+from .models import ManagerInvite  # assumes you already have this model
+
+@login_required
+@require_POST
+def owner_invite_manager(request):
+    """
+    Owner sends an invite to a manager's email.
+    Accepts JSON or form-POST.
+
+    POST fields:
+      - email (required)
+      - expires_minutes (optional, default 120)
+    """
+    # Owner must have a RestaurantProfile
+    rp = getattr(request.user, "restaurant_profile", None)
+    if not rp:
+        return JsonResponse(
+            {"ok": False, "error": "Create your restaurant profile first."},
+            status=400,
+        )
+
+    # Read payload from JSON or form
+    email = ""
+    expires_minutes = 120
+    try:
+        payload = json.loads((request.body or b"").decode() or "{}")
+        email = (payload.get("email") or "").strip().lower()
+        if payload.get("expires_minutes") is not None:
+            expires_minutes = int(payload["expires_minutes"])
+    except Exception:
+        pass
+
+    if not email:
+        email = (request.POST.get("email") or "").strip().lower()
+    if request.POST.get("expires_minutes"):
+        try:
+            expires_minutes = int(request.POST.get("expires_minutes"))
+        except ValueError:
+            pass
+
+    if not email:
+        return JsonResponse({"ok": False, "error": "Please provide an email."}, status=400)
+
+    # Create invite
+    invite = ManagerInvite.objects.create(
+        restaurant=rp,
+        email=email,
+        expires_at=timezone.now() + timedelta(minutes=expires_minutes),
+    )
+
+    # Build link
+    invite_link = f"{request.scheme}://{request.get_host()}/manager/accept?token={invite.token}"
+
+    # Send a simple email (okay for MVP)
+    subject = "You’re invited as a manager"
+    rest_name = rp.dba_name or rp.legal_name or "your restaurant"
+    body = (
+        f"You’ve been invited to manage {rest_name} on Dine N Dash.\n\n"
+        f"Click to accept your invite and set your password:\n{invite_link}\n\n"
+        f"This link expires at {invite.expires_at:%Y-%m-%d %H:%M}."
+    )
+    try:
+        send_mail(subject, body, getattr(settings, "DEFAULT_FROM_EMAIL", None), [email], fail_silently=True)
+    except Exception:
+        # Don't fail the API for email issues in MVP
+        pass
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": f"Invite sent to {email}.",
+            "invite": {
+                "email": email,
+                "token": invite.token,
+                "expires_at": invite.expires_at.isoformat(),
+                "link": invite_link,
+            },
+        }
+    )
+
+
+# -------------------------
+# PAGES
+# -------------------------
+
+def profile(request):
+    return render(request, "core/profile.html")
+
+def restaurant_signin(request):
     return render(request, "core/restaurant_signin.html", {"active_tab": active_tab})
 
-# ---------- Owner Sign Up (same as before; omitted here for brevity) ----------
-# def owner_signup(request): ... (use the version from previous message)
 
-# ---------- Dashboards (same placeholders as before) ----------
+def restaurant_signin(request):
+    """GET: render the page. POST: JSON sign-in for owner/manager."""
+    if request.method == "GET":
+        # define it unconditionally to avoid NameError (UI also reads ?tab=manager)
+        active_tab = request.GET.get("tab", "owner")
+        return render(request, "core/restaurant_signin.html", {"active_tab": active_tab})
+
+    # --- POST -> JSON ---
+    portal = (request.POST.get("portal") or "").strip() or "owner"   # "owner" | "manager"
+    email  = (request.POST.get("email") or "").strip().lower()
+    pwd    = request.POST.get("password") or ""
+
+    if not email or not pwd:
+        return JsonResponse({"ok": False, "error": "Email and password are required."}, status=400)
+
+    user = authenticate(request, username=email, password=pwd)
+    if not user:
+        return JsonResponse({"ok": False, "error": "Invalid email or password."}, status=400)
+
+    login(request, user)
+    # Decide destination
+    if portal == "manager":
+        dest = reverse("core:manager_dashboard")
+    else:
+        dest = reverse("core:owner_dashboard") if hasattr(user, "restaurant_profile") else reverse("core:restaurant_onboard")
+
+    return JsonResponse({"ok": True, "redirect": dest})
+
 @login_required
 def owner_dashboard(request):
     rp = getattr(request.user, "restaurant_profile", None)
     return render(request, "core/owner_dashboard.html", {"profile": rp})
 
-@login_required
-def restaurant_onboard(request):
-    rp = getattr(request.user, "restaurant_profile", None)
-    if not rp:
-        return redirect("core:owner_signup")
-    return render(request, "core/restaurant_onboard.html", {"profile": rp})
+# core/views.py
+from urllib.parse import quote
+from django.shortcuts import redirect
+
+def owner_google_start(request):
+    """
+    Mark this flow as 'owner' before handing off to Google OAuth.
+    """
+    request.session["auth_role"] = "owner"
+    request.session.modified = True
+
+    next_url = request.GET.get("next", "/post-login-owner/")  # wherever you want to land after OAuth
+    # Hand off directly to Allauth’s Google login endpoint
+    return redirect(f"/accounts/google/login/?process=login&next={quote(next_url)}")
+
 
 @login_required
 def manager_dashboard(request):
     mp = getattr(request.user, "manager_profile", None)
     return render(request, "core/manager_dashboard.html", {"profile": mp})
 
-# ---------- Owner → Invite Manager ----------
+@require_http_methods(["GET","POST"])
 @login_required
-def owner_invite_manager(request):
-    """
-    POST only. Owner sends an invite to a manager's email.
-    Body (form): email, full_name (optional), expires_minutes (optional)
-    """
-    if request.method != "POST":
+def restaurant_onboard(request):
+    rp = getattr(request.user, "restaurant_profile", None)
+    if rp:
         return redirect("core:owner_dashboard")
+    if request.method == "GET":
+        rp = getattr(request.user, "restaurant_profile", None)
+        return render(request, "core/restaurant_onboard.html", {"profile": rp})
 
-    if not hasattr(request.user, "restaurant_profile"):
-        messages.error(request, "Create your restaurant profile first.")
-        return redirect("core:owner_signup")
-
-    email = (request.POST.get("email") or "").strip().lower()
-    expires_minutes = int(request.POST.get("expires_minutes") or 120)
-
-    if not email:
-        messages.error(request, "Please provide an email to invite.")
-        return redirect("core:owner_dashboard")
-
-    rp = request.user.restaurant_profile
-    invite = ManagerInvite.objects.create(
-        restaurant=rp,
-        email=email,
-        expires_at=timezone.now() + timedelta(minutes=expires_minutes)
-    )
-
-    invite_link = f"{request.scheme}://{request.get_host()}/manager/accept?token={invite.token}"
-    subject = "You’re invited as a manager"
-    body = (
-        f"You’ve been invited to manage {rp.dba_name or rp.legal_name} on Dine N Dash.\n\n"
-        f"Click to accept and set your password:\n{invite_link}\n\n"
-        f"This link expires at {invite.expires_at}."
-    )
+    # POST JSON
     try:
-        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=True)
+        data = json.loads(request.body.decode() or "{}")
     except Exception:
-        pass  # fine for MVP
+        return JsonResponse({"ok": False, "error": "Invalid JSON."}, status=400)
 
-    messages.success(request, f"Invite sent to {email}.")
-    return redirect("core:owner_dashboard")
+    legal_name = (data.get("legal_name") or "").strip()
+    email      = (data.get("email") or "").strip().lower()
+    dba_name   = (data.get("dba_name") or "").strip()
+    phone      = (data.get("phone") or "").strip()
+    address    = (data.get("address") or "").strip()
 
-# ---------- Manager → Accept Invite ----------
-def manager_accept_invite(request):
-    """
-    GET: Show a small form to set name/phone/password using the token.
-    POST: Create/activate the manager user + ManagerProfile, mark invite accepted, log in.
-    """
-    token = request.GET.get("token") or request.POST.get("token")
-    if not token:
-        return render(request, "core/manager_accept_invalid.html")
+    if not legal_name or not email:
+        return JsonResponse({"ok": False, "error": "Legal name and email are required."}, status=400)
 
-    try:
-        invite = ManagerInvite.objects.get(token=token)
-    except ManagerInvite.DoesNotExist:
-        return render(request, "core/manager_accept_invalid.html")
+    rp, _ = RestaurantProfile.objects.get_or_create(user=request.user)
+    rp.legal_name = legal_name
+    rp.email      = email
+    rp.dba_name   = dba_name
+    rp.phone      = phone
+    rp.address    = address
+    rp.is_active  = True  # mark as configured (tune to your rules)
+    rp.save()
 
-    if not invite.is_valid:
-        return render(request, "core/manager_accept_invalid.html")
-
-    if request.method == "POST":
-        email = (request.POST.get("email") or "").strip().lower()
-        password1 = request.POST.get("password1") or ""
-        password2 = request.POST.get("password2") or ""
-        full_name = (request.POST.get("full_name") or "").strip()
-        phone     = (request.POST.get("phone") or "").strip()
-
-        if email != invite.email.lower():
-            messages.error(request, "Email must match the invited address.")
-            return redirect(f"/manager/accept?token={invite.token}")
-
-        if password1 != password2:
-            messages.error(request, "Passwords didn't match.")
-            return redirect(f"/manager/accept?token={invite.token}")
-
-        user = User.objects.filter(username=email).first()
-        if user:
-            # If a dormant user exists, update password & activate
-            user.email = email
-            user.set_password(password1)
-            user.is_active = True
-            user.save()
-        else:
-            user = User.objects.create_user(email, email, password1)
-            user.is_active = True
-            user.save()
-
-        # ensure ManagerProfile
-        if not hasattr(user, "manager_profile"):
-            ManagerProfile.objects.create(user=user, full_name=full_name or email, phone=phone)
-
-        invite.accepted_at = timezone.now()
-        invite.save(update_fields=["accepted_at"])
-
-        login(request, user)
-        return redirect("core:manager_dashboard")
-
-    # GET
-    return render(request, "core/manager_accept.html", {"invite": invite})
+    return JsonResponse({"ok": True, "redirect": "/owner/dashboard/"})
 
 
 
@@ -675,6 +963,3 @@ def passreset(request, uidb64, token):
 				messages.error(request,"Passwords do not match.")
 				return redirect('core:passreset',uidb64=uidb64,token=token)
 	return render(request,'core/passreset.html',{'uidb64':uidb64,'token':token})
-
-def profile(request):
-	return render(request,'core/profile.html')

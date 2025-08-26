@@ -81,7 +81,7 @@ SOCIALACCOUNT_ADAPTER = "core.adapters.GoogleGateAdapter"
 GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = config("GOOGLE_CLIENT_SECRET")
 
-LOGIN_REDIRECT_URL = "/dashboard/"  # after successful (post-OTP) login
+LOGIN_REDIRECT_URL = "/profile"  # after successful (post-OTP) login
 
 TEMPLATES = [
     {

@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Restaurant Setup — Dine N Dash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen p-8">
+  <div class="max-w-xl mx-auto bg-white border rounded-2xl p-8">
+    <h1 class="text-2xl font-bold">Finish Restaurant Setup</h1>
+    <div id="alert" class="hidden mt-3 text-sm px-3 py-2 rounded"></div>
+
+    <div class="mt-6 space-y-3">
+      <input id="legal_name" class="border rounded p-3 w-full" placeholder="Legal name">
+      <input id="dba_name" class="border rounded p-3 w-full" placeholder="DBA (optional)">
+      <input id="phone" class="border rounded p-3 w-full" placeholder="Business phone (optional)">
+      <textarea id="address" class="border rounded p-3 w-full" placeholder="Address"></textarea>
+      <button id="save" class="bg-black text-white rounded p-3 w-full">Save</button>
+    </div>
+  </div>
+<script>
+const A=(m,ok=false)=>{const e=document.getElementById('alert');e.className='mt-3 text-sm px-3 py-2 rounded '+(ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');e.textContent=m;e.classList.remove('hidden')}
+document.getElementById('save').onclick=async()=>{
+  const payload={legal_name:legal_name.value.trim(), dba_name:dba_name.value.trim(), phone:phone.value.trim(), address:address.value.trim()};
+  const r=await fetch("{% url 'core:owner_restaurant_save_api' %}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json(); if(d.ok && d.redirect){ location.href=d.redirect } else { A(d.error||'Error') }
+}
+</script>
+</body>
+</html>

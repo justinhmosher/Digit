@@ -122,7 +122,7 @@
       });
       const data = await r.json().catch(()=>({}));
       if (r.ok && data.ok) {
-        window.location.href = data.redirect || "/dashboard/";
+        window.location.href = data.redirect || "/profile/";
       } else {
         flash(data.error || 'Verification failed.');
       }

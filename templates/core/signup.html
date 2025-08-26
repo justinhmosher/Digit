@@ -51,28 +51,6 @@
           <p class="mt-2 text-sm text-slate-600">Enter your details to continue.</p>
         </div>
 
-        <!-- Google OAuth button -->
-        <div class="mt-6">
-          <a href="{% provider_login_url 'google' process='login' %}"
-             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-            <!-- Google "G" icon -->
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="h-5 w-5">
-              <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.826 32.91 29.337 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.652-.389-3.917z"/>
-              <path fill="#FF3D00" d="M6.306 14.691l6.571 4.818C14.618 16.108 18.955 13 24 13c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 16.318 4 9.708 8.337 6.306 14.691z"/>
-              <path fill="#4CAF50" d="M24 44c5.258 0 10.054-2.016 13.66-5.303l-6.305-5.333C29.329 35.445 26.789 36 24 36c-5.311 0-9.813-3.441-11.418-8.216l-6.5 5.01C9.393 39.658 16.142 44 24 44z"/>
-              <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.063 3.147-3.352 5.635-6.648 7.05l.004-.003 6.305 5.333C37.527 38.824 40 34.018 40 28c0-1.341-.138-2.652-.389-3.917z"/>
-            </svg>
-            <span class="font-medium">Continue with Google</span>
-          </a>
-        </div>
-
-        <!-- Divider -->
-        <div class="my-6 flex items-center gap-3">
-          <div class="h-px flex-1 bg-slate-200"></div>
-          <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
-          <div class="h-px flex-1 bg-slate-200"></div>
-        </div>
-
         <!-- Signup form -->
         <form id="signupForm" class="space-y-4">
           {% csrf_token %}
@@ -168,6 +146,27 @@
             Verify Email
           </button>
         </form>
+
+        <div class="my-6 flex items-center gap-3">
+          <div class="h-px flex-1 bg-slate-200"></div>
+          <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+          <div class="h-px flex-1 bg-slate-200"></div>
+        </div>
+
+
+        <div class="mt-6">
+          <a href="{% provider_login_url 'google' process='login' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <!-- Google "G" icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="h-5 w-5">
+              <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.826 32.91 29.337 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.652-.389-3.917z"/>
+              <path fill="#FF3D00" d="M6.306 14.691l6.571 4.818C14.618 16.108 18.955 13 24 13c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 16.318 4 9.708 8.337 6.306 14.691z"/>
+              <path fill="#4CAF50" d="M24 44c5.258 0 10.054-2.016 13.66-5.303l-6.305-5.333C29.329 35.445 26.789 36 24 36c-5.311 0-9.813-3.441-11.418-8.216l-6.5 5.01C9.393 39.658 16.142 44 24 44z"/>
+              <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.063 3.147-3.352 5.635-6.648 7.05l.004-.003 6.305 5.333C37.527 38.824 40 34.018 40 28c0-1.341-.138-2.652-.389-3.917z"/>
+            </svg>
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
 
       </div>
     </section>
