@@ -1,62 +1,77 @@
 {% load static %}
-
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Accept Manager Invite — Dine N Dash</title>
+  <meta charset="utf-8">
+  <title>Accept Manager Invite</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6 text-slate-900">
-
-  <div class="w-full max-w-md bg-white rounded-2xl shadow border p-8">
+<body class="bg-slate-50 min-h-screen">
+  <div class="max-w-xl mx-auto mt-16 bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
     <h1 class="text-2xl font-bold">Accept Manager Invite</h1>
     <p class="text-sm text-slate-600 mt-1">
       You’ve been invited to manage
-      <span class="font-medium">{{ invite.restaurant.dba_name|default:invite.restaurant.legal_name }}</span>.
+      <strong>{{ invite.restaurant.dba_name|default:invite.restaurant.legal_name }}</strong>.
     </p>
 
-    <!-- alert -->
     <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
 
-    <form id="acceptForm" class="mt-6 space-y-4" method="post" action="{% url 'core:manager_accept_invite' %}">
+    <!-- Step 1 -->
+    <form id="step1" class="mt-6 space-y-4">
       {% csrf_token %}
-      <input type="hidden" name="token" id="token" value="{{ invite.token }}">
-
+      <input type="hidden" id="token" value="{{ invite.token }}">
       <div>
         <label class="block text-sm font-medium mb-1">Email (invited)</label>
-        <input type="email" id="email" name="email" value="{{ invite.email }}" readonly
-               class="w-full h-12 rounded-xl border px-4 bg-slate-50">
+        <input id="email" type="email" class="w-full h-12 rounded-xl border px-4 bg-slate-50"
+               value="{{ invite.email }}" readonly>
       </div>
-
       <div>
         <label class="block text-sm font-medium mb-1">Phone</label>
-        <input type="tel" id="phone" name="phone" placeholder="+15551234567" required
-               class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400">
+        <input id="phone" type="tel" class="w-full h-12 rounded-xl border px-4"
+               placeholder="+15551234567">
       </div>
-
       <div>
         <label class="block text-sm font-medium mb-1">Password</label>
-        <input type="password" id="password1" name="password1" required
-               class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400">
+        <input id="p1" type="password" class="w-full h-12 rounded-xl border px-4">
       </div>
-
       <div>
         <label class="block text-sm font-medium mb-1">Confirm Password</label>
-        <input type="password" id="password2" name="password2" required
-               class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400">
+        <input id="p2" type="password" class="w-full h-12 rounded-xl border px-4">
       </div>
-
-      <button type="submit"
+      <button id="send" type="submit"
               class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
-        Create account
+        Send code
+      </button>
+    </form>
+
+    <!-- Step 2 -->
+    <form id="step2" class="mt-6 space-y-4 hidden">
+      {% csrf_token %}
+      <p class="text-sm text-slate-600">
+        Enter the 6-digit code we sent to your phone.
+      </p>
+      <div>
+        <label class="block text-sm font-medium mb-1">Verification code</label>
+        <input id="code" maxlength="6" inputmode="numeric" pattern="[0-9]*"
+               class="w-full h-12 rounded-xl border px-4" placeholder="123456">
+      </div>
+      <button id="verify" type="submit"
+              class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+        Verify & create account
       </button>
     </form>
   </div>
 
 <script>
-  const csrf = () => (document.cookie.match(/csrftoken=([^;]+)/)||[])[1] || '';
+  // Pull the CSRF token from the hidden inputs that {% csrf_token %} rendered.
+  function getCSRF() {
+    // Prefer token from step2 if step1 is hidden, otherwise from step1.
+    const el =
+      document.querySelector('#step2 input[name=csrfmiddlewaretoken]') ||
+      document.querySelector('#step1 input[name=csrfmiddlewaretoken]');
+    return el ? el.value : "";
+  }
+
   function flash(msg, ok=false){
     const el = document.getElementById('alert');
     el.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
@@ -64,40 +79,70 @@
     el.classList.remove('hidden');
   }
 
-  const form = document.getElementById('acceptForm');
-  form.addEventListener('submit', async (e) => {
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const token = document.getElementById('token').value;
+  const postURL = location.pathname; // "/manager/accept"
+
+  step1.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
-      token:     document.getElementById('token').value.trim(),
-      email:     document.getElementById('email').value.trim().toLowerCase(),
-      phone:     document.getElementById('phone').value.trim(),
-      password1: document.getElementById('password1').value,
-      password2: document.getElementById('password2').value
+      action: "init",
+      token,
+      email: document.getElementById('email').value.trim(),
+      phone: document.getElementById('phone').value.trim(),
+      password1: document.getElementById('p1').value,
+      password2: document.getElementById('p2').value,
     };
 
-    const btn = form.querySelector('button[type="submit"]');
-    btn.disabled = true; const original = btn.textContent; btn.textContent = 'Creating…';
+    const r = await fetch(postURL, {
+      method: "POST",
+      credentials: "same-origin",                 // ensure cookies (csrftoken) are sent
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCSRF(),                 // match the cookie value
+      },
+      body: JSON.stringify(payload)
+    });
 
-    try {
-      const r = await fetch(form.action, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json', 'X-CSRFToken': csrf()},
-        body: JSON.stringify(payload),
-        credentials: 'same-origin'
-      });
-      const data = await r.json().catch(()=>({ ok:false, error:'Unexpected response'}));
-      if (r.ok && data.ok) {
-        window.location.href = data.redirect || '/manager/dashboard';
-      } else {
-        flash(data.error || 'Failed to accept invite.');
-      }
-    } catch {
-      flash('Network error.');
-    } finally {
-      btn.disabled = false; btn.textContent = original;
+    const data = await r.json().catch(()=>({}));
+    if (r.ok && data.ok) {
+      step1.classList.add('hidden');
+      step2.classList.remove('hidden');
+      flash('Code sent. Check your phone.', true);
+    } else {
+      flash(data.error || 'Unexpected response.');
+    }
+  });
+
+  step2.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      action: "verify",
+      token,
+      code: document.getElementById('code').value.trim()
+    };
+
+    const r = await fetch(postURL, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCSRF(),
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await r.json().catch(()=>({}));
+    if (r.ok && data.ok && data.redirect) {
+      window.location.href = data.redirect;
+    } else {
+      flash(data.error || 'Unexpected response.');
     }
   });
 </script>
+
+
 
 </body>
 </html>

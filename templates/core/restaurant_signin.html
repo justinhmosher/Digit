@@ -51,53 +51,55 @@
         </div>
 
         <!-- OWNER PANEL -->
-        <div id="panelOwner" class="space-y-6">
-          <div>
-            <h1 class="text-2xl font-bold">Owner Sign In</h1>
-            <p class="text-sm text-slate-600 mt-1">
-              Don’t have an owner account?
-              <a href="{% url 'core:owner_signup' %}" class="text-brand underline">Create owner account</a>.
-            </p>
-          </div>
+<div id="panelOwner" class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-bold">Owner Sign In</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      Don’t have an owner account?
+      <a href="{% url 'core:owner_signup' %}" class="text-brand underline">Create owner account</a>.
+    </p>
+  </div>
 
-          <form action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
-            {% csrf_token %}
-            <input type="hidden" name="portal" value="owner">
+  <!-- The ONLY owner form; note the id -->
+  <form id="ownerSignInForm" action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
+    {% csrf_token %}
+    <input type="hidden" name="portal" value="owner">
 
-            <div>
-              <label class="block text-sm font-medium mb-1" for="ownerEmail">Email</label>
-              <input id="ownerEmail" name="email" type="email" required
-                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                     placeholder="owner@restaurant.com" autocomplete="username">
-            </div>
+    <div>
+      <label class="block text-sm font-medium mb-1" for="ownerEmail">Email</label>
+      <input id="ownerEmail" name="email" type="email" required
+             class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+             placeholder="owner@restaurant.com" autocomplete="username">
+    </div>
 
-            <div>
-              <label class="block text-sm font-medium mb-1" for="ownerPassword">Password</label>
-              <input id="ownerPassword" name="password" type="password" required
-                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                     placeholder="••••••••" autocomplete="current-password">
-            </div>
+    <div>
+      <label class="block text-sm font-medium mb-1" for="ownerPassword">Password</label>
+      <input id="ownerPassword" name="password" type="password" required
+             class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+             placeholder="••••••••" autocomplete="current-password">
+    </div>
 
-            <button type="submit"
-                    class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
-              Sign In
-            </button>
-          </form>
+    <button type="submit"
+            class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
+      Sign In
+    </button>
+  </form>
 
-          <!-- Divider -->
-          <div class="flex items-center gap-3">
-            <div class="h-px flex-1 bg-slate-200"></div>
-            <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
-            <div class="h-px flex-1 bg-slate-200"></div>
-          </div>
+  <!-- Divider -->
+  <div class="flex items-center gap-3">
+    <div class="h-px flex-1 bg-slate-200"></div>
+    <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+    <div class="h-px flex-1 bg-slate-200"></div>
+  </div>
 
-          <!-- Google OAuth (Owner) -->
-          <a href="{% url 'core:owner_google_start' %}"
-             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
-            <span class="font-medium">Continue with Google</span>
-          </a>
-        </div>
+  <!-- Google OAuth (Owner) -->
+  <a href="{% url 'core:owner_google_start' %}"
+     class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
+    <span class="font-medium">Continue with Google</span>
+  </a>
+</div>
+
 
         <!-- MANAGER PANEL -->
         <div id="panelManager" class="space-y-6 hidden">

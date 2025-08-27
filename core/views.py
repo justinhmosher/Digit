@@ -38,6 +38,7 @@ from allauth.socialaccount.helpers import complete_social_login
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.account.utils import perform_login
 from django.contrib.auth.hashers import make_password
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 def debug_session(request):
     return JsonResponse({"keys": list(request.session.keys())}, safe=False)
@@ -681,15 +682,26 @@ def oauth_owner_phone_verify(request):
     # Send to owner onboarding to create the RestaurantProfile
     return JsonResponse({"ok": True, "redirect": "/restaurant/onboard"})
 
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect
+
 @login_required
 def post_login_owner(request):
+    # primary: session
     role = request.session.pop("auth_role", None)
+    # fallback: query param
+    if role is None:
+        role = request.GET.get("role")
+
     if role == "owner":
         rp = getattr(request.user, "restaurant_profile", None)
         if not rp:
             return redirect("core:restaurant_onboard")
         return redirect("core:owner_dashboard")
+
+    # default: treat as customer
     return redirect("core:profile")
+
 
 # core/views.py (add near your other imports)
 from datetime import timedelta
@@ -799,90 +811,129 @@ def _invite_is_valid(invite) -> bool:
         return False
     return True
 
-
+@ensure_csrf_cookie
 @require_http_methods(["GET", "POST"])
 def manager_accept_invite(request):
-    """
-    GET  /manager/accept?token=... -> render accept form
-    POST /manager/accept          -> JSON result
-    """
-    # ---------- GET: render form ----------
+    PENDING_KEY = 'pending_manager_accept'
+    # GET: render the page (already shows invite.email, restaurant name, etc.)
     if request.method == "GET":
         token = request.GET.get("token")
-        if not token:
-            return render(request, "core/manager_accept_invalid.html", status=400)
-        try:
-            invite = ManagerInvite.objects.select_related("restaurant").get(token=token)
-        except ManagerInvite.DoesNotExist:
-            return render(request, "core/manager_accept_invalid.html", status=404)
-        if not invite.is_valid:
-            return render(request, "core/manager_accept_invalid.html", status=400)
+        invite = None
+        if token:
+            invite = ManagerInvite.objects.filter(token=token).first()
+        if not invite or not invite.is_valid:
+            return render(request, "core/manager_accept_invalid.html")
         return render(request, "core/manager_accept.html", {"invite": invite})
 
-    # ---------- POST: JSON or form ----------
-    # Parse JSON first so we can read 'token' from the body.
+    # POST (JSON): two phases: action=init (send OTP) or action=verify (check OTP)
     try:
-        payload = json.loads((request.body or b"").decode() or "{}")
+        data = json.loads(request.body.decode() or "{}")
     except Exception:
-        payload = {}
+        return JsonResponse({"ok": False, "error": "Bad JSON."}, status=400)
 
-    token = (
-        payload.get("token")
-        or request.POST.get("token")
-        or request.GET.get("token")
-    )
-    if not token:
-        return JsonResponse({"ok": False, "error": "Missing invite token."}, status=400)
+    action = (data.get("action") or "").strip()
+    token  = (data.get("token") or "").strip()
+    invite = ManagerInvite.objects.filter(token=token).first()
+    if not invite or not invite.is_valid:
+        return JsonResponse({"ok": False, "error": "Invite is invalid or expired."}, status=400)
 
-    try:
-        invite = ManagerInvite.objects.select_related("restaurant").get(token=token)
-    except ManagerInvite.DoesNotExist:
-        return JsonResponse({"ok": False, "error": "Invite not found."}, status=400)
-    if not invite.is_valid:
-        return JsonResponse({"ok": False, "error": "Invite is expired or already used."}, status=400)
+    if action == "init":
+        # Collect fields
+        email     = (data.get("email") or "").strip().lower()
+        password1 = data.get("password1") or ""
+        password2 = data.get("password2") or ""
+        phone_raw = (data.get("phone") or "").strip()
 
-    # Pull fields from JSON (fallback to form)
-    email     = (payload.get("email") or request.POST.get("email") or "").strip().lower()
-    phone     = (payload.get("phone") or request.POST.get("phone") or "").strip()
-    password1 = (payload.get("password1") or request.POST.get("password1") or "").strip()
-    password2 = (payload.get("password2") or request.POST.get("password2") or "").strip()
+        # Email must match the invitee
+        if email != invite.email.lower():
+            return JsonResponse({"ok": False, "error": "Email must match the invited address."}, status=400)
 
-    if email != invite.email.lower():
-        return JsonResponse({"ok": False, "error": "Email must match the invited address."}, status=400)
-    if not phone:
-        return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
-    if not password1 or password1 != password2:
-        return JsonResponse({"ok": False, "error": "Passwords must match."}, status=400)
+        if password1 != password2 or not password1:
+            return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
 
-    # Create/activate the user
-    user = User.objects.filter(username=email).first()
-    if user:
-        user.email = email
-        user.set_password(password1)
-        user.is_active = True
-        user.save()
-    else:
-        user = User.objects.create_user(username=email, email=email, password=password1)
-        user.is_active = True
-        user.save()
+        try:
+            phone_e164 = to_e164_us(phone_raw)
+        except Exception:
+            return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
 
-    # Create/update ManagerProfile and attach restaurant
-    try:
-        mp, _ = ManagerProfile.objects.get_or_create(user=user)
-        mp.phone = phone
-        mp.restaurant = invite.restaurant
-        mp.save()
-    except IntegrityError:
-        # e.g., unique phone collision
-        return JsonResponse({"ok": False, "error": "Phone number already in use."}, status=400)
+        # Enforce phone uniqueness on ManagerProfile
+        if ManagerProfile.objects.filter(phone=phone_e164).exists():
+            return JsonResponse({"ok": False, "error": "Phone already in use."}, status=400)
 
-    # Mark invite accepted
-    invite.accepted_at = timezone.now()
-    invite.save(update_fields=["accepted_at"])
+        # Send OTP and stash pending signup in session
+        try:
+            send_sms_otp(phone_e164)
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
-    # Log in and send destination
-    login(request, user)
-    return JsonResponse({"ok": True, "redirect": "/manager/dashboard"})
+        request.session[PENDING_KEY] = {
+            "token": str(invite.token),
+            "email": email,
+            "phone": phone_e164,
+            "password": password1,
+        }
+        request.session.modified = True
+        return JsonResponse({"ok": True, "stage": "code", "phone_e164": phone_e164})
+
+    if action == "verify":
+        code = (data.get("code") or "").strip()
+        pending = request.session.get(PENDING_KEY) or {}
+        if not pending or str(invite.token) != pending.get("token"):
+            return JsonResponse({"ok": False, "error": "Session expired. Restart from invite link."}, status=400)
+
+        phone_e164 = pending.get("phone")
+        if not code or not phone_e164:
+            return JsonResponse({"ok": False, "error": "Missing code."}, status=400)
+
+        # Verify code with Twilio Verify
+        try:
+            status = check_sms_otp(phone_e164, code)
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+        if status != "approved":
+            return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+
+        # Create/activate the user
+        email = pending["email"]
+        password = pending["password"]
+        user = User.objects.filter(username=email).first()
+        if user:
+            user.email = email
+            user.set_password(password)
+            user.is_active = True
+            user.save()
+        else:
+            user = User.objects.create_user(username=email, email=email, password=password)
+            user.is_active = True
+            user.save()
+
+        # Create/attach ManagerProfile (phone verified)
+        mp, created = ManagerProfile.objects.get_or_create(user=user, defaults={
+            "phone": phone_e164,
+            "phone_verified": True,
+            "email_verified": True,  # invite email is verified by link possession
+            "restaurant": invite.restaurant,
+        })
+        if not created:
+            # Update fields if needed
+            mp.phone = phone_e164
+            mp.phone_verified = True
+            mp.email_verified = True
+            if not mp.restaurant:
+                mp.restaurant = invite.restaurant
+            mp.save()
+
+        # Mark invite accepted
+        invite.accepted_at = timezone.now()
+        invite.save(update_fields=["accepted_at"])
+
+        # Clean session + log in
+        request.session.pop(PENDING_KEY, None)
+        login(request, user)
+
+        return JsonResponse({"ok": True, "redirect": "/manager/dashboard/"})
+
+    return JsonResponse({"ok": False, "error": "Unknown action."}, status=400)
 
 @login_required
 def manager_dashboard(request):
@@ -947,16 +998,13 @@ def owner_dashboard(request):
 # core/views.py
 from urllib.parse import quote
 from django.shortcuts import redirect
+from urllib.parse import quote
 
 def owner_google_start(request):
-    """
-    Mark this flow as 'owner' before handing off to Google OAuth.
-    """
-    request.session["auth_role"] = "owner"
+    request.session["auth_role"] = "owner"  # keep this
     request.session.modified = True
-
-    next_url = request.GET.get("next", "/post-login-owner/")  # wherever you want to land after OAuth
-    # Hand off directly to Allauth’s Google login endpoint
+    # also encode role in the next url so we don't depend on session surviving
+    next_url = "/post-login-owner/?role=owner"
     return redirect(f"/accounts/google/login/?process=login&next={quote(next_url)}")
 
 
