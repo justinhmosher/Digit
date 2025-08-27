@@ -93,12 +93,13 @@
           </div>
 
           <!-- Google OAuth (Owner) -->
-          <a href="{% provider_login_url 'google' process='login' %}"
-             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="">
-            <span class="font-medium">Continue with Google</span>
-          </a>
-        </div>
+<!-- Google OAuth (Owner) -->
+<a href="{% url 'core:owner_google_start' %}?next=/restaurant/onboard"
+   class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="">
+  <span class="font-medium">Continue with Google</span>
+</a>
+
 
         <!-- MANAGER PANEL -->
         <div id="panelManager" class="space-y-6 hidden">

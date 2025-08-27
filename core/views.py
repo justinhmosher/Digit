@@ -32,7 +32,7 @@ import json, random
 from django.views.decorators.http import require_POST, require_http_methods
 from django.utils import timezone
 from django.conf import settings
-from .utils import send_sms_otp, to_e164_us, check_sms_otp, send_email_otp, check_email_otp
+from .utils import send_sms_otp, to_e164_us, check_sms_otp, send_email_otp, check_email_otp, send_manager_invite_email
 from allauth.socialaccount.models import SocialLogin
 from allauth.socialaccount.helpers import complete_social_login
 from allauth.core.exceptions import ImmediateHttpResponse
@@ -761,23 +761,28 @@ def owner_invite_manager(request):
         f"This link expires at {invite.expires_at:%Y-%m-%d %H:%M}."
     )
     try:
-        send_mail(subject, body, getattr(settings, "DEFAULT_FROM_EMAIL", None), [email], fail_silently=True)
-    except Exception:
-        # Don't fail the API for email issues in MVP
-        pass
+        send_manager_invite_email(
+            to_email=email,
+            invite_link=invite_link,
+            restaurant_name=rest_name,
+            expires_at=invite.expires_at,
+        )
+        email_ok = True
+    except Exception as e:
+        # Log e in real life; don’t fail the API in MVP unless you want to
+        return JsonResponse({"ok": False, "error": f"Email send failed: {e}"}, status=500)
 
-    return JsonResponse(
-        {
-            "ok": True,
-            "message": f"Invite sent to {email}.",
-            "invite": {
-                "email": email,
-                "token": invite.token,
-                "expires_at": invite.expires_at.isoformat(),
-                "link": invite_link,
-            },
-        }
-    )
+    return JsonResponse({
+        "ok": True,
+        "message": f"Invite {'sent' if email_ok else 'created (email failed)'} to {email}.",
+        "invite": {
+            "email": email,
+            "token": invite.token,
+            "expires_at": invite.expires_at.isoformat(),
+            "link": invite_link,
+            "email_sent": email_ok,
+        },
+    })
 
 
 # -------------------------
