@@ -1,6 +1,4 @@
-{% load static %}
-{% load socialaccount %}
-
+{% load static socialaccount %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -28,7 +26,8 @@
         <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
       </a>
       <div class="flex items-center gap-2">
-        <a href="{% url 'core:signin' %}" class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">
+        <a href="{% url 'core:signin' %}"
+           class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">
           Customer Sign In
         </a>
       </div>
@@ -56,7 +55,7 @@
           <div>
             <h1 class="text-2xl font-bold">Owner Sign In</h1>
             <p class="text-sm text-slate-600 mt-1">
-              Sign in to your owner dashboard. Don’t have an account?
+              Don’t have an owner account?
               <a href="{% url 'core:owner_signup' %}" class="text-brand underline">Create owner account</a>.
             </p>
           </div>
@@ -69,14 +68,14 @@
               <label class="block text-sm font-medium mb-1" for="ownerEmail">Email</label>
               <input id="ownerEmail" name="email" type="email" required
                      class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                     placeholder="owner@restaurant.com">
+                     placeholder="owner@restaurant.com" autocomplete="username">
             </div>
 
             <div>
               <label class="block text-sm font-medium mb-1" for="ownerPassword">Password</label>
               <input id="ownerPassword" name="password" type="password" required
                      class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                     placeholder="••••••••">
+                     placeholder="••••••••" autocomplete="current-password">
             </div>
 
             <button type="submit"
@@ -93,13 +92,12 @@
           </div>
 
           <!-- Google OAuth (Owner) -->
-<!-- Google OAuth (Owner) -->
-<a href="{% url 'core:owner_google_start' %}?next=/restaurant/onboard"
-   class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="">
-  <span class="font-medium">Continue with Google</span>
-</a>
-
+          <a href="{% url 'core:owner_google_start' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
 
         <!-- MANAGER PANEL -->
         <div id="panelManager" class="space-y-6 hidden">
@@ -110,7 +108,7 @@
             </p>
           </div>
 
-          <form action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
+          <form id="managerSignInForm" action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
             {% csrf_token %}
             <input type="hidden" name="portal" value="manager">
 
@@ -118,14 +116,14 @@
               <label class="block text-sm font-medium mb-1" for="mgrEmail">Email</label>
               <input id="mgrEmail" name="email" type="email" required
                      class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                     placeholder="you@example.com">
+                     placeholder="you@example.com" autocomplete="username">
             </div>
 
             <div>
               <label class="block text-sm font-medium mb-1" for="mgrPassword">Password</label>
               <input id="mgrPassword" name="password" type="password" required
                      class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                     placeholder="••••••••">
+                     placeholder="••••••••" autocomplete="current-password">
             </div>
 
             <button type="submit"
@@ -154,29 +152,67 @@
     const panelOwner = document.getElementById('panelOwner');
     const panelMgr   = document.getElementById('panelManager');
 
-    function activate(tab) {
-      const ownerActive = tab === 'owner';
-
-      // panels
+    function activate(which) {
+      const ownerActive = which === 'owner';
       panelOwner.classList.toggle('hidden', !ownerActive);
       panelMgr.classList.toggle('hidden', ownerActive);
 
-      // tab styles
+      // button styles
       if (ownerActive) {
-        tabOwner.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white";
+        tabOwner.className   = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white";
         tabManager.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
       } else {
         tabManager.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white";
-        tabOwner.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
+        tabOwner.className   = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
       }
     }
 
     tabOwner.addEventListener('click', () => activate('owner'));
     tabManager.addEventListener('click', () => activate('manager'));
 
-    // Optional: start on Manager tab if ?tab=manager is present
+    // Default from query string
     const params = new URLSearchParams(location.search);
-    if (params.get('tab') === 'manager') activate('manager');
-  </script>
+    if (params.get('tab') === 'manager') {
+      activate('manager');
+    } else {
+      activate('owner');
+    }
+  // read CSRF cookie (Django default name)
+  function getCSRF() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? m[1] : "";
+  }
+
+  async function handleJSONSignin(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+
+      const r = await fetch(form.action, {
+        method: "POST",
+        headers: { "X-CSRFToken": getCSRF(), "Accept": "application/json" },
+        body: fd
+      });
+
+      let data = {};
+      try { data = await r.json(); } catch {}
+
+      if (r.ok && data.ok && data.redirect) {
+        window.location.href = data.redirect;
+        return;
+      }
+      alert(data.error || "Sign-in failed.");
+    });
+  }
+
+  // Hook both forms (IDs must exist in your HTML)
+  handleJSONSignin("ownerSignInForm");
+  handleJSONSignin("managerSignInForm");
+</script>
+
 </body>
 </html>
+

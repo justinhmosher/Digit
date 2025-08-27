@@ -14,14 +14,6 @@ class CustomerProfile(models.Model):
     def __str__(self):
         return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
 
-class ManagerProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    phone = models.CharField(max_length=32, unique=True)
-    phone_verified = models.BooleanField(default=False)
-    email_verified = models.BooleanField(default=False)
-    def __str__(self):
-        return force_str(getattr(self, "label", None) or f"ManagerProfile {self.pk}")
-
 class OwnerProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     phone = models.CharField(max_length=32, unique=True)
@@ -43,9 +35,20 @@ class RestaurantProfile(models.Model):
     payout_status = models.CharField(max_length=32, default="pending")
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default = False)
-
     def __str__(self):
         return self.dba_name or self.legal_name
+
+class ManagerProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    phone = models.CharField(max_length=32, unique=True)
+    phone_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+    restaurant = models.ForeignKey(
+        RestaurantProfile, on_delete=models.CASCADE, related_name="managers", null=True, blank=True
+    )
+    def __str__(self):
+        return force_str(getattr(self, "label", None) or f"ManagerProfile {self.pk}")
+
 
 class ManagerInvite(models.Model):
     """Owner invites a manager by email. One-time link with expiry."""

@@ -37,6 +37,7 @@ from allauth.socialaccount.models import SocialLogin
 from allauth.socialaccount.helpers import complete_social_login
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.account.utils import perform_login
+from django.contrib.auth.hashers import make_password
 
 def debug_session(request):
     return JsonResponse({"keys": list(request.session.keys())}, safe=False)
@@ -785,6 +786,120 @@ def owner_invite_manager(request):
     })
 
 
+def _invite_is_valid(invite) -> bool:
+    """Safe validity check even if your model doesn't have `is_valid` property."""
+    if invite is None:
+        return False
+    # already accepted?
+    if getattr(invite, "accepted_at", None):
+        return False
+    # expired?
+    expires_at = getattr(invite, "expires_at", None)
+    if expires_at and timezone.now() > expires_at:
+        return False
+    return True
+
+
+@require_http_methods(["GET", "POST"])
+def manager_accept_invite(request):
+    """
+    GET  /manager/accept?token=... -> render accept form
+    POST /manager/accept          -> JSON result
+    """
+    # ---------- GET: render form ----------
+    if request.method == "GET":
+        token = request.GET.get("token")
+        if not token:
+            return render(request, "core/manager_accept_invalid.html", status=400)
+        try:
+            invite = ManagerInvite.objects.select_related("restaurant").get(token=token)
+        except ManagerInvite.DoesNotExist:
+            return render(request, "core/manager_accept_invalid.html", status=404)
+        if not invite.is_valid:
+            return render(request, "core/manager_accept_invalid.html", status=400)
+        return render(request, "core/manager_accept.html", {"invite": invite})
+
+    # ---------- POST: JSON or form ----------
+    # Parse JSON first so we can read 'token' from the body.
+    try:
+        payload = json.loads((request.body or b"").decode() or "{}")
+    except Exception:
+        payload = {}
+
+    token = (
+        payload.get("token")
+        or request.POST.get("token")
+        or request.GET.get("token")
+    )
+    if not token:
+        return JsonResponse({"ok": False, "error": "Missing invite token."}, status=400)
+
+    try:
+        invite = ManagerInvite.objects.select_related("restaurant").get(token=token)
+    except ManagerInvite.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "Invite not found."}, status=400)
+    if not invite.is_valid:
+        return JsonResponse({"ok": False, "error": "Invite is expired or already used."}, status=400)
+
+    # Pull fields from JSON (fallback to form)
+    email     = (payload.get("email") or request.POST.get("email") or "").strip().lower()
+    phone     = (payload.get("phone") or request.POST.get("phone") or "").strip()
+    password1 = (payload.get("password1") or request.POST.get("password1") or "").strip()
+    password2 = (payload.get("password2") or request.POST.get("password2") or "").strip()
+
+    if email != invite.email.lower():
+        return JsonResponse({"ok": False, "error": "Email must match the invited address."}, status=400)
+    if not phone:
+        return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
+    if not password1 or password1 != password2:
+        return JsonResponse({"ok": False, "error": "Passwords must match."}, status=400)
+
+    # Create/activate the user
+    user = User.objects.filter(username=email).first()
+    if user:
+        user.email = email
+        user.set_password(password1)
+        user.is_active = True
+        user.save()
+    else:
+        user = User.objects.create_user(username=email, email=email, password=password1)
+        user.is_active = True
+        user.save()
+
+    # Create/update ManagerProfile and attach restaurant
+    try:
+        mp, _ = ManagerProfile.objects.get_or_create(user=user)
+        mp.phone = phone
+        mp.restaurant = invite.restaurant
+        mp.save()
+    except IntegrityError:
+        # e.g., unique phone collision
+        return JsonResponse({"ok": False, "error": "Phone number already in use."}, status=400)
+
+    # Mark invite accepted
+    invite.accepted_at = timezone.now()
+    invite.save(update_fields=["accepted_at"])
+
+    # Log in and send destination
+    login(request, user)
+    return JsonResponse({"ok": True, "redirect": "/manager/dashboard"})
+
+@login_required
+def manager_dashboard(request):
+    """
+    Very simple manager dashboard.
+    Only managers (users with a ManagerProfile) can see it.
+    """
+    mp = getattr(request.user, "managerprofile", None)
+    if not mp:
+        # Not a manager (or not linked yet) -> send to the manager sign-in tab
+        return redirect("/restaurant/signin?tab=manager")
+
+    rp = getattr(mp, "restaurant", None)
+    return render(request, "core/manager_dashboard.html", {
+        "mp": mp,
+        "restaurant": rp,
+    })
 # -------------------------
 # PAGES
 # -------------------------

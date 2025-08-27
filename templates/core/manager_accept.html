@@ -1,54 +1,103 @@
-<!DOCTYPE html>
-<html>
+{% load static %}
+
+<!doctype html>
+<html lang="en">
 <head>
-  <title>Accept Manager Invite</title>
-  <style>
-    .card { max-width:520px; margin:0 auto; padding:28px; border:1px solid #e5e7eb; border-radius:16px; }
-    .row { margin-bottom:14px; }
-    input { width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:10px; }
-    button { width:100%; padding:12px; border-radius:10px; background:#0f172a; color:#fff; border:none; }
-    .muted { color:#6b7280; font-size:14px; }
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Accept Manager Invite — Dine N Dash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h2 style="text-align:center">Dine N Dash</h2>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6 text-slate-900">
 
-  {% if messages %}
-    <ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
-  {% endif %}
-
-  <div class="card">
-    <h3 style="text-align:center">Accept Manager Invite</h3>
-    <p class="muted" style="text-align:center">
-      You are accepting an invite for <strong>{{ invite.restaurant.dba_name|default:invite.restaurant.legal_name }}</strong><br>
-      Invited email: <strong>{{ invite.email }}</strong>
+  <div class="w-full max-w-md bg-white rounded-2xl shadow border p-8">
+    <h1 class="text-2xl font-bold">Accept Manager Invite</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      You’ve been invited to manage
+      <span class="font-medium">{{ invite.restaurant.dba_name|default:invite.restaurant.legal_name }}</span>.
     </p>
 
-    <form method="post" action="{% url 'core:manager_accept_invite' %}">
+    <!-- alert -->
+    <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
+
+    <form id="acceptForm" class="mt-6 space-y-4" method="post" action="{% url 'core:manager_accept_invite' %}">
       {% csrf_token %}
-      <input type="hidden" name="token" value="{{ invite.token }}">
-      <div class="row">
-        <label>Full Name</label>
-        <input type="text" name="full_name" required>
+      <input type="hidden" name="token" id="token" value="{{ invite.token }}">
+
+      <div>
+        <label class="block text-sm font-medium mb-1">Email (invited)</label>
+        <input type="email" id="email" name="email" value="{{ invite.email }}" readonly
+               class="w-full h-12 rounded-xl border px-4 bg-slate-50">
       </div>
-      <div class="row">
-        <label>Phone</label>
-        <input type="text" name="phone">
+
+      <div>
+        <label class="block text-sm font-medium mb-1">Phone</label>
+        <input type="tel" id="phone" name="phone" placeholder="+15551234567" required
+               class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400">
       </div>
-      <div class="row">
-        <label>Email (must match invite)</label>
-        <input type="email" name="email" value="{{ invite.email }}" required>
+
+      <div>
+        <label class="block text-sm font-medium mb-1">Password</label>
+        <input type="password" id="password1" name="password1" required
+               class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400">
       </div>
-      <div class="row">
-        <label>Password</label>
-        <input type="password" name="password1" required>
+
+      <div>
+        <label class="block text-sm font-medium mb-1">Confirm Password</label>
+        <input type="password" id="password2" name="password2" required
+               class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400">
       </div>
-      <div class="row">
-        <label>Confirm Password</label>
-        <input type="password" name="password2" required>
-      </div>
-      <button type="submit">Create Account</button>
+
+      <button type="submit"
+              class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+        Create account
+      </button>
     </form>
   </div>
+
+<script>
+  const csrf = () => (document.cookie.match(/csrftoken=([^;]+)/)||[])[1] || '';
+  function flash(msg, ok=false){
+    const el = document.getElementById('alert');
+    el.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  const form = document.getElementById('acceptForm');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      token:     document.getElementById('token').value.trim(),
+      email:     document.getElementById('email').value.trim().toLowerCase(),
+      phone:     document.getElementById('phone').value.trim(),
+      password1: document.getElementById('password1').value,
+      password2: document.getElementById('password2').value
+    };
+
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; const original = btn.textContent; btn.textContent = 'Creating…';
+
+    try {
+      const r = await fetch(form.action, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'X-CSRFToken': csrf()},
+        body: JSON.stringify(payload),
+        credentials: 'same-origin'
+      });
+      const data = await r.json().catch(()=>({ ok:false, error:'Unexpected response'}));
+      if (r.ok && data.ok) {
+        window.location.href = data.redirect || '/manager/dashboard';
+      } else {
+        flash(data.error || 'Failed to accept invite.');
+      }
+    } catch {
+      flash('Network error.');
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+    }
+  });
+</script>
+
 </body>
 </html>

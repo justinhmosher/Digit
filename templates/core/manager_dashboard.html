@@ -1,0 +1,51 @@
+{% load static %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Manager Dashboard — Dine N Dash</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
+        <h1 class="font-semibold">Manager Dashboard</h1>
+      </div>
+      <a href="{% url 'core:signout' %}"
+         class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">
+        Sign out
+      </a>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <section class="bg-white border border-slate-200 rounded-2xl p-6">
+      <h2 class="text-xl font-semibold mb-2">Welcome</h2>
+      <p class="text-slate-600">
+        Signed in as <span class="font-medium">{{ request.user.email }}</span>.
+      </p>
+      {% if restaurant %}
+        <p class="mt-2">
+          Managing: <span class="font-medium">{{ restaurant.dba_name|default:restaurant.legal_name }}</span>
+        </p>
+        <p class="text-slate-600 text-sm mt-1">Phone on file: {{ mp.phone|default:"—" }}</p>
+      {% else %}
+        <p class="mt-2 text-amber-700">
+          Your account isn’t linked to a restaurant yet. Please contact the owner to resend your invite.
+        </p>
+      {% endif %}
+    </section>
+
+    <section class="bg-white border border-slate-200 rounded-2xl p-6">
+      <h3 class="text-lg font-semibold mb-2">Next steps</h3>
+      <ul class="list-disc ml-5 text-slate-700">
+        <li>Open tickets will appear here.</li>
+        <li>Payment approvals and history will appear here.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
