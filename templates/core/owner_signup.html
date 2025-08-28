@@ -2,146 +2,289 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>Owner Sign Up — Dine N Dash</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Force Django to mint a CSRF token and expose it -->
-  <form style="display:none">{% csrf_token %}</form>
-  <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 min-h-screen p-8">
-  <div class="max-w-xl mx-auto bg-white border rounded-2xl p-8 shadow-sm">
-    <h1 class="text-2xl font-bold">Owner Sign Up</h1>
-    <div id="alert" class="hidden mt-3 text-sm px-3 py-2 rounded"></div>
+<body class="bg-slate-50 min-h-screen p-6 text-slate-900">
+  <main class="max-w-xl mx-auto">
+    <div class="bg-white border border-slate-200 rounded-3xl shadow-sm p-8">
+      <h1 class="text-2xl font-bold">Owner Sign Up</h1>
+      <p class="text-sm text-slate-600 mt-1">Start with your email.</p>
 
-    <!-- Step 1: owner details -->
-    <div id="step1" class="mt-6 grid grid-cols-2 gap-3">
-      <input id="first_name" class="border rounded p-3 col-span-1" placeholder="First name" autocomplete="given-name">
-      <input id="last_name"  class="border rounded p-3 col-span-1" placeholder="Last name" autocomplete="family-name">
-      <input id="email"      class="border rounded p-3 col-span-2" placeholder="Email" autocomplete="email">
-      <input id="phone"      class="border rounded p-3 col-span-2" placeholder="+15551234567" autocomplete="tel">
-      <input id="p1" type="password" class="border rounded p-3 col-span-1" placeholder="Password" autocomplete="new-password">
-      <input id="p2" type="password" class="border rounded p-3 col-span-1" placeholder="Confirm password" autocomplete="new-password">
-      <button id="go" class="col-span-2 bg-black text-white rounded p-3">Create account</button>
+      <div id="alert" class="hidden mt-4 text-sm px-4 py-3 rounded-md"></div>
 
-      <div class="col-span-2 mt-4 text-center">
-        <p class="text-sm text-slate-500">— or —</p>
+      <!-- STEP 0 — Email -->
+      <section id="stepEmail" class="mt-6 space-y-4">
+        {% csrf_token %}
+        <div>
+          <label class="block text-sm font-medium mb-1" for="email">Email</label>
+          <input id="email" type="email" required
+                 class="w-full h-12 rounded-2xl border px-4"
+                 placeholder="owner@restaurant.com" autocomplete="email">
+        </div>
+        <button type="button" id="btnEmailContinue"
+                class="w-full h-12 rounded-2xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+          Continue
+        </button>
+
+        <div class="flex items-center gap-3 my-2">
+          <div class="h-px flex-1 bg-slate-200"></div>
+          <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+          <div class="h-px flex-1 bg-slate-200"></div>
+        </div>
+
         <a href="{% url 'core:owner_google_start' %}"
-           class="mt-3 inline-flex items-center justify-center w-full h-12 rounded-2xl border border-slate-300 text-slate-700 hover:bg-slate-50">
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="h-5 w-5 mr-2">
-          Continue with Google
+           class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" class="h-5 w-5">
+          <span class="font-medium">Continue with Google</span>
         </a>
-      </div>
-    </div>
+      </section>
 
-    <!-- Step 2: phone OTP -->
-    <div id="step2" class="mt-6 hidden">
-      <p class="text-sm text-slate-600 mb-2">Enter the 6-digit code sent to your phone.</p>
-      <input id="code_phone" class="border rounded p-3 w-full" maxlength="6" placeholder="123456" inputmode="numeric" pattern="[0-9]*">
-      <div class="mt-3 flex gap-2">
-        <button id="verify_phone" class="bg-black text-white rounded p-3 flex-1">Verify phone</button>
-        <button id="resend" class="border rounded p-3 flex-1">Resend code</button>
-      </div>
-    </div>
+      <!-- STEP 1a — NEW user -->
+      <section id="stepNew" class="mt-6 space-y-4 hidden">
+        {% csrf_token %}
+        <p class="text-sm text-slate-600">No account found. Enter your details.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">First name</label>
+            <input id="first_name" class="w-full h-12 rounded-2xl border px-4" autocomplete="given-name">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Last name</label>
+            <input id="last_name" class="w-full h-12 rounded-2xl border px-4" autocomplete="family-name">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Phone</label>
+          <input id="phone_new" type="tel" inputmode="tel"
+                 class="w-full h-12 rounded-2xl border px-4" placeholder="+15551234567" autocomplete="tel">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">Password</label>
+            <input id="password1" type="password" class="w-full h-12 rounded-2xl border px-4" autocomplete="new-password">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Confirm</label>
+            <input id="password2" type="password" class="w-full h-12 rounded-2xl border px-4" autocomplete="new-password">
+          </div>
+        </div>
+        <button type="button" id="btnNewNext"
+                class="w-full h-12 rounded-2xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+          Continue
+        </button>
+        <button type="button" id="btnBackFromNew"
+                class="w-full h-12 rounded-2xl border mt-1">Back</button>
+      </section>
 
-    <!-- Step 3: email OTP -->
-    <div id="step3" class="mt-6 hidden">
-      <p class="text-sm text-slate-600 mb-2">Enter the 6-digit code we emailed you.</p>
-      <input id="code_email" class="border rounded p-3 w-full" maxlength="6" placeholder="123456" inputmode="numeric" pattern="[0-9]*">
-      <button id="verify_email" class="mt-3 bg-black text-white rounded p-3 w-full">Verify email</button>
+      <!-- STEP 1b — EXISTING user -->
+      <section id="stepExisting" class="mt-6 space-y-4 hidden">
+        {% csrf_token %}
+        <p class="text-sm text-slate-600">
+          We found your account. We’ll verify via SMS, then create your Owner profile.
+        </p>
+
+        <div id="blockHasPhone" class="hidden">
+          <label class="block text-sm font-medium mb-1">We’ll text your verified phone</label>
+          <input id="display_phone" class="w-full h-12 rounded-2xl border px-4 bg-slate-50" readonly value="On file">
+        </div>
+
+        <div id="blockNeedPhone" class="hidden">
+          <label class="block text-sm font-medium mb-1">Phone</label>
+          <input id="phone_existing" type="tel" inputmode="tel"
+                 class="w-full h-12 rounded-2xl border px-4" placeholder="+15551234567">
+        </div>
+
+        <button type="button" id="btnExistingNext"
+                class="w-full h-12 rounded-2xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+          Send Code
+        </button>
+        <button type="button" id="btnBackFromExisting"
+                class="w-full h-12 rounded-2xl border mt-1">Back</button>
+      </section>
+
+      <!-- STEP 2 — Phone OTP (both flows) -->
+      <section id="stepOTP" class="mt-6 space-y-4 hidden">
+        {% csrf_token %}
+        <p class="text-sm text-slate-600">Enter the 6-digit code we just sent.</p>
+        <input id="otpCode" maxlength="6" inputmode="numeric" pattern="[0-9]*"
+               class="w-full h-12 rounded-2xl border px-4" placeholder="123456">
+        <button type="button" id="btnVerifyOTP"
+                class="w-full h-12 rounded-2xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+          Verify
+        </button>
+        <button type="button" id="btnBackFromOTP"
+                class="w-full h-12 rounded-2xl border mt-1">Back</button>
+      </section>
+
+      <!-- STEP 3 — Email OTP (new users only) -->
+      <section id="stepEmailOTP" class="mt-6 space-y-4 hidden">
+        {% csrf_token %}
+        <p class="text-sm text-slate-600">Enter the 6-digit code we emailed you.</p>
+        <input id="emailCode" maxlength="6" inputmode="numeric" pattern="[0-9]*"
+               class="w-full h-12 rounded-2xl border px-4" placeholder="123456">
+        <button type="button" id="btnVerifyEmail"
+                class="w-full h-12 rounded-2xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+          Verify Email
+        </button>
+      </section>
     </div>
-  </div>
+  </main>
 
 <script>
-  // --- helpers ---
+  // Helpers
+  function csrf(){ const m=document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/); return m?m[1]:''; }
   function flash(msg, ok=false){
-    const el = document.getElementById('alert');
-    el.className = 'mt-3 text-sm px-3 py-2 rounded ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-    el.textContent = msg;
-    el.classList.remove('hidden');
+    const el=document.getElementById('alert');
+    el.className='mt-4 text-sm px-4 py-3 rounded-md ' + (ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');
+    el.textContent=msg; el.classList.remove('hidden');
   }
-  function getCSRF(){
-    // prefer meta, fallback to cookie
-    const m = document.querySelector('meta[name="csrf-token"]');
-    if (m && m.content) return m.content.replace(/^['"]|['"]$/g, '');
-    const c = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-    return c ? c[1] : '';
-  }
-  async function postJSON(url, payload){
-    const r = await fetch(url, {
-      method: 'POST',
-      credentials: 'same-origin', // IMPORTANT: send cookies
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRF()  // IMPORTANT: send token
-      },
-      body: JSON.stringify(payload || {})
+  function show(id, on){ document.getElementById(id).classList.toggle('hidden', !on); }
+
+  // Sections
+  const stepEmail    = document.getElementById('stepEmail');
+  const stepNew      = document.getElementById('stepNew');
+  const stepExisting = document.getElementById('stepExisting');
+  const stepOTP      = document.getElementById('stepOTP');
+  const stepEmailOTP = document.getElementById('stepEmailOTP');
+  const blockHasPhone  = document.getElementById('blockHasPhone');
+  const blockNeedPhone = document.getElementById('blockNeedPhone');
+
+  // Flow state
+  let flow = null; // "existing" | "new"
+  let pre  = { email:"", exists:false, has_verified_phone:false, phone_e164:"" };
+
+  // STEP 0: Email → precheck
+  document.getElementById('btnEmailContinue').addEventListener('click', async ()=>{
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    if(!email) return flash('Enter your email.');
+    const r = await fetch("{% url 'core:precheck_user_api' %}", {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({ email })
     });
-    let data = {};
-    try { data = await r.json(); } catch {}
-    return { ok: r.ok, data };
-  }
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok) return flash(d.error||'Precheck failed.');
+    pre.email = email; pre.exists = d.exists; pre.has_verified_phone = d.has_verified_phone;
 
-  // --- elements ---
-  const step1 = document.getElementById('step1');
-  const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
-
-  // --- Step 1 submit ---
-  document.getElementById('go').addEventListener('click', async () => {
-    const payload = {
-      first_name: document.getElementById('first_name').value.trim(),
-      last_name:  document.getElementById('last_name').value.trim(),
-      email:      document.getElementById('email').value.trim().toLowerCase(),
-      phone:      document.getElementById('phone').value.trim(),
-      password1:  document.getElementById('p1').value,
-      password2:  document.getElementById('p2').value
-    };
-    const { ok, data } = await postJSON("{% url 'core:owner_signup_api' %}", payload);
-    if (ok && data.ok && data.stage === 'phone') {
-      flash('Code sent to your phone.', true);
-      step1.classList.add('hidden');
-      step2.classList.remove('hidden');
-    } else {
-      flash(data.error || 'Could not start sign up.');
+    show('stepEmail', false);
+    if(d.exists){
+      flow = "existing";
+      show('stepExisting', true);
+      blockHasPhone.classList.toggle('hidden', !d.has_verified_phone);
+      blockNeedPhone.classList.toggle('hidden', d.has_verified_phone);
+    }else{
+      flow = "new";
+      show('stepNew', true);
     }
   });
 
-  // --- Verify phone ---
-  document.getElementById('verify_phone').addEventListener('click', async () => {
-    const code = document.getElementById('code_phone').value.trim();
-    if (!/^\d{6}$/.test(code)) return flash('Enter the 6-digit code.');
-    const { ok, data } = await postJSON("{% url 'core:owner_verify_phone_api' %}", { code });
-    if (ok && data.ok && data.stage === 'email') {
-      flash('Phone verified. Check your email for a code.', true);
-      step2.classList.add('hidden');
-      step3.classList.remove('hidden');
-    } else {
-      flash(data.error || 'Phone verification failed.');
+  // NEW user → send SMS (owner_signup_api)
+  document.getElementById('btnNewNext').addEventListener('click', async ()=>{
+    const fn = document.getElementById('first_name').value.trim();
+    const ln = document.getElementById('last_name').value.trim();
+    const ph = document.getElementById('phone_new').value.trim();
+    const p1 = document.getElementById('password1').value;
+    const p2 = document.getElementById('password2').value;
+    if(!(fn && ln && ph && p1 && p2)) return flash('Please fill all fields.');
+    if(p1 !== p2) return flash('Passwords did not match.');
+
+    const r = await fetch("{% url 'core:owner_signup_api' %}", {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({
+        first_name: fn, last_name: ln, email: pre.email,
+        phone: ph, password1: p1, password2: p2
+      })
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok || d.stage !== 'phone') return flash(d.error || 'Could not send code.');
+    pre.phone_e164 = d.phone_e164;
+    flash('Code sent. Check your phone.', true);
+    show('stepNew', false); show('stepOTP', true);
+  });
+
+  document.getElementById('btnBackFromNew').addEventListener('click', ()=>{
+    flow = null; show('stepNew', false); show('stepEmail', true);
+  });
+
+  // EXISTING user → Send SMS
+  document.getElementById('btnExistingNext').addEventListener('click', async ()=>{
+    let phone = null;
+    if(!pre.has_verified_phone){
+      phone = document.getElementById('phone_existing').value.trim();
+      if(!phone) return flash('Enter your phone number.');
     }
+    const r = await fetch("{% url 'core:owner_begin_existing_api' %}", {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({ email: pre.email, phone })
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok) return flash(d.error||'Could not send code.');
+    pre.phone_e164 = d.phone_e164;
+    flash('Code sent. Check your phone.', true);
+    show('stepExisting', false); show('stepOTP', true);
   });
 
-  // --- (Optional) resend via a dedicated endpoint if you add one server-side ---
-  document.getElementById('resend').addEventListener('click', () => {
-    flash('If you need to change your phone, go back and re-submit step 1.');
+  document.getElementById('btnBackFromExisting').addEventListener('click', ()=>{
+    flow = null; show('stepExisting', false); show('stepEmail', true);
   });
 
-  // --- Verify email ---
-  document.getElementById('verify_email').addEventListener('click', async () => {
-    const code = document.getElementById('code_email').value.trim();
-    if (!/^\d{6}$/.test(code)) return flash('Enter the 6-digit code.');
-    const { ok, data } = await postJSON("{% url 'core:owner_verify_email_api' %}", { code });
-    if (ok && data.ok && data.redirect) {
-      location.href = data.redirect;
-    } else {
-      flash(data.error || 'Email verification failed.');
+  // PHONE OTP (shared)
+  document.getElementById('btnVerifyOTP').addEventListener('click', async ()=>{
+    const code = document.getElementById('otpCode').value.trim();
+    if(!/^[0-9]{6}$/.test(code)) return flash('Enter the 6-digit code.');
+
+    if(flow === "existing"){
+      const r = await fetch("{% url 'core:owner_existing_verify_phone_api' %}", {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+        body: JSON.stringify({ code })
+      });
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok || !d.ok) return flash(d.error||'Verification failed.');
+      window.location.href = d.redirect || '/restaurant/onboard';
+      return;
     }
+
+    // flow === "new"
+    const r = await fetch("{% url 'core:owner_verify_phone_api' %}", {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({ code })
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok || d.stage !== 'email') return flash(d.error||'Verification failed.');
+    flash('Phone verified. Check your email for a code.', true);
+    show('stepOTP', false); show('stepEmailOTP', true);
   });
 
-  // --- IMPORTANT: stay on one origin to avoid CSRF mismatches ---
-  // Use either http://127.0.0.1:8000 or http://localhost:8000 consistently.
+  document.getElementById('btnBackFromOTP').addEventListener('click', ()=>{
+    show('stepOTP', false);
+    if(flow === "existing") show('stepExisting', true);
+    else show('stepNew', true);
+  });
+
+  // EMAIL OTP (new users only)
+  document.getElementById('btnVerifyEmail').addEventListener('click', async ()=>{
+    const code = document.getElementById('emailCode').value.trim();
+    if(!/^[0-9]{6}$/.test(code)) return flash('Enter the 6-digit code.');
+    const r = await fetch("{% url 'core:owner_verify_email_api' %}", {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({ code })
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok) return flash(d.error||'Verification failed.');
+    // Your view returns {"ok": true, "redirect": "/restaurant/onboard"}
+    window.location.href = d.redirect || '/restaurant/onboard';
+  });
 </script>
 </body>
 </html>
+
+
 

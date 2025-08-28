@@ -5,146 +5,97 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Customer Sign Up — Dine N Dash</title>
-
-  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: { DEFAULT: "#0f172a" },  /* slate-900 */
-            accent: { DEFAULT: "#10b981" } /* emerald-500 */
-          },
-          borderRadius: { '2xl': '1rem' }
-        }
-      }
-    }
-  </script>
 </head>
-<body class="bg-gradient-to-b from-white to-slate-50 text-slate-900 antialiased min-h-screen flex flex-col">
+<body class="bg-gradient-to-b from-white to-slate-50 text-slate-900 min-h-screen flex flex-col">
 
   <!-- Header -->
   <header class="border-b border-slate-200 bg-white/80 backdrop-blur">
     <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
+        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
       </a>
-      <div class="flex items-center gap-2">
-        <a href="/restaurant/signin"
-           class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">Restaurant Sign In</a>
-      </div>
+      <a href="/restaurant/signin" class="rounded-2xl bg-slate-900 text-white px-4 py-2 text-sm">Restaurant Sign In</a>
     </div>
   </header>
 
-  <main class="relative flex-1 flex items-center justify-center px-10">
-    <!-- Sign-up / OTP Card -->
-    <section class="mx-auto max-w-md px-6 pt-16 w-full">
-      <div class="rounded-3xl border border-slate-200 bg-white shadow-sm p-10">
-
-        <!-- Alert -->
+  <main class="flex-1 grid place-items-center px-6">
+    <section class="w-full max-w-md">
+      <div class="rounded-3xl border border-slate-200 bg-white shadow-sm p-8">
         <div id="alert" class="hidden mb-4 text-sm px-4 py-3 rounded-md"></div>
 
-        <!-- Title -->
-        <div class="text-center">
-          <h1 class="mt-2 text-2xl font-bold tracking-tight">Customer Sign Up</h1>
-          <p class="mt-2 text-sm text-slate-600">Enter your details to continue.</p>
-        </div>
+        <h1 class="text-2xl font-bold text-center">Customer Sign Up</h1>
+        <p class="mt-1 text-center text-sm text-slate-600">Start with your email.</p>
 
-        <!-- Signup form -->
-        <form id="signupForm" class="space-y-4">
+        <!-- Step 0: email only -->
+        <form id="emailForm" class="space-y-4 mt-6">
           {% csrf_token %}
           <div>
-            <label for="email" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
-            <input id="email" name="email" type="email" required
-                   class="w-full h-14 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                   placeholder="you@example.com">
+            <label class="block text-sm font-medium mb-1">Email</label>
+            <input id="email" type="email" class="w-full h-12 rounded-2xl border px-4" placeholder="you@example.com" required>
           </div>
-
-          <div>
-            <label for="phone" class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-            <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required
-                   placeholder="+15551234567"
-                   class="w-full h-14 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50">
-          </div>
-
-          <div>
-            <label for="password1" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
-            <input id="password1" name="password1" type="password"
-                   class="w-full h-14 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                   pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
-                   title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters"
-                   required>
-          </div>
-
-          <div>
-            <label for="password2" class="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
-            <input id="password2" name="password2" type="password"
-                   class="w-full h-14 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                   required>
-          </div>
-
-          <button type="submit"
-                  class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
-            Submit
-          </button>
+          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">Continue</button>
         </form>
 
-        <!-- OTP form -->
-        <form id="otpForm" class="space-y-4 hidden mt-6">
-          <div class="text-center">
-            <h1 class="mt-2 text-2xl font-bold tracking-tight">Verify Your Phone</h1>
-            <p class="mt-2 text-sm text-slate-600">Enter the code sent to your phone.</p>
+        <!-- Step 1a: details for NEW users -->
+        <form id="newUserForm" class="space-y-4 mt-6 hidden">
+          {% csrf_token %}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1">First name</label>
+              <input id="first_name" class="w-full h-12 rounded-2xl border px-4" autocomplete="given-name">
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Last name</label>
+              <input id="last_name" class="w-full h-12 rounded-2xl border px-4" autocomplete="family-name">
+            </div>
           </div>
-
-          <input type="hidden" id="otpPhone">
-
           <div>
-            <label for="otpCode" class="block text-sm font-medium text-slate-700 mb-1">Verification Code</label>
-            <input id="otpCode" type="text" maxlength="6" required
-                   class="w-full h-14 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                   placeholder="123456">
+            <label class="block text-sm font-medium mb-1">Phone</label>
+            <input id="phone_new" type="tel" inputmode="tel" class="w-full h-12 rounded-2xl border px-4" placeholder="+15551234567">
           </div>
-
-          <button type="submit"
-                  class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
-            Verify
-          </button>
-
-          <button type="button" id="resendBtn"
-                  class="w-full h-12 rounded-2xl border border-brand text-brand font-medium hover:bg-slate-50">
-            Resend Code
-          </button>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1">Password</label>
+              <input id="password1" type="password" class="w-full h-12 rounded-2xl border px-4">
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Confirm</label>
+              <input id="password2" type="password" class="w-full h-12 rounded-2xl border px-4">
+            </div>
+          </div>
+          <button id="newUserNext" class="w-full h-12 rounded-2xl bg-slate-900 text-white">Continue</button>
         </form>
 
-        <div class="mt-6 text-center text-sm">
-          <p>Already have an account? <a href="{% url 'core:signin' %}" class="text-brand underline hover:no-underline">Sign In</a></p>
-        </div>
-
-        <!-- EMAIL OTP form (hidden by default) -->
-        <form id="emailForm" class="space-y-4 hidden mt-6">
-          <div class="text-center">
-            <h1 class="mt-2 text-2xl font-bold tracking-tight">Verify Your Email</h1>
-            <p class="mt-2 text-sm text-slate-600">Enter the 6-digit code we emailed you.</p>
+        <!-- Step 1b: minimal for EXISTING users -->
+        <form id="existingUserForm" class="space-y-4 mt-6 hidden">
+          {% csrf_token %}
+          <p class="text-sm text-slate-600">We found your account. We’ll verify it’s you via SMS.</p>
+          <div id="existing_phone_block" class="hidden">
+            <label class="block text-sm font-medium mb-1">We’ll text your verified phone</label>
+            <input id="phone_existing_display" class="w-full h-12 rounded-2xl border px-4 bg-slate-50" readonly>
           </div>
-
-          <div>
-            <label for="emailField" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
-            <input id="emailField" type="email" readonly
-                   class="w-full h-14 rounded-2xl border px-4 bg-slate-50">
+          <div id="collect_phone_block">
+            <label class="block text-sm font-medium mb-1">Phone</label>
+            <input id="phone_existing" type="tel" inputmode="tel" class="w-full h-12 rounded-2xl border px-4" placeholder="+15551234567">
           </div>
+          <button id="existingUserNext" class="w-full h-12 rounded-2xl bg-slate-900 text-white">Send Code</button>
+        </form>
 
-          <div>
-            <label for="emailCode" class="block text-sm font-medium text-slate-700 mb-1">Verification Code</label>
-            <input id="emailCode" type="text" maxlength="6" required
-                   class="w-full h-14 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-                   placeholder="123456">
-          </div>
+        <!-- Step 2: PHONE OTP (both paths) -->
+        <form id="phoneOtpForm" class="space-y-4 mt-6 hidden">
+          {% csrf_token %}
+          <p class="text-sm text-slate-600">Enter the 6-digit SMS code.</p>
+          <input id="otpCode" maxlength="6" inputmode="numeric" class="w-full h-12 rounded-2xl border px-4" placeholder="123456">
+          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">Verify phone</button>
+        </form>
 
-          <button type="submit"
-                  class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
-            Verify Email
-          </button>
+        <!-- Step 3: EMAIL OTP (new users only) -->
+        <form id="emailOtpForm" class="space-y-4 mt-6 hidden">
+          {% csrf_token %}
+          <p class="text-sm text-slate-600">Enter the 6-digit email code we sent to <span id="otpEmail" class="font-medium"></span>.</p>
+          <input id="emailCode" maxlength="6" inputmode="numeric" class="w-full h-12 rounded-2xl border px-4" placeholder="123456">
+          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">Verify email</button>
         </form>
 
         <div class="my-6 flex items-center gap-3">
@@ -153,134 +104,150 @@
           <div class="h-px flex-1 bg-slate-200"></div>
         </div>
 
-
-        <div class="mt-6">
-          <a href="{% provider_login_url 'google' process='login' %}"
-             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-            <!-- Google "G" icon -->
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="h-5 w-5">
-              <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.826 32.91 29.337 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.652-.389-3.917z"/>
-              <path fill="#FF3D00" d="M6.306 14.691l6.571 4.818C14.618 16.108 18.955 13 24 13c3.059 0 5.84 1.156 7.957 3.043l5.657-5.657C33.64 6.05 29.083 4 24 4 16.318 4 9.708 8.337 6.306 14.691z"/>
-              <path fill="#4CAF50" d="M24 44c5.258 0 10.054-2.016 13.66-5.303l-6.305-5.333C29.329 35.445 26.789 36 24 36c-5.311 0-9.813-3.441-11.418-8.216l-6.5 5.01C9.393 39.658 16.142 44 24 44z"/>
-              <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.063 3.147-3.352 5.635-6.648 7.05l.004-.003 6.305 5.333C37.527 38.824 40 34.018 40 28c0-1.341-.138-2.652-.389-3.917z"/>
-            </svg>
-            <span class="font-medium">Continue with Google</span>
-          </a>
-        </div>
-
+        <a href="{% provider_login_url 'google' process='login' %}"
+           class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="">
+          <span class="font-medium">Continue with Google</span>
+        </a>
       </div>
     </section>
   </main>
 
-  <!-- Footer -->
   <footer class="mt-10 border-t border-slate-200">
     <div class="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-slate-600">
-      <p><a href="/terms" class="hover:underline">Terms and Conditions</a> ·
-         <a href="/privacy" class="hover:underline">Privacy Policy</a> ·
-         <a href="mailto:commissioner@thechosenfg.com" class="hover:underline">Contact Us</a></p>
-      <p class="mt-2">&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</p>
+      <p>&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</p>
     </div>
   </footer>
 
 <script>
-  function getCsrf() {
-    const m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? m[1] : '';
-  }
-  function showAlert(msg, ok=false) {
+  function csrf(){ const m=document.cookie.match(/csrftoken=([^;]+)/); return m?m[1]:''; }
+  function alertBox(msg, ok=false){
     const el = document.getElementById('alert');
-    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-    el.textContent = msg;
-    el.classList.remove('hidden');
+    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');
+    el.textContent = msg; el.classList.remove('hidden');
   }
 
-  const signupForm = document.getElementById('signupForm');
-  const otpForm    = document.getElementById('otpForm');
-  const emailForm  = document.getElementById('emailForm');
-  const otpPhone   = document.getElementById('otpPhone');
-  const resendBtn  = document.getElementById('resendBtn');
+  const emailForm          = document.getElementById('emailForm');
+  const newUserForm        = document.getElementById('newUserForm');
+  const existingUserForm   = document.getElementById('existingUserForm');
+  const existingPhoneBlock = document.getElementById('existing_phone_block');
+  const collectPhoneBlock  = document.getElementById('collect_phone_block');
+  const phoneOtpForm       = document.getElementById('phoneOtpForm');
+  const emailOtpForm       = document.getElementById('emailOtpForm');
 
-  signupForm.addEventListener('submit', async (e) => {
+  let pre = { exists:false, has_verified_phone:false, email:"" };
+
+  // Step 0: precheck
+  emailForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const body = {
-      email: document.getElementById('email').value.trim(),
-      phone: document.getElementById('phone').value.trim(),
-      password1: document.getElementById('password1').value,
-      password2: document.getElementById('password2').value,
-    };
-    const res = await fetch("{% url 'core:signup' %}", {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
-      body: JSON.stringify(body),
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    if(!email) return alertBox('Enter your email.');
+    const r = await fetch("{% url 'core:precheck_user_api' %}", {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({ email })
     });
-    const data = await res.json();
-    if (data.ok) {
-      // *** use normalized phone from server ***
-      otpPhone.value = data.phone_e164;
-      signupForm.classList.add('hidden');
-      otpForm.classList.remove('hidden');
-      showAlert('Code sent. Check your phone.', true);
+    const d = await r.json();
+    if(!r.ok || !d.ok) return alertBox(d.error || 'Precheck failed.');
+    pre = { exists: d.exists, has_verified_phone: d.has_verified_phone, email };
+    emailForm.classList.add('hidden');
+    if(d.exists){
+      existingUserForm.classList.remove('hidden');
+      if(d.has_verified_phone){
+        existingPhoneBlock.classList.remove('hidden');
+        collectPhoneBlock.classList.add('hidden');
+        document.getElementById('phone_existing_display').value = 'Verified phone on file';
+      } else {
+        existingPhoneBlock.classList.add('hidden');
+        collectPhoneBlock.classList.remove('hidden');
+      }
     } else {
-      showAlert(data.error || 'Something went wrong.');
+      newUserForm.classList.remove('hidden');
     }
   });
 
-  otpForm.addEventListener('submit', async (e) => {
+  // Existing -> begin
+  document.getElementById('existingUserNext').addEventListener('click', async (e)=>{
     e.preventDefault();
-    const body = {
-      phone: otpPhone.value, // already E.164
-      code: document.getElementById('otpCode').value.trim()
-    };
-    const res = await fetch("{% url 'core:verify_otp' %}", {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf() },
-      body: JSON.stringify(body),
+    const payload = { email: pre.email };
+    if(!pre.has_verified_phone){
+      const p = document.getElementById('phone_existing').value.trim();
+      if(!p) return alertBox('Enter your phone.');
+      payload.phone = p;
+    }
+    const r = await fetch("{% url 'core:customer_begin_api' %}", {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (data.ok && data.stage === 'email') {
-      // Switch to email step
-      document.getElementById('emailField').value = data.email;
-      otpForm.classList.add('hidden');
-      emailForm.classList.remove('hidden');
-      showAlert(data.message, true);
-    } else if (data.ok && data.redirect) {
-      // Some flows may send you straight to signin/dashboard
-      window.location.href = data.redirect;
+    const d = await r.json();
+    if(!r.ok || !d.ok) return alertBox(d.error || 'Could not send SMS.');
+    existingUserForm.classList.add('hidden');
+    phoneOtpForm.classList.remove('hidden');
+    alertBox('Code sent. Check your phone.', true);
+  });
+
+  // New -> begin
+  document.getElementById('newUserNext').addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const payload = {
+      email: document.getElementById('email').value.trim().toLowerCase(),
+      first_name: document.getElementById('first_name').value.trim(),
+      last_name:  document.getElementById('last_name').value.trim(),
+      phone:      document.getElementById('phone_new').value.trim(),
+      password1:  document.getElementById('password1').value,
+      password2:  document.getElementById('password2').value
+    };
+    if(!payload.first_name || !payload.last_name || !payload.phone || !payload.password1 || !payload.password2){
+      return alertBox('Please fill all fields.');
+    }
+    const r = await fetch("{% url 'core:customer_begin_api' %}", {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if(!r.ok || !d.ok) return alertBox(d.error || 'Could not start signup.');
+    newUserForm.classList.add('hidden');
+    phoneOtpForm.classList.remove('hidden');
+    alertBox('Code sent. Check your phone.', true);
+  });
+
+  // Phone OTP -> verify_otp
+  phoneOtpForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const code = document.getElementById('otpCode').value.trim();
+    if(!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+    const r = await fetch("{% url 'core:verify_otp' %}", {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({ code })
+    });
+    const d = await r.json();
+    if(!r.ok || !d.ok) return alertBox(d.error || 'Invalid or expired code.');
+
+    if(d.stage === 'email'){ // NEW users continue with email
+      document.getElementById('otpEmail').textContent = d.email || pre.email;
+      phoneOtpForm.classList.add('hidden');
+      emailOtpForm.classList.remove('hidden');
+      alertBox(d.message || 'Phone verified. Check your email for a code.', true);
+    } else if (d.redirect) { // EXISTING users are done
+      location.href = d.redirect;
     } else {
-      showAlert(data.error || 'Invalid code.');
+      alertBox('Unexpected response.');
     }
   });
 
-  emailForm.addEventListener('submit', async (e) => {
+  // Email OTP (new only)
+  emailOtpForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const body = {
-      email: document.getElementById('emailField').value.trim().toLowerCase(),
-      code:  document.getElementById('emailCode').value.trim()
-    };
-    const res = await fetch("{% url 'core:verify_email_otp' %}", {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
-      body: JSON.stringify(body),
+    const code = document.getElementById('emailCode').value.trim();
+    if(!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+    const r = await fetch("{% url 'core:verify_email_otp' %}", {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      body: JSON.stringify({ code })
     });
-    const data = await res.json();
-    if (data.ok) {
-      showAlert(data.message || 'Verified. Redirecting…', true);
-      window.location.href = data.redirect || '/signin';
-    } else {
-      showAlert(data.error || 'Invalid code.');
-    }
-  });
-
-  resendBtn.addEventListener('click', async () => {
-    const res = await fetch("{% url 'core:request_otp' %}", {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json','X-CSRFToken': getCsrf()},
-      body: JSON.stringify({ phone: otpPhone.value }),
-    });
-    const data = await res.json();
-    showAlert(data.ok ? 'Code re-sent.' : (data.error || 'Failed to resend.'));
+    const d = await r.json();
+    if(!r.ok || !d.ok) return alertBox(d.error || 'Invalid code.');
+    location.href = d.redirect || '/profile';
   });
 </script>
-
 </body>
 </html>
+
