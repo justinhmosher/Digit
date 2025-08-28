@@ -383,30 +383,43 @@ def owner_signup(request):
 
     return JsonResponse({"ok": True, "stage": "phone", "phone": phone})
 
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.contrib.auth.models import User
+from .models import OwnerProfile
+from .utils import to_e164_us, send_sms_otp, check_sms_otp, send_email_otp, check_email_otp
+import json
+
+# Session bucket name for the multi-step flow
+OWNER_SSR_KEY = "owner_signup"
+
 @require_POST
 def owner_signup_api(request):
     """
-    Body JSON: {first_name, last_name, email, phone, username, password1, password2}
-    Do NOT create the user yet. Send phone OTP, stash data in session.
+    Body JSON: { first_name, last_name, email, phone, password1, password2 }
+    - Do NOT create the user yet.
+    - Validate inputs, send phone OTP, stash data in session.
+    - Allow an existing User with same email (they may be a customer).
+    - Only prevent if an OwnerProfile for this email already exists.
     """
     data = json.loads(request.body.decode() or "{}")
     first_name = (data.get("first_name") or "").strip()
     last_name  = (data.get("last_name") or "").strip()
     email      = (data.get("email") or "").strip().lower()
     phone_raw  = (data.get("phone") or "").strip()
-    username   = (data.get("username") or "").strip().lower()
-    p1 = data.get("password1") or ""
-    p2 = data.get("password2") or ""
+    p1         = data.get("password1") or ""
+    p2         = data.get("password2") or ""
 
-    if not (first_name and last_name and email and phone_raw and username and p1 and p2):
+    if not (first_name and last_name and email and phone_raw and p1 and p2):
         return JsonResponse({"ok": False, "error": "All fields are required."}, status=400)
     if p1 != p2:
         return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
-    if User.objects.filter(username=username).exists():
-        return JsonResponse({"ok": False, "error": "Username already taken."}, status=400)
-    if User.objects.filter(email=email).exists():
-        return JsonResponse({"ok": False, "error": "Email already registered."}, status=400)
 
+    # BLOCK only if an OwnerProfile already exists tied to this email
+    if OwnerProfile.objects.filter(user__email=email).exists():
+        return JsonResponse({"ok": False, "error": "An owner account already exists for this email."}, status=400)
+
+    # Normalize phone
     try:
         phone_e164 = to_e164_us(phone_raw)
     except Exception:
@@ -418,35 +431,42 @@ def owner_signup_api(request):
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
-    # Stash into session until OTPs complete
-    request.session["owner_signup"] = {
+    # Stash everything in the session (username = email)
+    request.session[OWNER_SSR_KEY] = {
         "first_name": first_name,
-        "last_name": last_name,
-        "email": email,
-        "phone": phone_e164,
-        "username": username,
-        "password1": p1,
+        "last_name":  last_name,
+        "email":      email,
+        "phone":      phone_e164,
+        "username":   email,   # username == email by design
+        "password1":  p1,
+        "phone_verified": False,
+        "email_verified": False,
     }
     request.session.modified = True
 
     return JsonResponse({"ok": True, "stage": "phone", "phone_e164": phone_e164})
 
+
 @require_POST
 def owner_verify_phone_api(request):
     """
-    Body: {code}
-    On success, send email OTP and return stage=email.
+    Body: { code }
+    On success:
+      - mark phone_verified in session
+      - send email OTP
+      - return stage="email"
     """
     payload = json.loads(request.body.decode() or "{}")
     code = (payload.get("code") or "").strip()
-    ss = request.session.get("owner_signup")
+
+    ss = request.session.get(OWNER_SSR_KEY)
     if not ss:
         return JsonResponse({"ok": False, "error": "Session expired. Start again."}, status=400)
-    phone_e164 = ss["phone"]
 
     if not code:
         return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
 
+    phone_e164 = ss["phone"]
     try:
         status = check_sms_otp(phone_e164, code)
     except Exception as e:
@@ -460,22 +480,27 @@ def owner_verify_phone_api(request):
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Could not send email code: {e}"}, status=500)
 
-    # Flag phone verified in session
     ss["phone_verified"] = True
-    request.session["owner_signup"] = ss
+    request.session[OWNER_SSR_KEY] = ss
     request.session.modified = True
 
     return JsonResponse({"ok": True, "stage": "email", "email": ss["email"]})
 
+
 @require_POST
 def owner_verify_email_api(request):
     """
-    Body: {code}
-    On success, redirect to /owner/restaurant (HTML form). Still no User created yet.
+    Body: { code }
+    On success:
+      - create or update the Django User (username=email)
+      - create OwnerProfile (if not exists), set phone + verified flags
+      - (optional) log the user in here if you want
+      - redirect to /owner/restaurant to collect restaurant profile
     """
     payload = json.loads(request.body.decode() or "{}")
     code = (payload.get("code") or "").strip()
-    ss = request.session.get("owner_signup")
+
+    ss = request.session.get(OWNER_SSR_KEY)
     if not ss:
         return JsonResponse({"ok": False, "error": "Session expired. Start again."}, status=400)
 
@@ -489,11 +514,53 @@ def owner_verify_email_api(request):
     if status != "approved":
         return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
-    ss["email_verified"] = True
-    request.session["owner_signup"] = ss
+    # Create or update the User now
+    email = ss["email"]
+    username = ss["username"]  # same as email
+    first_name = ss["first_name"]
+    last_name  = ss["last_name"]
+    password   = ss["password1"]
+
+    user = User.objects.filter(email=email).first()
+    if user:
+        # Existing user (maybe a customer) -> upgrade details & set password if blank
+        if not user.username:
+            user.username = email
+        user.first_name = first_name or user.first_name
+        user.last_name  = last_name  or user.last_name
+        if not user.has_usable_password():
+            user.set_password(password)
+        user.is_active = True
+        user.save()
+    else:
+        user = User.objects.create_user(
+            username=email, email=email, password=password,
+            first_name=first_name, last_name=last_name
+        )
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+    # Create OwnerProfile if not existing, set verified flags
+    op, _ = OwnerProfile.objects.get_or_create(user=user)
+    op.phone = ss["phone"]
+    if hasattr(op, "phone_verified"):
+        op.phone_verified = True
+    if hasattr(op, "email_verified"):
+        op.email_verified = True
+    op.save()
+
+    # You can clear the session now or leave until restaurant is created.
+    # We'll leave minimal info to let /owner/restaurant render.
+    request.session[OWNER_SSR_KEY] = {
+        "email": email,
+        "owner_user_id": user.id,
+        "phone_verified": True,
+        "email_verified": True,
+    }
     request.session.modified = True
 
-    return JsonResponse({"ok": True, "redirect": "/owner/restaurant"})
+    return JsonResponse({"ok": True, "redirect": "/restaurant/onboard"})
+
 
 def owner_restaurant_page(request):
     # must have passed both OTPs
