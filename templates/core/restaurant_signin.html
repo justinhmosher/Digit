@@ -37,6 +37,9 @@
   <main class="flex-1 flex items-center justify-center px-6 py-12">
     <section class="w-full max-w-2xl">
       <div class="bg-white border border-slate-200 rounded-3xl shadow-sm p-8">
+        <!-- put this just inside the white card, above the tabs -->
+<div id="alert" class="hidden mb-4 text-sm px-4 py-3 rounded-md"></div>
+
 
         <!-- Tabs -->
         <div class="flex gap-2 mb-6">
@@ -179,7 +182,15 @@
     } else {
       activate('owner');
     }
-  // read CSRF cookie (Django default name)
+  function showAlert(msg, ok=false) {
+    const el = document.getElementById('alert');
+    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok
+      ? 'bg-green-100 text-green-800'
+      : 'bg-red-100 text-red-800');
+    el.textContent = msg || 'Something went wrong.';
+    el.classList.remove('hidden');
+  }
+
   function getCSRF() {
     const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
     return m ? m[1] : "";
@@ -191,12 +202,14 @@
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const fd = new FormData(form);
+      showAlert('', true); // clears + hides
+      document.getElementById('alert').classList.add('hidden');
 
+      const fd = new FormData(form);
       const r = await fetch(form.action, {
         method: "POST",
         headers: { "X-CSRFToken": getCSRF(), "Accept": "application/json" },
-        body: fd
+        body: fd            // let the browser set multipart/form-data
       });
 
       let data = {};
@@ -206,15 +219,24 @@
         window.location.href = data.redirect;
         return;
       }
-      alert(data.error || "Sign-in failed.");
+
+      // helpful messages for common statuses
+      if (r.status === 400) {
+        return showAlert(data.error || "Email or password is incorrect.");
+      }
+      if (r.status === 403) {
+        return showAlert("Permission denied.");
+      }
+      return showAlert(data.error || "Sign-in failed.");
     });
   }
 
-  // Hook both forms (IDs must exist in your HTML)
   handleJSONSignin("ownerSignInForm");
   handleJSONSignin("managerSignInForm");
+
 </script>
 
 </body>
 </html>
+
 

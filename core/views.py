@@ -204,6 +204,29 @@ def _get_verified_phone_for_user(user):
 
     return None
 
+@require_POST
+def customer_precheck_api(request):
+    import json
+    data = json.loads(request.body.decode() or "{}")
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return JsonResponse({"ok": False, "error": "Email is required."}, status=400)
+
+    # Block if a CustomerProfile already exists
+    if CustomerProfile.objects.filter(user__email=email).exists():
+        messages.error(request, "You already have a customer account.  Please sign in.")
+        return JsonResponse({
+            "ok":False,
+            "redirect":reverse("core:signin")
+            },status = 409)
+
+    user = User.objects.filter(email=email).first()
+    has_verified_phone = bool(user and _get_verified_phone_for_user(user))
+    return JsonResponse({
+        "ok": True,
+        "exists": bool(user),
+        "has_verified_phone": has_verified_phone
+    })
 
 @require_POST
 def customer_begin_api(request):
@@ -223,6 +246,12 @@ def customer_begin_api(request):
         return JsonResponse({"ok": False, "error": "Email is required."}, status=400)
 
     user = User.objects.filter(email=email).first()
+    if CustomerProfile.objects.filter(user__email=email).exists():
+        return JsonResponse({
+            "ok": False,
+            "error": "You already have a customer account. Please sign in.",
+            "signin_url": reverse("core:signin")
+        }, status=409)
     is_existing = bool(user)
 
     # Decide phone source:
@@ -608,6 +637,29 @@ from .utils import (
 # -------------------------
 # OWNER STANDARD SIGN-UP
 # -------------------------
+@require_POST
+def owner_precheck_api(request):
+    import json
+    data = json.loads(request.body.decode() or "{}")
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return JsonResponse({"ok": False, "error": "Email is required."}, status=400)
+
+    # Block if a CustomerProfile already exists
+    if OwnerProfile.objects.filter(user__email=email).exists():
+        messages.error(request, "You already have an owner account.  Please sign in.")
+        return JsonResponse({
+            "ok":False,
+            "redirect":reverse("core:restaurant_signin")
+            },status = 409)
+
+    user = User.objects.filter(email=email).first()
+    has_verified_phone = bool(user and _get_verified_phone_for_user(user))
+    return JsonResponse({
+        "ok": True,
+        "exists": bool(user),
+        "has_verified_phone": has_verified_phone
+    })
 
 def owner_signup(request):
     if request.method != "POST":
@@ -952,6 +1004,18 @@ def owner_existing_verify_phone_api(request):
     request.session.modified = True
     return JsonResponse({"ok": True, "redirect": "/restaurant/onboard"})
 
+# helper
+def set_current_restaurant(request, restaurant_id: int):
+    request.session["current_restaurant_id"] = restaurant_id
+    request.session.modified = True
+
+def get_current_restaurant(request):
+    rid = request.session.get("current_restaurant_id")
+    if not rid:
+        return None
+    from .models import RestaurantProfile
+    return RestaurantProfile.objects.filter(id=rid).first()
+
 
 @require_POST
 @transaction.atomic
@@ -1133,25 +1197,26 @@ def oauth_owner_phone_verify(request):
     # Send to owner onboarding to create the RestaurantProfile
     return JsonResponse({"ok": True, "redirect": "/restaurant/onboard"})
 
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import redirect
-
 @login_required
 def post_login_owner(request):
-    # primary: session
-    role = request.session.pop("auth_role", None)
-    # fallback: query param
-    if role is None:
-        role = request.GET.get("role")
+    op = getattr(request.user, "owner_profile", None)
+    if not op:
+        # no owner profile yet -> start owner onboarding
+        return redirect("core:owner_signup")  # or wherever your owner flow begins
 
-    if role == "owner":
-        rp = getattr(request.user, "restaurant_profile", None)
-        if not rp:
-            return redirect("core:restaurant_onboard")
-        return redirect("core:owner_dashboard")
+    # all restaurants this owner can access
+    qs = RestaurantProfile.objects.filter(owners__owner=op, owners__is_active=True).order_by("created_at")
 
-    # default: treat as customer
-    return redirect("core:profile")
+    if not qs.exists():
+         # owner profile exists but no restaurants yet -> onboard first restaurant
+        return redirect("core:restaurant_onboard")
+
+    # ensure a current restaurant is set in session
+    current = get_current_restaurant(request)
+    if not current or not qs.filter(id=current.id).exists():
+        set_current_restaurant(request, qs.first().id)
+
+    return redirect("core:owner_dashboard")
 
 
 # core/views.py (add near your other imports)
@@ -1165,28 +1230,66 @@ from django.conf import settings
 
 from .models import ManagerInvite  # assumes you already have this model
 
+# views.py
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_http_methods
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.urls import reverse
+from django.utils import timezone
+from datetime import timedelta
+import json
+
+from .models import RestaurantProfile, OwnerProfile, Ownership, ManagerInvite
+
+def _current_restaurant(request):
+    """Resolve the restaurant for the signed-in owner."""
+    # 1) session selection
+    rid = request.session.get("current_restaurant_id")
+    if rid:
+        rp = RestaurantProfile.objects.filter(id=rid).first()
+        if rp:
+            return rp
+
+    # 2) first active restaurant this owner owns
+    op = OwnerProfile.objects.filter(user=request.user).first()
+    if not op:
+        return None
+
+    # Use through model; respect is_active if present
+    ow_qs = Ownership.objects.filter(owner=op)
+    if any(f.name == "is_active" for f in Ownership._meta.fields):
+        ow_qs = ow_qs.filter(is_active=True)
+
+    rid = ow_qs.values_list("restaurant_id", flat=True).first()
+    if rid:
+        rp = RestaurantProfile.objects.filter(id=rid).first()
+        if rp:
+            # remember it in session for next time
+            request.session["current_restaurant_id"] = rp.id
+            request.session.modified = True
+            return rp
+    return None
+
 @login_required
-@require_POST
+@require_http_methods(["GET", "POST"])
 def owner_invite_manager(request):
-    """
-    Owner sends an invite to a manager's email.
-    Accepts JSON or form-POST.
+    """Owner sends an invite for the *current* restaurant."""
+    rp = _current_restaurant(request)
+    if request.method == "GET":
+        # If you prefer to block here, you can render a page explaining they must onboard first.
+        if not rp:
+            return JsonResponse({"ok": False, "error": "Create your restaurant profile first."}, status=400)
+        return render(request, "core/owner_invite_manager.html", {"restaurant": rp})
 
-    POST fields:
-      - email (required)
-      - expires_minutes (optional, default 120)
-    """
-    # Owner must have a RestaurantProfile
-    rp = getattr(request.user, "restaurant_profile", None)
+    # POST (JSON or form)
     if not rp:
-        return JsonResponse(
-            {"ok": False, "error": "Create your restaurant profile first."},
-            status=400,
-        )
+        return JsonResponse({"ok": False, "error": "Create your restaurant profile first."}, status=400)
 
-    # Read payload from JSON or form
     email = ""
     expires_minutes = 120
+
+    # JSON body first
     try:
         payload = json.loads((request.body or b"").decode() or "{}")
         email = (payload.get("email") or "").strip().lower()
@@ -1195,6 +1298,7 @@ def owner_invite_manager(request):
     except Exception:
         pass
 
+    # Fallback to form POST
     if not email:
         email = (request.POST.get("email") or "").strip().lower()
     if request.POST.get("expires_minutes"):
@@ -1206,47 +1310,38 @@ def owner_invite_manager(request):
     if not email:
         return JsonResponse({"ok": False, "error": "Please provide an email."}, status=400)
 
-    # Create invite
     invite = ManagerInvite.objects.create(
         restaurant=rp,
         email=email,
         expires_at=timezone.now() + timedelta(minutes=expires_minutes),
     )
 
-    # Build link
-    invite_link = f"{request.scheme}://{request.get_host()}/manager/accept?token={invite.token}"
-
-    # Send a simple email (okay for MVP)
-    subject = "You’re invited as a manager"
+    link = f"{request.scheme}://{request.get_host()}/manager/accept?token={invite.token}"
     rest_name = rp.dba_name or rp.legal_name or "your restaurant"
-    body = (
-        f"You’ve been invited to manage {rest_name} on Dine N Dash.\n\n"
-        f"Click to accept your invite and set your password:\n{invite_link}\n\n"
-        f"This link expires at {invite.expires_at:%Y-%m-%d %H:%M}."
-    )
+
     try:
         send_manager_invite_email(
             to_email=email,
-            invite_link=invite_link,
+            invite_link=link,
             restaurant_name=rest_name,
             expires_at=invite.expires_at,
         )
         email_ok = True
     except Exception as e:
-        # Log e in real life; don’t fail the API in MVP unless you want to
         return JsonResponse({"ok": False, "error": f"Email send failed: {e}"}, status=500)
 
     return JsonResponse({
         "ok": True,
-        "message": f"Invite {'sent' if email_ok else 'created (email failed)'} to {email}.",
+        "message": f"Invite sent to {email}.",
         "invite": {
             "email": email,
-            "token": invite.token,
+            "token": str(invite.token),
             "expires_at": invite.expires_at.isoformat(),
-            "link": invite_link,
+            "link": link,
             "email_sent": email_ok,
         },
     })
+
 
 
 def _invite_is_valid(invite) -> bool:
@@ -1262,69 +1357,179 @@ def _invite_is_valid(invite) -> bool:
         return False
     return True
 
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.contrib.auth import login, get_user_model
+from django.utils import timezone
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.urls import reverse
+
+import json
+
+User = get_user_model()
+
 @ensure_csrf_cookie
 @require_http_methods(["GET", "POST"])
 def manager_accept_invite(request):
-    PENDING_KEY = 'pending_manager_accept'
-    # GET: render the page (already shows invite.email, restaurant name, etc.)
+    """
+    Manager invite accept flow.
+
+    - GET: render accept page for a valid invite.
+    - POST action=init:
+        * If user with invite.email EXISTS: ignore password fields, just send SMS OTP,
+          stash session with flag existing_user=True.
+        * If user does NOT exist: validate passwords, send SMS OTP, stash session.
+    - POST action=verify:
+        * Check OTP. If existing_user:
+            - attach/update ManagerProfile for the existing user
+            - mark invite accepted
+            - login and redirect to dashboard
+          else:
+            - create user, attach ManagerProfile
+            - mark invite accepted, login, redirect
+    """
+    PENDING_KEY = "pending_manager_accept"
+
+    # --- GET ---
     if request.method == "GET":
         token = request.GET.get("token")
         invite = None
         if token:
             invite = ManagerInvite.objects.filter(token=token).first()
-        if not invite or not invite.is_valid:
+        if not invite or not getattr(invite, "is_valid", False):
             return render(request, "core/manager_accept_invalid.html")
-        return render(request, "core/manager_accept.html", {"invite": invite})
 
-    # POST (JSON): two phases: action=init (send OTP) or action=verify (check OTP)
+        # Optional: tell template whether the user already exists
+        existing_user = User.objects.filter(email__iexact=invite.email).exists()
+        return render(
+            request,
+            "core/manager_accept.html",
+            {"invite": invite, "existing_user": existing_user},
+        )
+
+    # --- POST JSON ---
     try:
-        data = json.loads(request.body.decode() or "{}")
+        data = json.loads((request.body or b"").decode() or "{}")
     except Exception:
         return JsonResponse({"ok": False, "error": "Bad JSON."}, status=400)
 
     action = (data.get("action") or "").strip()
-    token  = (data.get("token") or "").strip()
+    token = (data.get("token") or "").strip()
     invite = ManagerInvite.objects.filter(token=token).first()
-    if not invite or not invite.is_valid:
+    if not invite or not getattr(invite, "is_valid", False):
         return JsonResponse({"ok": False, "error": "Invite is invalid or expired."}, status=400)
 
+    # Common bits
+    email = (data.get("email") or "").strip().lower()
+    if email != invite.email.lower():
+        return JsonResponse({"ok": False, "error": "Email must match the invited address."}, status=400)
+
     if action == "init":
-        # Collect fields
-        email     = (data.get("email") or "").strip().lower()
-        password1 = data.get("password1") or ""
-        password2 = data.get("password2") or ""
+        # Determine whether the invited email already maps to a User
+        user = User.objects.filter(email__iexact=email).first()
+        existing_user = bool(user)
+
+        # For both paths we require a phone to OTP
         phone_raw = (data.get("phone") or "").strip()
-
-        # Email must match the invitee
-        if email != invite.email.lower():
-            return JsonResponse({"ok": False, "error": "Email must match the invited address."}, status=400)
-
-        if password1 != password2 or not password1:
-            return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
+        if not phone_raw:
+            return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
 
         try:
             phone_e164 = to_e164_us(phone_raw)
         except Exception:
             return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
 
-        # Enforce phone uniqueness on ManagerProfile
+        # If you want to keep phone uniqueness for managers, keep this:
         if ManagerProfile.objects.filter(phone=phone_e164).exists():
             return JsonResponse({"ok": False, "error": "Phone already in use."}, status=400)
 
-        # Send OTP and stash pending signup in session
+        # Only enforce/collect password for new users
+        password1 = data.get("password1") or ""
+        password2 = data.get("password2") or ""
+        if not existing_user:
+            if not password1 or password1 != password2:
+                return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
+
+        # Send OTP
         try:
             send_sms_otp(phone_e164)
         except Exception as e:
             return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
+        # Stash pending info
         request.session[PENDING_KEY] = {
             "token": str(invite.token),
             "email": email,
             "phone": phone_e164,
-            "password": password1,
+            "existing_user": existing_user,
+            # keep the password only if we're creating a new user
+            "password": password1 if not existing_user else None,
         }
         request.session.modified = True
         return JsonResponse({"ok": True, "stage": "code", "phone_e164": phone_e164})
+
+    if action == "verify":
+        code = (data.get("code") or "").strip()
+        pending = request.session.get(PENDING_KEY) or {}
+        if not pending or str(invite.token) != pending.get("token"):
+            return JsonResponse({"ok": False, "error": "Session expired. Restart from invite link."}, status=400)
+
+        phone_e164 = pending.get("phone")
+        if not code or not phone_e164:
+            return JsonResponse({"ok": False, "error": "Missing code."}, status=400)
+
+        # Verify code with Twilio Verify
+        try:
+            status = check_sms_otp(phone_e164, code)
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+        if status != "approved":
+            return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+
+        # Branch: existing user vs new user
+        email = pending["email"]
+        existing_user = bool(pending.get("existing_user"))
+
+        if existing_user:
+            user = User.objects.filter(email__iexact=email).first()
+            if not user:
+                # Safety (shouldn't happen)
+                return JsonResponse({"ok": False, "error": "Account disappeared. Try again."}, status=400)
+        else:
+            # Create and activate user (username=email)
+            password = pending.get("password") or _generate_code(10)  # fallback; shouldn't happen
+            user = User.objects.create_user(username=email, email=email, password=password)
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+
+        # Create/attach ManagerProfile
+        mp, created = ManagerProfile.objects.get_or_create(user=user)
+        mp.phone = phone_e164
+        if hasattr(mp, "phone_verified"):
+            mp.phone_verified = True
+        if hasattr(mp, "email_verified"):
+            # possession of the invite link implies email proof
+            mp.email_verified = True
+        # attach the restaurant from the invite if not set
+        if not getattr(mp, "restaurant_id", None):
+            mp.restaurant = invite.restaurant
+        mp.save()
+
+        # Mark invite accepted
+        invite.accepted_at = timezone.now()
+        invite.save(update_fields=["accepted_at"])
+
+        # Clean session + log in + redirect
+        try:
+            del request.session[PENDING_KEY]
+        except KeyError:
+            pass
+        login(request, user)
+
+        return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
+
+    return JsonResponse({"ok": False, "error": "Unknown action."}, status=400)
 
     if action == "verify":
         code = (data.get("code") or "").strip()
@@ -1409,19 +1614,16 @@ def manager_dashboard(request):
 def profile(request):
     return render(request, "core/profile.html")
 
-def restaurant_signin(request):
-    return render(request, "core/restaurant_signin.html", {"active_tab": active_tab})
+from django.contrib.auth import authenticate, login
+from django.http import JsonResponse
+from django.urls import reverse
 
-
 def restaurant_signin(request):
-    """GET: render the page. POST: JSON sign-in for owner/manager."""
     if request.method == "GET":
-        # define it unconditionally to avoid NameError (UI also reads ?tab=manager)
         active_tab = request.GET.get("tab", "owner")
         return render(request, "core/restaurant_signin.html", {"active_tab": active_tab})
 
-    # --- POST -> JSON ---
-    portal = (request.POST.get("portal") or "").strip() or "owner"   # "owner" | "manager"
+    portal = (request.POST.get("portal") or "owner").strip()
     email  = (request.POST.get("email") or "").strip().lower()
     pwd    = request.POST.get("password") or ""
 
@@ -1433,18 +1635,109 @@ def restaurant_signin(request):
         return JsonResponse({"ok": False, "error": "Invalid email or password."}, status=400)
 
     login(request, user)
-    # Decide destination
-    if portal == "manager":
-        dest = reverse("core:manager_dashboard")
-    else:
-        dest = reverse("core:owner_dashboard") if hasattr(user, "restaurant_profile") else reverse("core:restaurant_onboard")
 
-    return JsonResponse({"ok": True, "redirect": dest})
+    if portal == "manager":
+        return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
+
+    # Owner flow
+    owner, _ = OwnerProfile.objects.get_or_create(user=user)
+
+    # legacy one-to-one support
+    legacy_rp = getattr(user, "restaurant_profile", None)
+    if legacy_rp:
+        dest = reverse("core:owner_dashboard") if getattr(legacy_rp, "is_active", False) else reverse("core:restaurant_onboard")
+        return JsonResponse({"ok": True, "redirect": dest})
+
+    # multi-restaurant: any restaurants owned?
+    has_any_restaurant = False
+    first_rp = None
+    if hasattr(RestaurantProfile, "owners"):
+        qs = RestaurantProfile.objects.filter(owners__user=user).order_by("id")
+        has_any_restaurant = qs.exists()
+        first_rp = qs.first()
+
+    if has_any_restaurant and first_rp:
+        request.session["current_restaurant_id"] = first_rp.id
+        request.session.modified = True
+        return JsonResponse({"ok": True, "redirect": reverse("core:owner_dashboard")})
+
+    return JsonResponse({"ok": True, "redirect": reverse("core:restaurant_onboard")})
+
+
+# core/views.py
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect, render
+from django.urls import reverse
+
+def _get_owner_profile(user):
+    from .models import OwnerProfile
+    return OwnerProfile.objects.filter(user=user).first()
+
+def _restaurants_for_owner(user, owner_profile):
+    """
+    Robustly fetch restaurants for an owner:
+      - NEW schema: RestaurantProfile <-> Ownership <-> OwnerProfile
+      - LEGACY schema: RestaurantProfile has FK 'user'
+    """
+    from .models import RestaurantProfile
+
+    # NEW: use the through model directly to avoid related_name mismatches
+    if hasattr(RestaurantProfile, "owners"):
+        try:
+            from .models import Ownership
+            ow_qs = Ownership.objects.filter(owner=owner_profile)
+            # Respect is_active flag if present
+            if any(f.name == "is_active" for f in Ownership._meta.fields):
+                ow_qs = ow_qs.filter(is_active=True)
+            rest_ids = ow_qs.values_list("restaurant_id", flat=True)
+            qs = RestaurantProfile.objects.filter(id__in=rest_ids)
+        except Exception:
+            # Fallback: plain M2M without through extras
+            qs = RestaurantProfile.objects.filter(owners=owner_profile)
+    # LEGACY: one restaurant per user via FK
+    elif hasattr(RestaurantProfile, "user"):
+        # If your legacy model has no is_active, remove that filter
+        fields = {f.name for f in RestaurantProfile._meta.fields}
+        flt = {"user": user}
+        if "is_active" in fields:
+            flt["is_active"] = True
+        qs = RestaurantProfile.objects.filter(**flt)
+    else:
+        qs = RestaurantProfile.objects.none()
+
+    # Order safely
+    fields = {f.name for f in RestaurantProfile._meta.fields}
+    return qs.order_by("created_at" if "created_at" in fields else "id")
+
+def get_current_restaurant(request):
+    from .models import RestaurantProfile
+    rid = request.session.get("current_restaurant_id")
+    return RestaurantProfile.objects.filter(id=rid).first() if rid else None
+
+def set_current_restaurant(request, rid: int):
+    request.session["current_restaurant_id"] = int(rid)
+    request.session.modified = True
 
 @login_required
 def owner_dashboard(request):
-    rp = getattr(request.user, "restaurant_profile", None)
-    return render(request, "core/owner_dashboard.html", {"profile": rp})
+    op = _get_owner_profile(request.user)
+    if not op:
+        # No OwnerProfile yet -> send to owner signup/onboarding
+        return redirect(reverse("core:owner_signup"))
+
+    restaurants = _restaurants_for_owner(request.user, op)
+    current = get_current_restaurant(request) or restaurants.first()
+
+    if current and not request.session.get("current_restaurant_id"):
+        set_current_restaurant(request, current.id)
+
+    return render(request, "core/owner_dashboard.html", {
+        "restaurants": restaurants,
+        "current": current,
+        "profile": op,
+    })
+
+
 
 # core/views.py
 from urllib.parse import quote
@@ -1464,17 +1757,138 @@ def manager_dashboard(request):
     mp = getattr(request.user, "manager_profile", None)
     return render(request, "core/manager_dashboard.html", {"profile": mp})
 
-@require_http_methods(["GET","POST"])
-@login_required
-def restaurant_onboard(request):
-    rp = getattr(request.user, "restaurant_profile", None)
-    if rp:
-        return redirect("core:owner_dashboard")
-    if request.method == "GET":
-        rp = getattr(request.user, "restaurant_profile", None)
-        return render(request, "core/restaurant_onboard.html", {"profile": rp})
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_http_methods
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.urls import reverse
+import json
 
-    # POST JSON
+from .models import OwnerProfile, RestaurantProfile
+
+# helpers.py (or keep near your view)
+
+from .models import OwnerProfile, RestaurantProfile
+
+def attach_owner_to_restaurant(owner: OwnerProfile, rp: RestaurantProfile):
+    """
+    Attach an owner to a restaurant in a schema-agnostic way:
+      - If RestaurantProfile.owners is a ManyToManyField, create/get the through row.
+      - Otherwise, assume there's a FK on OwnerProfile pointing to RestaurantProfile, and set it.
+    """
+
+    rel = getattr(RestaurantProfile, "owners", None)
+
+    # CASE 1: True ManyToMany (has .through)
+    if rel is not None and hasattr(rel, "through"):
+        through = rel.through
+
+        # find FK field names on the through model
+        rp_fk_name = None
+        owner_fk_name = None
+        for f in through._meta.get_fields():
+            remote = getattr(f, "remote_field", None)
+            if not remote:
+                continue
+            if remote.model is RestaurantProfile:
+                rp_fk_name = f.name
+            elif remote.model is OwnerProfile:
+                owner_fk_name = f.name
+
+        if not rp_fk_name or not owner_fk_name:
+            raise RuntimeError(
+                "Ownership through-model must have FKs to RestaurantProfile and OwnerProfile."
+            )
+
+        lookup = {rp_fk_name: rp, owner_fk_name: owner}
+        through.objects.get_or_create(**lookup)
+        return
+
+    # CASE 2: Reverse FK (no .through) → set FK on OwnerProfile
+    # Find a FK on OwnerProfile that targets RestaurantProfile and set it.
+    for f in OwnerProfile._meta.get_fields():
+        remote = getattr(f, "remote_field", None)
+        if remote and remote.model is RestaurantProfile:
+            setattr(owner, f.name, rp)       # e.g. owner.restaurant = rp
+            owner.save(update_fields=[f.name])
+            return
+
+    # If we got here, there is no linkable relation.
+    raise RuntimeError(
+        "Could not find a way to link OwnerProfile to RestaurantProfile. "
+        "Add a ManyToManyField (owners) or a FK on OwnerProfile."
+    )
+
+def attach_owner_to_restaurant(rp, owner):
+    """
+    Link OwnerProfile <owner> to RestaurantProfile <rp> regardless of how the
+    relation is modeled. Handles:
+      A) rp.owners = ManyToManyField(OwnerProfile, through='Ownership')
+      B) Ownership(owner=OwnerProfile, restaurant=RestaurantProfile) explicit
+      C) rp has FK like rp.owner / rp.owner_profile
+    """
+    # A/B: many-to-many via through=Ownership
+    if hasattr(rp.__class__, "owners"):
+        through = rp.__class__.owners.through  # Ownership model
+        # Its FK field names vary; detect them
+        fks = {f.name: f for f in through._meta.fields if f.is_relation}
+        # Find the FK names pointing to OwnerProfile and RestaurantProfile
+        owner_fk = None
+        rest_fk  = None
+        for name, f in fks.items():
+            if getattr(f.related_model, "__name__", "") == "OwnerProfile":
+                owner_fk = name
+            if getattr(f.related_model, "__name__", "") == "RestaurantProfile":
+                rest_fk = name
+        if not owner_fk or not rest_fk:
+            raise RuntimeError("Ownership through model doesn't point to OwnerProfile/RestaurantProfile.")
+
+        # Create-if-missing
+        defaults = {}
+        filter_kwargs = {owner_fk: owner, rest_fk: rp}
+        through.objects.get_or_create(**filter_kwargs, defaults=defaults)
+        return
+
+    # C: simple FK on RestaurantProfile (e.g., rp.owner or rp.owner_profile)
+    if hasattr(rp, "owner"):
+        rp.owner = owner
+        rp.save(update_fields=["owner"])
+        return
+    if hasattr(rp, "owner_profile"):
+        rp.owner_profile = owner
+        rp.save(update_fields=["owner_profile"])
+        return
+
+    # If none matched, we can't link
+    raise RuntimeError("Could not find a way to link OwnerProfile to RestaurantProfile. "
+                       "Add a ManyToManyField (owners) or a FK on OwnerProfile/RestaurantProfile.")
+
+from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from django.http import JsonResponse
+from django.urls import reverse
+import json
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def restaurant_onboard(request):
+    # Ensure there is an OwnerProfile for the current user
+    owner, _ = OwnerProfile.objects.get_or_create(user=request.user)
+
+    if request.method == "GET":
+        # Prefill the form: try legacy single-restaurant record if present
+        legacy_profile = getattr(request.user, "restaurant_profile", None)
+        #…or, if you're already on multi-restaurant, you can choose the “current” one from session
+        current_id = request.session.get("current_restaurant_id")
+        current_profile = None
+        if current_id:
+            current_profile = RestaurantProfile.objects.filter(id=current_id).first()
+
+        profile = current_profile or legacy_profile
+        return render(request, "core/restaurant_onboard.html", {"owner": owner, "profile": profile})
+
+    # ----- POST JSON -----
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
@@ -1489,16 +1903,38 @@ def restaurant_onboard(request):
     if not legal_name or not email:
         return JsonResponse({"ok": False, "error": "Legal name and email are required."}, status=400)
 
-    rp, _ = RestaurantProfile.objects.get_or_create(user=request.user)
-    rp.legal_name = legal_name
-    rp.email      = email
-    rp.dba_name   = dba_name
-    rp.phone      = phone
-    rp.address    = address
-    rp.is_active  = True  # mark as configured (tune to your rules)
-    rp.save()
+    # If you still have legacy 1:1 `RestaurantProfile.user`, keep using get_or_create(user=…)
+    if hasattr(RestaurantProfile, "user"):
+        rp, _ = RestaurantProfile.objects.get_or_create(user=request.user)
+        rp.legal_name = legal_name
+        rp.email      = email
+        rp.dba_name   = dba_name
+        rp.phone      = phone
+        rp.address    = address
+        rp.is_active  = True
+        rp.save()
+    else:
+        # Pure multi-restaurant: always create a new restaurant record
+        rp = RestaurantProfile.objects.create(
+            legal_name=legal_name,
+            dba_name=dba_name,
+            email=email,
+            phone=phone,
+            address=address,
+            is_active=True,
+        )
 
-    return JsonResponse({"ok": True, "redirect": "/owner/dashboard/"})
+    # Link ownership (works whether you have M2M through or FK)
+    try:
+        attach_owner_to_restaurant(rp, owner)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Ownership link failed: {e}"}, status=500)
+
+    # remember selection
+    request.session["current_restaurant_id"] = rp.id
+    request.session.modified = True
+
+    return JsonResponse({"ok": True, "redirect": reverse("core:owner_dashboard")})
 
 
 

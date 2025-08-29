@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <title>Accept Manager Invite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50 min-h-screen">
@@ -17,7 +18,8 @@
     <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
 
     <!-- Step 1 -->
-    <form id="step1" class="mt-6 space-y-4">
+    <form id="step1" class="mt-6 space-y-4"
+          data-existing-user="{{ existing_user|yesno:'true,false' }}">
       {% csrf_token %}
       <input type="hidden" id="token" value="{{ invite.token }}">
       <div>
@@ -25,19 +27,29 @@
         <input id="email" type="email" class="w-full h-12 rounded-xl border px-4 bg-slate-50"
                value="{{ invite.email }}" readonly>
       </div>
+
+      <p id="helper" class="text-sm text-slate-600"></p>
+
       <div>
         <label class="block text-sm font-medium mb-1">Phone</label>
         <input id="phone" type="tel" class="w-full h-12 rounded-xl border px-4"
                placeholder="+15551234567">
       </div>
-      <div>
-        <label class="block text-sm font-medium mb-1">Password</label>
-        <input id="p1" type="password" class="w-full h-12 rounded-xl border px-4">
+
+      <!-- Passwords are hidden when existing_user === true -->
+      <div id="pw_wrap">
+        <div>
+          <label class="block text-sm font-medium mb-1">Password</label>
+          <input id="p1" type="password" class="w-full h-12 rounded-xl border px-4"
+                 autocomplete="new-password">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Confirm Password</label>
+          <input id="p2" type="password" class="w-full h-12 rounded-xl border px-4"
+                 autocomplete="new-password">
+        </div>
       </div>
-      <div>
-        <label class="block text-sm font-medium mb-1">Confirm Password</label>
-        <input id="p2" type="password" class="w-full h-12 rounded-xl border px-4">
-      </div>
+
       <button id="send" type="submit"
               class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
         Send code
@@ -57,56 +69,71 @@
       </div>
       <button id="verify" type="submit"
               class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
-        Verify & create account
+        Verify
       </button>
     </form>
   </div>
 
 <script>
-  // Pull the CSRF token from the hidden inputs that {% csrf_token %} rendered.
+  // CSRF helper
   function getCSRF() {
-    // Prefer token from step2 if step1 is hidden, otherwise from step1.
     const el =
       document.querySelector('#step2 input[name=csrfmiddlewaretoken]') ||
       document.querySelector('#step1 input[name=csrfmiddlewaretoken]');
     return el ? el.value : "";
   }
-
   function flash(msg, ok=false){
     const el = document.getElementById('alert');
-    el.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-    el.textContent = msg;
-    el.classList.remove('hidden');
+    el.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');
+    el.textContent = msg; el.classList.remove('hidden');
   }
 
   const step1 = document.getElementById('step1');
   const step2 = document.getElementById('step2');
   const token = document.getElementById('token').value;
   const postURL = location.pathname; // "/manager/accept"
+  const isExisting = step1.dataset.existingUser === 'true';
+
+  // Tweak UI text/fields based on existing/new user
+  const helper = document.getElementById('helper');
+  const pwWrap = document.getElementById('pw_wrap');
+  const sendBtn = document.getElementById('send');
+
+  if (isExisting) {
+    helper.textContent = "We found your account. We’ll verify it’s you by SMS, then activate your manager access.";
+    pwWrap.classList.add('hidden');
+    sendBtn.textContent = "Send code";
+  } else {
+    helper.textContent = "No account found for this email. Create a password and we’ll verify by SMS.";
+    pwWrap.classList.remove('hidden');
+    sendBtn.textContent = "Create & send code";
+  }
 
   step1.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
       action: "init",
       token,
-      email: document.getElementById('email').value.trim(),
-      phone: document.getElementById('phone').value.trim(),
-      password1: document.getElementById('p1').value,
-      password2: document.getElementById('p2').value,
+      email: document.getElementById('email').value.trim().toLowerCase(),
+      phone: document.getElementById('phone').value.trim()
     };
+    if (!isExisting) {
+      payload.password1 = document.getElementById('p1').value;
+      payload.password2 = document.getElementById('p2').value;
+    }
 
     const r = await fetch(postURL, {
       method: "POST",
-      credentials: "same-origin",                 // ensure cookies (csrftoken) are sent
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": getCSRF(),                 // match the cookie value
+        "X-CSRFToken": getCSRF(),
       },
       body: JSON.stringify(payload)
     });
 
     const data = await r.json().catch(()=>({}));
-    if (r.ok && data.ok) {
+    if (r.ok && data.ok && data.stage === 'code') {
       step1.classList.add('hidden');
       step2.classList.remove('hidden');
       flash('Code sent. Check your phone.', true);
@@ -120,6 +147,7 @@
     const payload = {
       action: "verify",
       token,
+      email: document.getElementById('email').value.trim().toLowerCase(),
       code: document.getElementById('code').value.trim()
     };
 
@@ -135,14 +163,11 @@
 
     const data = await r.json().catch(()=>({}));
     if (r.ok && data.ok && data.redirect) {
-      window.location.href = data.redirect;
+      location.href = data.redirect; // -> manager dashboard
     } else {
-      flash(data.error || 'Unexpected response.');
+      flash(data.error || 'Verification failed.');
     }
   });
 </script>
-
-
-
 </body>
 </html>

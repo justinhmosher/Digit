@@ -160,12 +160,16 @@
   document.getElementById('btnEmailContinue').addEventListener('click', async ()=>{
     const email = document.getElementById('email').value.trim().toLowerCase();
     if(!email) return flash('Enter your email.');
-    const r = await fetch("{% url 'core:precheck_user_api' %}", {
+    const r = await fetch("{% url 'core:owner_precheck_api' %}", {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
       body: JSON.stringify({ email })
     });
     const d = await r.json().catch(()=>({}));
+    if(r.status == 409 && d.redirect) {
+      window.location.href = d.redirect;
+      return;
+      }
     if(!r.ok || !d.ok) return flash(d.error||'Precheck failed.');
     pre.email = email; pre.exists = d.exists; pre.has_verified_phone = d.has_verified_phone;
 

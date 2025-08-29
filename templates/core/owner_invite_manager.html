@@ -1,0 +1,52 @@
+{% load static %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Invite a Manager — Dine N Dash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6">
+  <div class="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+    <h1 class="text-2xl font-bold">Invite a Manager</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      Restaurant: <strong>{{ restaurant.dba_name|default:restaurant.legal_name }}</strong>
+    </p>
+
+    <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
+
+    <form id="inviteForm" class="mt-4 space-y-3">
+      {% csrf_token %}
+      <div>
+        <label class="block text-sm font-medium mb-1">Manager email</label>
+        <input id="email" type="email" required class="w-full h-12 rounded-xl border px-4" placeholder="manager@example.com">
+      </div>
+      <button class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium">Send Invite</button>
+    </form>
+  </div>
+
+<script>
+  function csrf(){ const m=document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/); return m?m[1]:""; }
+  const alertEl = document.getElementById('alert');
+  function flash(msg, ok=false){
+    alertEl.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');
+    alertEl.textContent = msg; alertEl.classList.remove('hidden');
+  }
+  document.getElementById('inviteForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    const r = await fetch("", {
+      method: "POST",
+      headers: {"X-CSRFToken": csrf(), "Content-Type": "application/json"},
+      body: JSON.stringify({ email })
+    });
+    const d = await r.json().catch(()=>({}));
+    if (r.ok && d.ok) {
+      flash(d.message, true);
+    } else {
+      flash(d.error || 'Failed to send invite');
+    }
+  });
+</script>
+</body>
+</html>

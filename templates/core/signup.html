@@ -142,11 +142,15 @@
     e.preventDefault();
     const email = document.getElementById('email').value.trim().toLowerCase();
     if(!email) return alertBox('Enter your email.');
-    const r = await fetch("{% url 'core:precheck_user_api' %}", {
+    const r = await fetch("{% url 'core:customer_precheck_api' %}", {
       method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
       body: JSON.stringify({ email })
     });
     const d = await r.json();
+    if(r.status == 409 && d.redirect) {
+      window.location.href = d.redirect;
+      return;
+      }
     if(!r.ok || !d.ok) return alertBox(d.error || 'Precheck failed.');
     pre = { exists: d.exists, has_verified_phone: d.has_verified_phone, email };
     emailForm.classList.add('hidden');
@@ -204,11 +208,17 @@
       body: JSON.stringify(payload)
     });
     const d = await r.json();
+    if (!r.ok) {
+      // e.g., 409 if profile already exists
+      alertBox(d.error || 'Precheck failed.');
+      if (d.signin_url) { /* optionally show a "Go to Sign In" link */ }
+      return;
+    }
     if(!r.ok || !d.ok) return alertBox(d.error || 'Could not start signup.');
     newUserForm.classList.add('hidden');
     phoneOtpForm.classList.remove('hidden');
     alertBox('Code sent. Check your phone.', true);
-  });
+    });
 
   // Phone OTP -> verify_otp
   phoneOtpForm.addEventListener('submit', async (e)=>{

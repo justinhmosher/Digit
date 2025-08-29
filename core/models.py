@@ -23,20 +23,18 @@ class OwnerProfile(models.Model):
         return force_str(getattr(self, "label", None) or f"OwnerProfile {self.pk}")
 
 class RestaurantProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="restaurant_profile")
     legal_name = models.CharField(max_length=255)
-    email = models.CharField(max_length=255, default = "email")
-    dba_name = models.CharField(max_length=255, blank=True)
-    phone = models.CharField(max_length=20, blank=True)
-    address = models.TextField(blank=True)
-    processor = models.CharField(max_length=20, default="stripe")
-    processor_account_id = models.CharField(max_length=64, blank=True, null=True, unique=True)
-    processor_verification = models.CharField(max_length=32, default="pending")
-    payout_status = models.CharField(max_length=32, default="pending")
-    created_at = models.DateTimeField(auto_now_add=True)
-    is_active = models.BooleanField(default = False)
-    def __str__(self):
-        return self.dba_name or self.legal_name
+    dba_name   = models.CharField(max_length=255, blank=True)
+    email      = models.EmailField()
+    phone      = models.CharField(max_length=30, blank=True)
+    address    = models.TextField(blank=True)
+    is_active  = models.BooleanField(default=False)
+
+    # REMOVE this:
+    # user = models.OneToOneField(User, on_delete=models.CASCADE)
+    
+    owners = models.ManyToManyField('OwnerProfile', through='Ownership', related_name='restaurants')
+
 
 class ManagerProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -49,6 +47,20 @@ class ManagerProfile(models.Model):
     def __str__(self):
         return force_str(getattr(self, "label", None) or f"ManagerProfile {self.pk}")
 
+class Ownership(models.Model):
+    owner = models.ForeignKey(
+        OwnerProfile, on_delete=models.CASCADE,
+        related_name="ownerships"        # owner.ownerships -> Ownership rows
+    )
+    restaurant = models.ForeignKey(
+        RestaurantProfile, on_delete=models.CASCADE,
+        related_name="ownerships"        # restaurant.ownerships -> Ownership rows
+    )
+    # (optional extra columns, e.g. role, created_at, etc.)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("owner", "restaurant")
 
 class ManagerInvite(models.Model):
     """Owner invites a manager by email. One-time link with expiry."""
