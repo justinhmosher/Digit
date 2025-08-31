@@ -1082,29 +1082,126 @@ def owner_restaurant_save_api(request):
 # OWNER GOOGLE OAuth
 # -------------------------
 
+# core/views.py (or a helpers module)
+
+# views.py (near your other helpers)
+
+# views.py (drop-in)
+
+from django.http import HttpResponseBadRequest, JsonResponse
+from django.shortcuts import render, redirect
+from django.views.decorators.http import require_POST
+from django.contrib.auth.models import User
+
+from .models import OwnerProfile, CustomerProfile, ManagerProfile
+from .utils import to_e164_us, send_sms_otp, check_sms_otp  # adjust import path if different
+
+PENDING_SOCIAL_KEY = "pending_sociallogin"   # you already use this
+OWNER_PHONE_SESSION = "pending_owner_phone"  # where we stash E.164 phone for OTP
+OWNER_AUTO_SENT_KEY = "owner_phone_auto_sent"  # flag to tell template we already sent
+
+def _find_phone_candidates(email: str):
+    """
+    Look across OwnerProfile, CustomerProfile, ManagerProfile for any phone.
+    Return list of dicts: {type, phone, verified} (deduped by normalized phone).
+    Prefer verified later.
+    """
+    results = []
+    seen = set()
+
+    def add(profile, typ):
+        if not profile:
+            return
+        raw = (profile.phone or "").strip()
+        if not raw:
+            return
+        try:
+            e164 = to_e164_us(raw)
+        except Exception:
+            return
+        if e164 in seen:
+            return
+        seen.add(e164)
+        verified = bool(getattr(profile, "phone_verified", False))
+        results.append({"type": typ, "phone": e164, "verified": verified})
+
+    user = User.objects.filter(email__iexact=email).first()
+    if not user:
+        return results
+
+    add(OwnerProfile.objects.filter(user=user).first(), "OwnerProfile")
+    add(CustomerProfile.objects.filter(user=user).first(), "CustomerProfile")
+    add(ManagerProfile.objects.filter(user=user).first(), "ManagerProfile")
+    return results
+
+
 def oauth_owner_phone_page(request):
     """
-    Page shown right after Google for OWNERS. Requires pending_sociallogin in session.
+    Page shown right after Google for OWNERS. Tries to auto-find a phone.
+    Behavior:
+      - If a VERIFIED phone exists on any profile -> send OTP immediately, stash in
+        session, render page with OTP step visible.
+      - Else if an UNVERIFIED phone exists -> prefill the phone step with that number.
+      - Else -> show empty phone entry step.
+    Optional: add ?debug=1 to see what was detected (for local troubleshooting).
     """
-    if "pending_sociallogin" not in request.session:
+    sess = request.session
+    if PENDING_SOCIAL_KEY not in sess:
         return HttpResponseBadRequest("No pending owner signup. Start with Google.")
-    if request.session.get("auth_role") != "owner":
+    if sess.get("auth_role") != "owner":
         return HttpResponseBadRequest("Wrong flow.")
 
-    email = request.session.get("pending_email", "")
-    return render(request, "core/oauth_owner_phone.html", {"email": email})
+    email = sess.get("pending_email", "") or ""
+    context = {"email": email, "prefill_phone": "", "show_otp": False}
+
+    candidates = _find_phone_candidates(email)
+
+    # Prefer a verified phone if we have one
+    verified = next((c for c in candidates if c["verified"]), None)
+    if verified:
+        phone_e164 = verified["phone"]
+        try:
+            send_sms_otp(phone_e164)
+            sess[OWNER_PHONE_SESSION] = phone_e164
+            sess[OWNER_AUTO_SENT_KEY] = True
+            sess.modified = True
+            context.update({"show_otp": True, "prefill_phone": phone_e164})
+        except Exception as e:
+            # If auto-send fails, fall back to showing the phone step prefilled
+            context.update({"prefill_phone": phone_e164, "show_otp": False})
+    else:
+        # If not verified, but we have *some* phone, prefill it for the user
+        if candidates:
+            context["prefill_phone"] = candidates[0]["phone"]
+
+    # Optional local debug
+    if request.GET.get("debug") == "1":
+        return JsonResponse({
+            "email": email,
+            "found": candidates,
+            "reason": "auto-sent OTP to verified phone" if context["show_otp"] else
+                      ("prefilled with unverified" if context["prefill_phone"] else "no candidates found"),
+            "session_phone": sess.get(OWNER_PHONE_SESSION),
+        })
+
+    # Render your existing template; it will work as-is:
+    # - if show_otp=True, you can show the OTP step immediately (template can read it)
+    # - otherwise, user hits "Send code" which posts to oauth_owner_phone_init
+    return render(request, "core/oauth_owner_phone.html", context)
 
 
 @require_POST
 def oauth_owner_phone_init(request):
     """
-    POST { phone } -> send OTP for owner flow. Stores normalized phone in session.
+    POST { phone } -> normalize & send OTP for owner flow. Stores normalized phone in session.
+    If the session already has a pending phone (from auto-send), we re-use it unless a new phone is sent.
+    Accepts JSON or form-encoded.
     """
     sess = request.session
-    if "pending_sociallogin" not in sess or sess.get("auth_role") != "owner":
+    if PENDING_SOCIAL_KEY not in sess or sess.get("auth_role") != "owner":
         return JsonResponse({"ok": False, "error": "No pending owner signup."}, status=400)
 
-    # JSON or form
+    # read payload
     raw = ""
     try:
         raw = (json.loads((request.body or b"").decode() or "{}").get("phone") or "").strip()
@@ -1113,44 +1210,50 @@ def oauth_owner_phone_init(request):
     if not raw:
         raw = (request.POST.get("phone") or "").strip()
 
-    if not raw:
-        return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
+    phone_e164 = None
+    if raw:
+        try:
+            phone_e164 = to_e164_us(raw)
+        except Exception:
+            return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
+    else:
+        # No new phone provided – try to reuse session phone (e.g., after auto-send)
+        phone_e164 = sess.get(OWNER_PHONE_SESSION)
+        if not phone_e164:
+            return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
 
-    try:
-        phone_e164 = to_e164_us(raw)
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
-
+    # Send / re-send OTP
     try:
         send_sms_otp(phone_e164)
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
-    sess["pending_owner_phone"] = phone_e164
+    sess[OWNER_PHONE_SESSION] = phone_e164
+    sess[OWNER_AUTO_SENT_KEY] = False  # this one was user-triggered (not auto)
     sess.modified = True
     return JsonResponse({"ok": True, "phone_e164": phone_e164})
 
 
+from django.db import transaction
+from django.contrib.auth import get_user_model
+from allauth.account.models import EmailAddress
+from allauth.account.utils import perform_login
+
+User = get_user_model()
+
 @require_POST
 def oauth_owner_phone_verify(request):
-    """
-    POST { code } -> verify OTP, attach Google account, create OwnerProfile, log in,
-    then send owner to restaurant onboarding.
-    """
     sess = request.session
-    if "pending_sociallogin" not in sess or sess.get("auth_role") != "owner":
-        return JsonResponse({"ok": False, "error": "Session expired. Restart Google sign-up."}, status=400)
-    if "pending_owner_phone" not in sess:
-        return JsonResponse({"ok": False, "error": "No phone on file. Send code first."}, status=400)
+    if PENDING_SOCIAL_KEY not in sess or sess.get("auth_role") != "owner":
+        return JsonResponse({"ok": False, "error": "No pending owner signup."}, status=400)
 
-    data = json.loads(request.body.decode() or "{}")
-    code = (data.get("code") or "").strip()
-    if not code:
-        return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
+    payload = json.loads((request.body or b"").decode() or "{}")
+    code = (payload.get("code") or "").strip()
+    phone_e164 = sess.get(OWNER_PHONE_SESSION)
 
-    phone_e164 = sess["pending_owner_phone"]
+    if not code or not phone_e164:
+        return JsonResponse({"ok": False, "error": "Missing code."}, status=400)
 
-    # Verify with Twilio
     try:
         status = check_sms_otp(phone_e164, code)
     except Exception as e:
@@ -1158,65 +1261,58 @@ def oauth_owner_phone_verify(request):
     if status != "approved":
         return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
-    # Restore Google login
-    try:
-        sociallogin = SocialLogin.deserialize(sess["pending_sociallogin"])
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Could not restore pending login."}, status=400)
-
-    email = (sess.get("pending_email") or sociallogin.user.email or "").lower()
+    email = (sess.get("pending_email") or "").lower()
     if not email:
-        return JsonResponse({"ok": False, "error": "Missing email from Google."}, status=400)
+        return JsonResponse({"ok": False, "error": "Missing email."}, status=400)
 
-    # Ensure saved user
-    user = User.objects.filter(email=email).first()
-    if not user:
-        user = User.objects.create_user(username=email, email=email)
-        user.set_unusable_password()
-        user.is_active = True
-        user.save(update_fields=["is_active"])
+    with transaction.atomic():
+        user, created = User.objects.get_or_create(
+            email__iexact=email,
+            defaults={"username": email, "email": email, "is_active": True},
+        )
+        if not created:
+            if not user.is_active:
+                user.is_active = True
+                user.save()
 
-    # Link Google account to this user
-    sociallogin.connect(request, user)
+        # Mark email verified in allauth
+        EmailAddress.objects.update_or_create(
+            user=user,
+            email=user.email,
+            defaults={"verified": True, "primary": True},
+        )
+        pending_key = PENDING_SOCIAL_KEY  # whatever constant/key you used (e.g. "pending_sociallogin")
+        if sess.get(pending_key):
+            sociallogin = SocialLogin.deserialize(sess[pending_key])
+            # attach the user and connect -> this creates/updates SocialAccount (+ token)
+            sociallogin.user = user
+            sociallogin.state = SocialLogin.state_from_request(request)
+            sociallogin.connect(request, user)
 
-    # Ensure OwnerProfile with verified phone
-    owner, _ = OwnerProfile.objects.get_or_create(user=user)
-    owner.phone = phone_e164
-    if hasattr(owner, "phone_verified"):
-        owner.phone_verified = True
-    if hasattr(owner, "email_verified"):
-        owner.email_verified = True
-    owner.save()
+            # (Optional) log the user in so downstream views see request.user
+            perform_login(request, user, email_verification=None)
 
-    # Log in and clean up
-    perform_login(request, user, email_verification="none")
-    for k in ("pending_sociallogin", "pending_email", "pending_owner_phone", "auth_role"):
-        sess.pop(k, None)
+        # Owner profile
+        op, _ = OwnerProfile.objects.get_or_create(user=user)
+        op.phone = phone_e164
+        if hasattr(op, "phone_verified"):
+            op.phone_verified = True
+            op.email_verified = True
+        op.save()
+
+    # If you previously stashed a SocialLogin, it’s already connected.
+    # Ensure session reflects the user:
+    perform_login(request, user, email_verification=None)
+
+    # Clean up session keys for this step
+    for k in (OWNER_PHONE_SESSION, OWNER_AUTO_SENT_KEY, PENDING_SOCIAL_KEY, "pending_email", "auth_role"):
+        if k in sess:
+            del sess[k]
     sess.modified = True
 
-    # Send to owner onboarding to create the RestaurantProfile
     return JsonResponse({"ok": True, "redirect": "/restaurant/onboard"})
 
-@login_required
-def post_login_owner(request):
-    op = getattr(request.user, "owner_profile", None)
-    if not op:
-        # no owner profile yet -> start owner onboarding
-        return redirect("core:owner_signup")  # or wherever your owner flow begins
 
-    # all restaurants this owner can access
-    qs = RestaurantProfile.objects.filter(owners__owner=op, owners__is_active=True).order_by("created_at")
-
-    if not qs.exists():
-         # owner profile exists but no restaurants yet -> onboard first restaurant
-        return redirect("core:restaurant_onboard")
-
-    # ensure a current restaurant is set in session
-    current = get_current_restaurant(request)
-    if not current or not qs.filter(id=current.id).exists():
-        set_current_restaurant(request, qs.first().id)
-
-    return redirect("core:owner_dashboard")
 
 
 # core/views.py (add near your other imports)
@@ -1357,239 +1453,179 @@ def _invite_is_valid(invite) -> bool:
         return False
     return True
 
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import ensure_csrf_cookie
-from django.contrib.auth import login, get_user_model
-from django.utils import timezone
-from django.http import JsonResponse
-from django.shortcuts import render
-from django.urls import reverse
 
+from django.shortcuts import render, redirect
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods, require_POST
+from django.contrib.auth import get_user_model, login
+from django.utils import timezone
+from django.urls import reverse
 import json
+
+from .models import ManagerInvite, ManagerProfile, OwnerProfile, CustomerProfile
+from .utils import to_e164_us, send_sms_otp, check_sms_otp  # adjust path
 
 User = get_user_model()
 
-@ensure_csrf_cookie
+
+def find_verified_phone(user):
+    """Return a phone already verified for this user (any profile)."""
+    if not user:
+        return None
+    for M in (ManagerProfile, OwnerProfile, CustomerProfile):
+        prof = M.objects.filter(user=user).first()
+        if prof and getattr(prof, "phone", None):
+            if getattr(prof, "phone_verified", True):  # default to True if field missing
+                return prof.phone
+    return None
+
+
+def mask(phone):
+    return f"•••{phone[-4:]}" if phone and len(phone) >= 4 else ""
+
+
 @require_http_methods(["GET", "POST"])
-def manager_accept_invite(request):
+def manager_accept(request):
     """
-    Manager invite accept flow.
-
-    - GET: render accept page for a valid invite.
-    - POST action=init:
-        * If user with invite.email EXISTS: ignore password fields, just send SMS OTP,
-          stash session with flag existing_user=True.
-        * If user does NOT exist: validate passwords, send SMS OTP, stash session.
-    - POST action=verify:
-        * Check OTP. If existing_user:
-            - attach/update ManagerProfile for the existing user
-            - mark invite accepted
-            - login and redirect to dashboard
-          else:
-            - create user, attach ManagerProfile
-            - mark invite accepted, login, redirect
+    Manager invite flow, simplified:
+    - GET:
+        If invite email has a verified phone -> send OTP + show code page.
+        Else -> show phone form (and password if new user).
+    - POST (from phone form):
+        Normalize phone, validate password if needed, send OTP, then show code page.
     """
-    PENDING_KEY = "pending_manager_accept"
 
-    # --- GET ---
+    # get invite
+    token = request.GET.get("token") or request.POST.get("token") or ""
+    invite = ManagerInvite.objects.filter(token=token).first()
+    if not invite or not getattr(invite, "is_valid", False):
+        return render(request, "core/manager_accept_invalid.html")
+
+    restaurant_name = invite.restaurant.dba_name or invite.restaurant.legal_name
+
+    user = User.objects.filter(email__iexact=invite.email).first()
+    existing_user = bool(user)
+    onfile_phone = find_verified_phone(user)
+
+    # -------- GET --------
     if request.method == "GET":
-        token = request.GET.get("token")
-        invite = None
-        if token:
-            invite = ManagerInvite.objects.filter(token=token).first()
-        if not invite or not getattr(invite, "is_valid", False):
-            return render(request, "core/manager_accept_invalid.html")
+        if onfile_phone:
+            # auto-send OTP
+            send_sms_otp(onfile_phone)
+            request.session["mgr_accept"] = {
+                "token": token,
+                "email": invite.email.lower(),
+                "phone": onfile_phone,
+                "existing": existing_user,
+            }
+            return render(
+                request,
+                "core/manager_accept_code.html",
+                {
+                    "token": token,
+                    "email": invite.email,
+                    "phone_mask": mask(onfile_phone),
+                    "restaurant_name": restaurant_name,
+                },
+            )
+        else:
+            return render(
+                request,
+                "core/manager_accept_phone.html",
+                {
+                    "token": token,
+                    "email": invite.email,
+                    "need_password": not existing_user,
+                    "restaurant_name": restaurant_name,
+                },
+            )
 
-        # Optional: tell template whether the user already exists
-        existing_user = User.objects.filter(email__iexact=invite.email).exists()
-        return render(
-            request,
-            "core/manager_accept.html",
-            {"invite": invite, "existing_user": existing_user},
-        )
-
-    # --- POST JSON ---
+    # -------- POST (phone form) --------
+    phone_raw = (request.POST.get("phone") or "").strip()
+    if not phone_raw:
+        return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
     try:
-        data = json.loads((request.body or b"").decode() or "{}")
+        phone_e164 = to_e164_us(phone_raw)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
+
+    password = None
+    if not existing_user:
+        p1 = request.POST.get("password1") or ""
+        p2 = request.POST.get("password2") or ""
+        if not p1 or p1 != p2:
+            return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
+        password = p1
+
+    send_sms_otp(phone_e164)
+    request.session["mgr_accept"] = {
+        "token": token,
+        "email": invite.email.lower(),
+        "phone": phone_e164,
+        "existing": existing_user,
+        "password": password,
+    }
+    return render(
+        request,
+        "core/manager_accept_code.html",
+        {
+            "token": token,
+            "email": invite.email,
+            "phone_mask": mask(phone_e164),
+            "restaurant_name": restaurant_name,
+        },
+    )
+
+
+@require_POST
+def manager_accept_verify(request):
+    """Verify OTP, create user/profile if needed, accept invite, log in."""
+    try:
+        data = json.loads(request.body.decode() or "{}")
     except Exception:
         return JsonResponse({"ok": False, "error": "Bad JSON."}, status=400)
 
-    action = (data.get("action") or "").strip()
-    token = (data.get("token") or "").strip()
-    invite = ManagerInvite.objects.filter(token=token).first()
-    if not invite or not getattr(invite, "is_valid", False):
-        return JsonResponse({"ok": False, "error": "Invite is invalid or expired."}, status=400)
+    stash = request.session.get("mgr_accept") or {}
+    if not stash or stash.get("token") != data.get("token"):
+        return JsonResponse({"ok": False, "error": "Session expired. Restart from invite link."}, status=400)
 
-    # Common bits
-    email = (data.get("email") or "").strip().lower()
-    if email != invite.email.lower():
-        return JsonResponse({"ok": False, "error": "Email must match the invited address."}, status=400)
+    code = (data.get("code") or "").strip()
+    if not code:
+        return JsonResponse({"ok": False, "error": "Missing code."}, status=400)
 
-    if action == "init":
-        # Determine whether the invited email already maps to a User
-        user = User.objects.filter(email__iexact=email).first()
-        existing_user = bool(user)
-
-        # For both paths we require a phone to OTP
-        phone_raw = (data.get("phone") or "").strip()
-        if not phone_raw:
-            return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
-
-        try:
-            phone_e164 = to_e164_us(phone_raw)
-        except Exception:
-            return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
-
-        # If you want to keep phone uniqueness for managers, keep this:
-        if ManagerProfile.objects.filter(phone=phone_e164).exists():
-            return JsonResponse({"ok": False, "error": "Phone already in use."}, status=400)
-
-        # Only enforce/collect password for new users
-        password1 = data.get("password1") or ""
-        password2 = data.get("password2") or ""
-        if not existing_user:
-            if not password1 or password1 != password2:
-                return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
-
-        # Send OTP
-        try:
-            send_sms_otp(phone_e164)
-        except Exception as e:
-            return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
-
-        # Stash pending info
-        request.session[PENDING_KEY] = {
-            "token": str(invite.token),
-            "email": email,
-            "phone": phone_e164,
-            "existing_user": existing_user,
-            # keep the password only if we're creating a new user
-            "password": password1 if not existing_user else None,
-        }
-        request.session.modified = True
-        return JsonResponse({"ok": True, "stage": "code", "phone_e164": phone_e164})
-
-    if action == "verify":
-        code = (data.get("code") or "").strip()
-        pending = request.session.get(PENDING_KEY) or {}
-        if not pending or str(invite.token) != pending.get("token"):
-            return JsonResponse({"ok": False, "error": "Session expired. Restart from invite link."}, status=400)
-
-        phone_e164 = pending.get("phone")
-        if not code or not phone_e164:
-            return JsonResponse({"ok": False, "error": "Missing code."}, status=400)
-
-        # Verify code with Twilio Verify
-        try:
-            status = check_sms_otp(phone_e164, code)
-        except Exception as e:
-            return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
-        if status != "approved":
+    try:
+        if check_sms_otp(stash["phone"], code) != "approved":
             return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
 
-        # Branch: existing user vs new user
-        email = pending["email"]
-        existing_user = bool(pending.get("existing_user"))
+    email = stash["email"]
+    user = User.objects.filter(email__iexact=email).first()
+    if not user:
+        user = User.objects.create_user(username=email, email=email, password=stash.get("password"))
+        user.is_active = True
+        user.save()
 
-        if existing_user:
-            user = User.objects.filter(email__iexact=email).first()
-            if not user:
-                # Safety (shouldn't happen)
-                return JsonResponse({"ok": False, "error": "Account disappeared. Try again."}, status=400)
-        else:
-            # Create and activate user (username=email)
-            password = pending.get("password") or _generate_code(10)  # fallback; shouldn't happen
-            user = User.objects.create_user(username=email, email=email, password=password)
-            user.is_active = True
-            user.save(update_fields=["is_active"])
-
-        # Create/attach ManagerProfile
-        mp, created = ManagerProfile.objects.get_or_create(user=user)
-        mp.phone = phone_e164
-        if hasattr(mp, "phone_verified"):
-            mp.phone_verified = True
-        if hasattr(mp, "email_verified"):
-            # possession of the invite link implies email proof
-            mp.email_verified = True
-        # attach the restaurant from the invite if not set
-        if not getattr(mp, "restaurant_id", None):
+    # create/attach manager profile
+    mp, _ = ManagerProfile.objects.get_or_create(user=user)
+    if not getattr(mp, "phone", None):
+        mp.phone = stash["phone"]
+    if hasattr(mp, "phone_verified"):
+        mp.phone_verified = True
+    if hasattr(mp, "email_verified"):
+        mp.email_verified = True
+    if not getattr(mp, "restaurant_id", None):
+        invite = ManagerInvite.objects.filter(token=stash["token"]).first()
+        if invite:
             mp.restaurant = invite.restaurant
-        mp.save()
+            invite.accepted_at = timezone.now()
+            invite.save(update_fields=["accepted_at"])
+    mp.save()
 
-        # Mark invite accepted
-        invite.accepted_at = timezone.now()
-        invite.save(update_fields=["accepted_at"])
+    del request.session["mgr_accept"]
+    login(request, user)
+    return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
 
-        # Clean session + log in + redirect
-        try:
-            del request.session[PENDING_KEY]
-        except KeyError:
-            pass
-        login(request, user)
-
-        return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
-
-    return JsonResponse({"ok": False, "error": "Unknown action."}, status=400)
-
-    if action == "verify":
-        code = (data.get("code") or "").strip()
-        pending = request.session.get(PENDING_KEY) or {}
-        if not pending or str(invite.token) != pending.get("token"):
-            return JsonResponse({"ok": False, "error": "Session expired. Restart from invite link."}, status=400)
-
-        phone_e164 = pending.get("phone")
-        if not code or not phone_e164:
-            return JsonResponse({"ok": False, "error": "Missing code."}, status=400)
-
-        # Verify code with Twilio Verify
-        try:
-            status = check_sms_otp(phone_e164, code)
-        except Exception as e:
-            return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
-        if status != "approved":
-            return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
-
-        # Create/activate the user
-        email = pending["email"]
-        password = pending["password"]
-        user = User.objects.filter(username=email).first()
-        if user:
-            user.email = email
-            user.set_password(password)
-            user.is_active = True
-            user.save()
-        else:
-            user = User.objects.create_user(username=email, email=email, password=password)
-            user.is_active = True
-            user.save()
-
-        # Create/attach ManagerProfile (phone verified)
-        mp, created = ManagerProfile.objects.get_or_create(user=user, defaults={
-            "phone": phone_e164,
-            "phone_verified": True,
-            "email_verified": True,  # invite email is verified by link possession
-            "restaurant": invite.restaurant,
-        })
-        if not created:
-            # Update fields if needed
-            mp.phone = phone_e164
-            mp.phone_verified = True
-            mp.email_verified = True
-            if not mp.restaurant:
-                mp.restaurant = invite.restaurant
-            mp.save()
-
-        # Mark invite accepted
-        invite.accepted_at = timezone.now()
-        invite.save(update_fields=["accepted_at"])
-
-        # Clean session + log in
-        request.session.pop(PENDING_KEY, None)
-        login(request, user)
-
-        return JsonResponse({"ok": True, "redirect": "/manager/dashboard/"})
-
-    return JsonResponse({"ok": False, "error": "Unknown action."}, status=400)
 
 @login_required
 def manager_dashboard(request):
@@ -1618,6 +1654,10 @@ from django.contrib.auth import authenticate, login
 from django.http import JsonResponse
 from django.urls import reverse
 
+from django.contrib.auth import authenticate, login
+from django.http import JsonResponse
+from django.urls import reverse
+
 def restaurant_signin(request):
     if request.method == "GET":
         active_tab = request.GET.get("tab", "owner")
@@ -1639,29 +1679,15 @@ def restaurant_signin(request):
     if portal == "manager":
         return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
 
-    # Owner flow
+    # owner
     owner, _ = OwnerProfile.objects.get_or_create(user=user)
+    has_any = RestaurantProfile.objects.filter(owners=owner).exists()
+    dest = reverse("core:owner_dashboard") if has_any else reverse("core:restaurant_onboard")
+    return JsonResponse({"ok": True, "redirect": dest})
 
-    # legacy one-to-one support
-    legacy_rp = getattr(user, "restaurant_profile", None)
-    if legacy_rp:
-        dest = reverse("core:owner_dashboard") if getattr(legacy_rp, "is_active", False) else reverse("core:restaurant_onboard")
-        return JsonResponse({"ok": True, "redirect": dest})
 
-    # multi-restaurant: any restaurants owned?
-    has_any_restaurant = False
-    first_rp = None
-    if hasattr(RestaurantProfile, "owners"):
-        qs = RestaurantProfile.objects.filter(owners__user=user).order_by("id")
-        has_any_restaurant = qs.exists()
-        first_rp = qs.first()
-
-    if has_any_restaurant and first_rp:
-        request.session["current_restaurant_id"] = first_rp.id
-        request.session.modified = True
-        return JsonResponse({"ok": True, "redirect": reverse("core:owner_dashboard")})
-
-    return JsonResponse({"ok": True, "redirect": reverse("core:restaurant_onboard")})
+def owner_has_any_restaurant(owner: OwnerProfile) -> bool:
+    return RestaurantProfile.objects.filter(owners=owner).exists()
 
 
 # core/views.py
@@ -1718,16 +1744,21 @@ def set_current_restaurant(request, rid: int):
     request.session["current_restaurant_id"] = int(rid)
     request.session.modified = True
 
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect
+
 @login_required
 def owner_dashboard(request):
-    op = _get_owner_profile(request.user)
+    op = getattr(request.user, "owner_profile", None)
     if not op:
-        # No OwnerProfile yet -> send to owner signup/onboarding
-        return redirect(reverse("core:owner_signup"))
+        return redirect("/owner/signup")
 
-    restaurants = _restaurants_for_owner(request.user, op)
+    restaurants = RestaurantProfile.objects.filter(
+        owners=op,               # ✅ changed
+        ownerships__isnull=False # optional: avoids dupes if you add extra filters later
+    ).order_by("created_at")
+
     current = get_current_restaurant(request) or restaurants.first()
-
     if current and not request.session.get("current_restaurant_id"):
         set_current_restaurant(request, current.id)
 
@@ -1739,17 +1770,44 @@ def owner_dashboard(request):
 
 
 
+
 # core/views.py
 from urllib.parse import quote
 from django.shortcuts import redirect
 from urllib.parse import quote
 
+# views.py
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect
+from django.urls import reverse
+from urllib.parse import quote
+
+from .models import OwnerProfile, RestaurantProfile
+
 def owner_google_start(request):
-    request.session["auth_role"] = "owner"  # keep this
+    """
+    Begin the owner Google OAuth flow.
+    We also include a 'next' that points to our post-login handler.
+    """
+    request.session["auth_role"] = "owner"
     request.session.modified = True
-    # also encode role in the next url so we don't depend on session surviving
-    next_url = "/post-login-owner/?role=owner"
+    next_url = reverse("core:post_login_owner") + "?role=owner"
     return redirect(f"/accounts/google/login/?process=login&next={quote(next_url)}")
+
+@login_required
+def post_login_owner(request):
+    role = request.GET.get("role") or request.session.pop("auth_role", None)
+    if role != "owner":
+        return redirect(reverse("core:profile"))
+
+    owner, _ = OwnerProfile.objects.get_or_create(user=request.user)
+
+    has_any = RestaurantProfile.objects.filter(owners=owner).exists()
+    if not has_any:
+        return redirect(reverse("core:restaurant_onboard"))
+
+    return redirect(reverse("core:owner_dashboard"))
+
 
 
 @login_required
@@ -1966,91 +2024,3 @@ def signin(request):
 def signout(request):
 	logout(request)
 	return redirect('core:homepage')
-
-def forgotPassEmail(request):
-	if request.method == "POST":
-		email = request.POST.get('email')
-
-		if User.objects.filter(email=email).exists():
-			myuser = User.objects.get(email = email)
-			if myuser.is_active == False:
-				messages.error(request,'Please Sign Up again.')
-				return redirect('core:signup')
-			else:
-				num = create_forgot_email(request, myuser = myuser)
-				if num == 1:
-					return redirect('core:confirm_forgot_email',email = email)
-				else:
-					messages.error(request, "There was a problem sending your confirmation email.  Please try again.")
-					return redirect('core:signup')
-
-		else:
-			messages.error(request, "Email does not exist.")
-			return redirect('core:forgotPassEmail')
-
-	return render(request,'core/forgotPassEmail.html')
-
-def create_forgot_email(request, myuser):
-
-	sender_email = config('SENDER_EMAIL')
-	sender_name = "The Chosen Fantasy Games"
-	sender_password = config('SENDER_PASSWORD')
-	receiver_email = myuser.username
-
-	smtp_server = config('SMTP_SERVER')
-	smtp_port = config('SMTP_PORT')
-
-	current_site = get_current_site(request)
-
-	message = MIMEMultipart()
-	message['From'] = f"{sender_name} <{sender_email}>"
-	message['To'] = receiver_email
-	message['Subject'] = "Change Your Password for The Chosen"
-	body = render_to_string('core/email_change.html',{
-		'domain' : current_site.domain,
-		'uid' : urlsafe_base64_encode(force_bytes(myuser.pk)),
-		'token' : generate_token.make_token(myuser),
-		})
-	message.attach(MIMEText(body, "html"))
-	text = message.as_string()
-	try:
-		server = smtplib.SMTP(smtp_server, smtp_port)
-		server.starttls()  # Secure the connection
-		server.login(sender_email, sender_password)
-		server.sendmail(sender_email, receiver_email, text)
-	except Exception as e:
-		print(f"Failed to send email: {e}")
-		messages.error(request, "There was a problem sending your email.  Please try again.")
-		return 2
-		#redirect('signup')
-	finally:
-		server.quit()
-
-	return 1
-
-
-def confirm_forgot_email(request, email):
-	user = User.objects.get(username = email)
-	if request.method == "POST":
-		create_forgot_email(request, myuser = user)
-	return render(request, "core/confirm_forgot_email.html",{"email":email})
-
-def passreset(request, uidb64, token):
-	try:
-		uid = force_str(urlsafe_base64_decode(uidb64))
-		myuser = User.objects.get(pk=uid)
-	except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-		myuser = None
-	if myuser is not None and generate_token.check_token(myuser,token):
-
-		if request.method == "POST":
-			pass1 = request.POST.get('password1')
-			pass2 = request.POST.get('password2')
-			if pass1 == pass2:
-				myuser.set_password(pass1)
-				myuser.save()
-				return redirect('core:signin')
-			else:
-				messages.error(request,"Passwords do not match.")
-				return redirect('core:passreset',uidb64=uidb64,token=token)
-	return render(request,'core/passreset.html',{'uidb64':uidb64,'token':token})

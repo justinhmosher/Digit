@@ -40,7 +40,8 @@ urlpatterns = [
     path("owner/oauth/phone", views.oauth_owner_phone_page, name="oauth_owner_phone_page"),
     path("owner/oauth/phone/init", views.oauth_owner_phone_init, name="oauth_owner_phone_init"),
     path("owner/oauth/phone/verify", views.oauth_owner_phone_verify, name="oauth_owner_phone_verify"),
-    path("manager/accept", views.manager_accept_invite, name="manager_accept_invite"),
+    path("manager/OTP/verify",views.manager_accept_verify, name = "manager_accept_verify"),
+    path("manager/accept", views.manager_accept, name="manager_accept"),
     path("manager/dashboard/", views.manager_dashboard, name="manager_dashboard"),
     # existing classic path B endpoints you already have
     path("auth/verify-otp", views.verify_otp, name="verify_otp"),

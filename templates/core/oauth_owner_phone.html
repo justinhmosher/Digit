@@ -22,6 +22,7 @@
       <label class="block text-sm font-medium text-slate-700">Phone</label>
       <input id="phone" type="tel" required
              placeholder="+15551234567"
+             value="{{ prefill_phone|default:'' }}"
              class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400" />
       <button id="sendBtn" type="button"
               class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
@@ -47,7 +48,7 @@
   </div>
 
 <script>
-  const csrf = () => (document.querySelector('meta[name="csrf-token"]')?.content || '').replace(/^['"]|['"]$/g, '');
+  const csrf = () => (document.querySelector('meta[name="csrf-token"]')?.content || '');
   function flash(msg, ok=false){
     const el = document.getElementById('alert');
     el.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
@@ -63,21 +64,24 @@
   const verifyBtn = document.getElementById('verifyBtn');
   const resendBtn = document.getElementById('resendBtn');
 
-  let sending = false;
+  // Auto-skip to OTP step if backend set show_otp
+  {% if show_otp %}
+    phoneStep.classList.add('hidden');
+    otpStep.classList.remove('hidden');
+    flash('We sent a code to {{ prefill_phone }}.', true);
+  {% endif %}
+
   sendBtn.addEventListener('click', async () => {
-    if (sending) return;
     const phone = phoneEl.value.trim();
     if (!phone) { flash('Enter your phone.'); return; }
-    sending = true; sendBtn.disabled = true; const label = sendBtn.textContent; sendBtn.textContent = 'Sending…';
     try {
       const r = await fetch("{% url 'core:oauth_owner_phone_init' %}", {
-        method: "POST", credentials: "same-origin",
+        method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
         body: JSON.stringify({ phone })
       });
       const data = await r.json().catch(()=>({}));
       if (r.ok && data.ok) {
-        if (data.phone_e164) phoneEl.value = data.phone_e164;
         phoneStep.classList.add('hidden');
         otpStep.classList.remove('hidden');
         flash('Code sent. Check your phone.', true);
@@ -85,18 +89,14 @@
         flash(data.error || 'Could not send code.');
       }
     } catch { flash('Network error.'); }
-    finally { sending = false; sendBtn.disabled = false; sendBtn.textContent = label; }
   });
 
-  let verifying = false;
   verifyBtn.addEventListener('click', async () => {
-    if (verifying) return;
     const code = codeEl.value.trim();
     if (!/^\d{6}$/.test(code)) { flash('Enter the 6-digit code.'); return; }
-    verifying = true; verifyBtn.disabled = true; const label = verifyBtn.textContent; verifyBtn.textContent = 'Verifying…';
     try {
       const r = await fetch("{% url 'core:oauth_owner_phone_verify' %}", {
-        method: "POST", credentials: "same-origin",
+        method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
         body: JSON.stringify({ code })
       });
@@ -107,25 +107,20 @@
         flash(data.error || 'Verification failed.');
       }
     } catch { flash('Network error.'); }
-    finally { verifying = false; verifyBtn.disabled = false; verifyBtn.textContent = label; }
   });
 
-  let resending = false;
   resendBtn.addEventListener('click', async () => {
-    if (resending) return;
     const phone = phoneEl.value.trim();
     if (!phone) { flash('Enter your phone first.'); return; }
-    resending = true; resendBtn.disabled = true; const label = resendBtn.textContent; resendBtn.textContent = 'Sending…';
     try {
       const r = await fetch("{% url 'core:oauth_owner_phone_init' %}", {
-        method: "POST", credentials: "same-origin",
+        method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
         body: JSON.stringify({ phone })
       });
       const data = await r.json().catch(()=>({}));
       flash(data.ok ? 'Code re-sent.' : (data.error || 'Failed to resend.'));
     } catch { flash('Network error.'); }
-    finally { resending = false; resendBtn.disabled = false; resendBtn.textContent = label; }
   });
 </script>
 </body>

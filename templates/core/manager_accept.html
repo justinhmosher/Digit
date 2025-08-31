@@ -19,9 +19,12 @@
 
     <!-- Step 1 -->
     <form id="step1" class="mt-6 space-y-4"
-          data-existing-user="{{ existing_user|yesno:'true,false' }}">
+          data-existing-user="{{ existing_user|yesno:'true,false' }}"
+          data-has-verified-phone="{% if existing_phone %}true{% else %}false{% endif %}"
+          data-phone-mask="{{ existing_phone_mask }}">
       {% csrf_token %}
       <input type="hidden" id="token" value="{{ invite.token }}">
+
       <div>
         <label class="block text-sm font-medium mb-1">Email (invited)</label>
         <input id="email" type="email" class="w-full h-12 rounded-xl border px-4 bg-slate-50"
@@ -30,13 +33,14 @@
 
       <p id="helper" class="text-sm text-slate-600"></p>
 
-      <div>
+      <!-- Phone only shown when no verified phone -->
+      <div id="phone_wrap">
         <label class="block text-sm font-medium mb-1">Phone</label>
         <input id="phone" type="tel" class="w-full h-12 rounded-xl border px-4"
                placeholder="+15551234567">
       </div>
 
-      <!-- Passwords are hidden when existing_user === true -->
+      <!-- Password only for new users -->
       <div id="pw_wrap">
         <div>
           <label class="block text-sm font-medium mb-1">Password</label>
@@ -92,35 +96,71 @@
   const step2 = document.getElementById('step2');
   const token = document.getElementById('token').value;
   const postURL = location.pathname; // "/manager/accept"
-  const isExisting = step1.dataset.existingUser === 'true';
 
-  // Tweak UI text/fields based on existing/new user
+  const isExisting = step1.dataset.existingUser === 'true';
+  const hasVerifiedPhone = step1.dataset.hasVerifiedPhone === 'true';
+  const phoneMask = step1.dataset.phoneMask || "";
+
   const helper = document.getElementById('helper');
+  const phoneWrap = document.getElementById('phone_wrap');
   const pwWrap = document.getElementById('pw_wrap');
   const sendBtn = document.getElementById('send');
 
-  if (isExisting) {
-    helper.textContent = "We found your account. We’ll verify it’s you by SMS, then activate your manager access.";
+  // Configure UI
+  if (isExisting && hasVerifiedPhone) {
+    helper.textContent = `We found your account. We’ll text a code to your phone ${phoneMask}.`;
+    phoneWrap.classList.add('hidden');
+    pwWrap.classList.add('hidden');
+    sendBtn.textContent = "Send code";
+
+    // Auto-initiate OTP
+    (async () => {
+      const payload = {
+        action: "init",
+        token,
+        email: document.getElementById('email').value.trim().toLowerCase()
+      };
+      const r = await fetch(postURL, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCSRF(),
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok && data.ok && data.stage === 'code') {
+        step1.classList.add('hidden');
+        step2.classList.remove('hidden');
+        flash('Code sent. Check your phone.', true);
+      } else {
+        flash(data.error || 'Unexpected response.');
+      }
+    })();
+  } else if (isExisting && !hasVerifiedPhone) {
+    helper.textContent = "We found your account but no phone on file. Enter your phone to get a code.";
+    phoneWrap.classList.remove('hidden');
     pwWrap.classList.add('hidden');
     sendBtn.textContent = "Send code";
   } else {
     helper.textContent = "No account found for this email. Create a password and we’ll verify by SMS.";
+    phoneWrap.classList.remove('hidden');
     pwWrap.classList.remove('hidden');
     sendBtn.textContent = "Create & send code";
   }
 
+  // Step1 submit (only used when phone input is needed)
   step1.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
       action: "init",
       token,
       email: document.getElementById('email').value.trim().toLowerCase(),
-      phone: document.getElementById('phone').value.trim()
+      phone: document.getElementById('phone').value.trim(),
+      password1: document.getElementById('p1')?.value || "",
+      password2: document.getElementById('p2')?.value || "",
     };
-    if (!isExisting) {
-      payload.password1 = document.getElementById('p1').value;
-      payload.password2 = document.getElementById('p2').value;
-    }
 
     const r = await fetch(postURL, {
       method: "POST",
