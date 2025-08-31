@@ -1794,6 +1794,12 @@ def owner_google_start(request):
     next_url = reverse("core:post_login_owner") + "?role=owner"
     return redirect(f"/accounts/google/login/?process=login&next={quote(next_url)}")
 
+def manager_google_start(request):
+    request.session["auth_role"] = "manager"
+    request.session.modified = True
+    next_url = reverse("core:manager_dashboard") + "?role=manager"
+    return redirect(f"/accounts/google/login/?process=login&next={quote(next_url)}")
+
 @login_required
 def post_login_owner(request):
     role = request.GET.get("role") or request.session.pop("auth_role", None)

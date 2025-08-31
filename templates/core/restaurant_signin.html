@@ -136,6 +136,20 @@
               Sign In
             </button>
           </form>
+            <!-- Divider -->
+  <div class="flex items-center gap-3">
+    <div class="h-px flex-1 bg-slate-200"></div>
+    <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+    <div class="h-px flex-1 bg-slate-200"></div>
+  </div>
+
+  <!-- Google OAuth (Owner) -->
+  <a href="{% url 'core:manager_google_start' %}"
+     class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
+    <span class="font-medium">Continue with Google</span>
+  </a>
+</div>
         </div>
 
       </div>

@@ -37,6 +37,7 @@ urlpatterns = [
     path('owner/precheck/', views.owner_precheck_api, name = "owner_precheck_api"),
     path("owner/invite-manager/", views.owner_invite_manager, name="owner_invite_manager"),
     path("owner/google-start/", views.owner_google_start, name="owner_google_start"),
+    path("manager/google-start", views.manager_google_start, name = "manager_google_start"),
     path("owner/oauth/phone", views.oauth_owner_phone_page, name="oauth_owner_phone_page"),
     path("owner/oauth/phone/init", views.oauth_owner_phone_init, name="oauth_owner_phone_init"),
     path("owner/oauth/phone/verify", views.oauth_owner_phone_verify, name="oauth_owner_phone_verify"),

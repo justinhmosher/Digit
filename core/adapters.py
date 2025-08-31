@@ -1,21 +1,21 @@
 # core/adapters.py
 from django.shortcuts import redirect
+from django.urls import reverse
 from allauth.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from allauth.socialaccount.models import SocialLogin
 from allauth.account.utils import perform_login
 from django.contrib.auth import get_user_model
 
-from .models import OwnerProfile, RestaurantProfile, CustomerProfile  # adjust paths
+from .models import OwnerProfile, RestaurantProfile, CustomerProfile, ManagerProfile  # + ManagerProfile
 
 User = get_user_model()
 
 class GoogleGateAdapter(DefaultSocialAccountAdapter):
     def pre_social_login(self, request, sociallogin: SocialLogin):
-        # who is flowing through? (set by your /owner/google-start/ or default to 'customer')
+        # Set this before sending users to Google from your manager/owner/customer start pages
         gate_role = request.session.get("auth_role", "customer")
 
-        # helper: stash the sociallogin so OTP step can restore/deserialize it
         def stash_and_gate(to_url_name: str):
             request.session["pending_sociallogin"] = sociallogin.serialize()
             request.session["pending_email"] = (sociallogin.user.email or "").lower()
@@ -23,63 +23,63 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
             request.session.modified = True
             raise ImmediateHttpResponse(redirect(to_url_name))
 
-        # resolve the "local" user if this social account already exists
+        # Resolve the local user if possible
         user = None
         if sociallogin.is_existing:
-            # already linked: this is the local Django user
             user = sociallogin.account.user
         else:
-            # new sociallogin; try to match an existing user by email
             email = (sociallogin.user.email or "").lower()
             if email:
                 user = User.objects.filter(email__iexact=email).first()
 
+        # ===== MANAGER FLOW =====
+        if gate_role == "manager":
+            # Must be an existing user with a ManagerProfile
+            if not user:
+                # No local user for this email → not invited
+                signin_url = reverse("core:restaurant_signin") + "?error=manager_invite_required"
+                raise ImmediateHttpResponse(redirect(signin_url))
+
+            mp = getattr(user, "managerprofile", None) or ManagerProfile.objects.filter(user=user).first()
+            if not mp:
+                # Not a manager on this account → bounce to restaurant sign-in with error
+                signin_url = reverse("core:restaurant_signin") + "?error=manager_invite_required"
+                raise ImmediateHttpResponse(redirect(signin_url))
+
+            # Good to go: ensure the social account is linked, then log in and redirect
+            if not sociallogin.is_existing:
+                sociallogin.connect(request, user)
+            perform_login(request, user, email_verification=None)
+            raise ImmediateHttpResponse(redirect("core:manager_dashboard"))
+
         # ===== OWNER FLOW =====
         if gate_role == "owner":
-            # If we don't have a local user yet, we must OTP to create/attach everything.
             if not user:
                 return stash_and_gate("core:oauth_owner_phone_page")
 
-            # Look up owner profile
             op = getattr(user, "ownerprofile", None) or OwnerProfile.objects.filter(user=user).first()
             if not op:
-                # No owner profile yet → OTP flow will create OwnerProfile and mark phone
                 return stash_and_gate("core:oauth_owner_phone_page")
 
-            # Has owner profile; check phone verification
-            phone_ok = getattr(op, "phone_verified", False)
-
-            if not phone_ok:
-                # Need phone verification
+            if not getattr(op, "phone_verified", False):
                 return stash_and_gate("core:oauth_owner_phone_page")
 
-            # Phone verified: do they have at least one restaurant?
             has_restaurant = RestaurantProfile.objects.filter(owners=op).exists()
-            # If you have a "verified" flag on restaurant, replace with:
-            # has_restaurant = RestaurantProfile.objects.filter(owners=op, status="verified").exists()
-
-            # If the social account isn't linked yet, connect it to this user
             if not sociallogin.is_existing:
                 sociallogin.connect(request, user)
-
-            # Log them in now so next view sees request.user
             perform_login(request, user, email_verification=None)
 
             if has_restaurant:
-                # Fully ready → owner dashboard / post_login
                 raise ImmediateHttpResponse(redirect("core:post_login_owner"))
             else:
-                # Phone OK but needs onboarding a restaurant
                 raise ImmediateHttpResponse(redirect("core:restaurant_onboard"))
 
-        # ===== CUSTOMER FLOW (unchanged from your original, with a small safety tweak) =====
-        # For customers we allow straight-through if they already have a verified customer profile.
+        # ===== CUSTOMER FLOW =====
         if sociallogin.is_existing:
             u = sociallogin.account.user
             prof = getattr(u, "customerprofile", None)
             if prof and getattr(prof, "phone_verified", False):
-                return  # allow default allauth completion
+                return  # let allauth complete normally
 
-        # Otherwise, stash and gate customers to their phone page
+        # Default: send customers to phone OTP
         return stash_and_gate("core:oauth_phone_page")
-
