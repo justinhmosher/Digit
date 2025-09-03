@@ -79,7 +79,8 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
             u = sociallogin.account.user
             prof = getattr(u, "customerprofile", None)
             if prof and getattr(prof, "phone_verified", False):
-                return  # let allauth complete normally
-
+                return  ImmediateHttpResponse(redirect("core:profile"))
+            else:
+                return ImmediateHttpResponse(redirect("core:oauth_verify_existing"))
         # Default: send customers to phone OTP
         return stash_and_gate("core:oauth_phone_page")

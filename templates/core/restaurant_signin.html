@@ -235,6 +235,14 @@
       }
 
       // helpful messages for common statuses
+      if (!r.ok) {
+  if (data.signup_url) {
+    showAlert(`No owner profile found. <a class="underline" href="${data.signup_url}">Create owner account</a>.`);
+    return;
+  }
+  return showAlert(data.error || "Sign-in failed.");
+}
+
       if (r.status === 400) {
         return showAlert(data.error || "Email or password is incorrect.");
       }

@@ -517,6 +517,202 @@ def oauth_phone_page(request):
 	email = request.session.get("pending_email", "")
 	return render(request, "core/oauth_phone.html", {"email": email})
 
+
+# core/views.py
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.shortcuts import render, redirect
+from django.urls import reverse
+from django.views.decorators.http import require_http_methods
+
+from core.models import CustomerProfile, OwnerProfile, ManagerProfile
+# Reuse your existing OTP util
+
+SESSION_KEY = "oauth_verify_existing"  # where we stash {email, phone}
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def oauth_verify_existing(request):
+    """
+    All-in-one social-OTP finisher for CUSTOMERS:
+      - GET:
+          * determine email (from request.user.email)
+          * try to find phone on: CustomerProfile -> OwnerProfile -> ManagerProfile
+          * if phone found: send OTP, stash {email, phone}, render code step
+          * else: render phone step
+      - POST (JSON):
+          action = "init"   -> accept phone, send OTP, stash {email, phone}
+          action = "resend" -> resend OTP to stashed phone
+          action = "verify" -> check OTP; create/ensure CustomerProfile, set phone/verified, redirect
+    """
+    user = request.user
+    if not user.is_authenticated:
+        return redirect("core:signin")
+
+    # Always normalize email to lowercase
+    email = (getattr(user, "email", "") or "").strip().lower()
+    if request.method == "GET":
+        # Try to find best phone on existing profiles (for THIS user/email)
+        phone = ""
+        # Prefer CustomerProfile for this user
+        cp = CustomerProfile.objects.filter(user=user).first()
+        if cp and cp.phone:
+            phone = cp.phone
+        if not phone:
+            op = OwnerProfile.objects.filter(user=user).first()
+            if op and op.phone:
+                phone = op.phone
+        if not phone:
+            mp = ManagerProfile.objects.filter(user=user).first()
+            if mp and mp.phone:
+                phone = mp.phone
+
+        # If we got a phone, send OTP and land them on code step immediately.
+        if phone:
+            try:
+                send_sms_otp(phone)
+            except Exception as e:
+                # If SMS fails, just fall back to phone entry step with error banner.
+                return render(
+                    request,
+                    "core/oath_verify_existing.html",
+                    {
+                        "email": email,
+                        "phone_prefilled": "",
+                        "start_on_code": False,
+                        "server_error": f"Failed to send SMS: {e}",
+                    },
+                )
+            # Stash session
+            request.session[SESSION_KEY] = {"email": email, "phone": phone}
+            request.session.modified = True
+            return render(
+                request,
+                "core/oath_verify_existing.html",
+                {
+                    "email": email,
+                    "phone_prefilled": phone,
+                    "start_on_code": True,   # show code UI first
+                    "server_error": "",
+                },
+            )
+
+        # No phone found → ask for phone first
+        return render(
+            request,
+            "core/oath_verify_existing.html",
+            {
+                "email": email,
+                "phone_prefilled": "",
+                "start_on_code": False,
+                "server_error": "",
+            },
+        )
+
+    # --- POST JSON actions ---
+    import json
+    try:
+        data = json.loads((request.body or b"").decode() or "{}")
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Bad JSON."}, status=400)
+
+    action = (data.get("action") or "").strip().lower()
+    sess = request.session.get(SESSION_KEY) or {}
+
+    if action == "init":
+        # Accept phone, send OTP, stash in session
+        phone = (data.get("phone") or "").strip()
+        if not phone:
+            return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
+        try:
+            send_sms_otp(phone)
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
+
+        request.session[SESSION_KEY] = {"email": email, "phone": phone}
+        request.session.modified = True
+        return JsonResponse({"ok": True, "stage": "code", "phone": phone})
+
+    if action == "resend":
+        phone = sess.get("phone", "")
+        if not phone:
+            return JsonResponse({"ok": False, "error": "No phone on file."}, status=400)
+        try:
+            send_sms_otp(phone)
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": f"Failed to resend SMS: {e}"}, status=500)
+        return JsonResponse({"ok": True, "stage": "code"})
+
+    if action == "verify":
+        code = (data.get("code") or "").strip()
+        phone = sess.get("phone", "")
+        if not code or not phone:
+            return JsonResponse({"ok": False, "error": "Missing code or phone."}, status=400)
+        try:
+            status = check_sms_otp(phone, code)  # must return "approved" on success
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
+        if status != "approved":
+            return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
+
+        # Ensure/Update CustomerProfile for this user
+        cp, created = CustomerProfile.objects.get_or_create(user=user)
+        cp.phone = phone
+        cp.phone_verified = True
+        # If you consider social email = verified email:
+        if hasattr(cp, "email_verified"):
+            cp.email_verified = True
+        cp.save()
+
+        # Cleanup session and go to profile
+        try:
+            del request.session[SESSION_KEY]
+        except KeyError:
+            pass
+        request.session.modified = True
+        return JsonResponse({"ok": True, "redirect": reverse("core:profile")})
+
+    return JsonResponse({"ok": False, "error": "Unknown action."}, status=400)
+
+
+def customer_google_start(request):
+    """
+    Begin the customer Google OAuth flow.
+    - Sets session role = "customer"
+    - Redirects into allauth's Google login
+    - Ensures 'next' points back to our custom post-login handler
+    """
+    request.session["auth_role"] = "customer"
+    request.session.modified = True
+
+    # Next: send them to your customer post-login view
+    next_url = reverse("core:post_login_customer") + "?role=customer"
+
+    return redirect(
+        f"/accounts/google/login/?process=login&next={quote(next_url)}"    
+    )
+
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def post_login_customer(request):
+    role = request.GET.get("role") or request.session.pop("auth_role", None)
+    if role != "customer":
+        return redirect(reverse("core:profile"))  # fallback
+
+    # Ensure CustomerProfile exists
+    profile, _ = CustomerProfile.objects.get_or_create(user=request.user)
+
+    # If phone already exists and is verified → skip OTP
+    if profile.phone and profile.phone_verified:
+        return redirect(reverse("core:profile"))
+
+    # Otherwise → go to OTP page to verify phone
+    return redirect(reverse("core:oauth_verify_existing"))
+
+
+
 @require_POST
 def oauth_phone_init(request):
     """
@@ -1658,11 +1854,16 @@ from django.contrib.auth import authenticate, login
 from django.http import JsonResponse
 from django.urls import reverse
 
+from django.contrib.auth import authenticate, login
+from django.http import JsonResponse
+from django.urls import reverse
+
 def restaurant_signin(request):
     if request.method == "GET":
         active_tab = request.GET.get("tab", "owner")
         return render(request, "core/restaurant_signin.html", {"active_tab": active_tab})
 
+    # ---- POST (JSON response) ----
     portal = (request.POST.get("portal") or "owner").strip()
     email  = (request.POST.get("email") or "").strip().lower()
     pwd    = request.POST.get("password") or ""
@@ -1676,11 +1877,23 @@ def restaurant_signin(request):
 
     login(request, user)
 
+    # -------- MANAGER PORTAL --------
     if portal == "manager":
         return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
 
-    # owner
-    owner, _ = OwnerProfile.objects.get_or_create(user=user)
+    # -------- OWNER PORTAL --------
+    from .models import OwnerProfile, RestaurantProfile
+
+    owner = OwnerProfile.objects.filter(user=user).first()
+    if not owner:
+        # DO NOT create here; send them to owner signup
+        return JsonResponse({
+            "ok": False,
+            "error": "No owner profile found for this user. Please create an owner account first.",
+            "signup_url": reverse("core:owner_signup"),
+        }, status=403)
+
+    # Owner exists → decide destination based on restaurant ownership
     has_any = RestaurantProfile.objects.filter(owners=owner).exists()
     dest = reverse("core:owner_dashboard") if has_any else reverse("core:restaurant_onboard")
     return JsonResponse({"ok": True, "redirect": dest})

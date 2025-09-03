@@ -85,13 +85,16 @@
         </div>
 
         <!-- Google Sign In -->
-        <div class="mt-4">
-          <a href="{% provider_login_url 'google' process='login' %}"
-             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="">
-            <span class="font-medium">Continue with Google</span>
-          </a>
-        </div>
+<!-- Google Sign In -->
+<div class="mt-4">
+  <a href="{% url 'core:customer_google_start' %}"
+     class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+         class="h-5 w-5" alt="Google">
+    <span class="font-medium">Continue with Google</span>
+  </a>
+</div>
+
 
       </div>
     </section>

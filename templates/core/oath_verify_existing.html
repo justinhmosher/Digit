@@ -1,0 +1,154 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Verify your code — Dine N Dash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-6">
+  <main class="w-full max-w-md">
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-8">
+      <h1 class="text-2xl font-bold">Verify your phone</h1>
+      <p class="mt-2 text-sm text-slate-600">
+        We sent a 6-digit code to
+        <span class="font-medium">
+          {% if masked_phone %}{{ masked_phone }}{% else %}your phone{% endif %}
+        </span>.
+      </p>
+
+      <!-- alert -->
+      <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
+
+      <!-- CODE FORM ONLY -->
+      <form id="codeForm" class="mt-6 space-y-4">
+        {% csrf_token %}
+        <label for="code" class="block text-sm font-medium">6-digit code</label>
+        <input
+          id="code"
+          name="code"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="6"
+          autocomplete="one-time-code"
+          placeholder="123456"
+          class="w-full h-12 rounded-xl border px-4 focus:ring-2 focus:ring-emerald-400"
+          required
+        />
+
+        <button
+          id="verifyBtn"
+          type="submit"
+          class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800"
+        >
+          Verify & Continue
+        </button>
+
+        <div class="flex items-center justify-between text-sm">
+          <span id="resendHint" class="text-slate-500">Didn’t get a code?</span>
+          <button
+            id="resendBtn"
+            type="button"
+            class="text-slate-900 font-medium hover:underline disabled:text-slate-400"
+          >
+            Resend code
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <p class="mt-6 text-center text-xs text-slate-500">
+      Having trouble? <a href="mailto:commissioner@thechosenfg.com" class="underline">Contact support</a>
+    </p>
+  </main>
+
+<script>
+  // --- helpers ---
+  const csrf = () => (document.querySelector('meta[name="csrf-token"]')?.content || '').replace(/^['"]|['"]$/g, '');
+  const alertBox = document.getElementById('alert');
+  function flash(msg, ok=false){
+    alertBox.className = 'mt-4 rounded-md px-4 py-3 text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+    alertBox.textContent = msg;
+    alertBox.classList.remove('hidden');
+  }
+
+  const codeEl    = document.getElementById('code');
+  const form      = document.getElementById('codeForm');
+  const resendBtn = document.getElementById('resendBtn');
+  const verifyBtn = document.getElementById('verifyBtn');
+
+  // focus immediately
+  setTimeout(() => codeEl?.focus(), 50);
+
+  // Submit -> verify
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = codeEl.value.trim();
+    if (!/^\d{6}$/.test(code)) return flash('Please enter the 6-digit code.');
+
+    const original = verifyBtn.textContent;
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = 'Verifying…';
+
+    try {
+      const res = await fetch("{% url 'core:oauth_verify_existing' %}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ action: "verify", code })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        window.location.href = data.redirect || "{% url 'core:profile' %}";
+        return;
+      }
+      flash(data.error || 'Invalid or expired code.');
+    } catch {
+      flash('Network error. Please try again.');
+    } finally {
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = original;
+    }
+  });
+
+  // Optional: resend
+  let cooldown = 0, timer;
+  function tick(){
+    if (cooldown <= 0) {
+      resendBtn.disabled = false;
+      resendBtn.textContent = 'Resend code';
+      return;
+    }
+    resendBtn.disabled = true;
+    resendBtn.textContent = `Resend in ${cooldown}s`;
+    cooldown -= 1;
+    timer = setTimeout(tick, 1000);
+  }
+  function startCooldown(seconds=30){
+    clearTimeout(timer);
+    cooldown = seconds; tick();
+  }
+
+  resendBtn.addEventListener('click', async () => {
+    if (resendBtn.disabled) return;
+    startCooldown(30);
+    try {
+      const res = await fetch("{% url 'core:oauth_verify_existing' %}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+        body: JSON.stringify({ action: "resend" })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        flash('Code re-sent.', true);
+      } else {
+        flash(data.error || 'Could not resend code.');
+      }
+    } catch {
+      flash('Network error while resending.');
+    }
+  });
+</script>
+</body>
+</html>
