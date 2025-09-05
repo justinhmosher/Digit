@@ -1,0 +1,119 @@
+<!-- templates/core/staff_console.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Expose CSRF token for non-form fetch requests -->
+  <meta name="csrf-token" content="{{ csrf_token }}">
+</head>
+<body class="bg-slate-50 min-h-screen p-6">
+  <div class="max-w-xl mx-auto bg-white rounded-2xl shadow p-6">
+    <h1 class="text-2xl font-bold">Link Member to Check</h1>
+    <div id="alert" class="hidden mt-3 rounded-lg px-3 py-2 text-sm"></div>
+
+    <div class="mt-6 grid gap-4">
+      <input id="member" class="h-12 rounded-xl border px-4" placeholder="Member number" />
+      <input id="lname"  class="h-12 rounded-xl border px-4" placeholder="Last name (confirm)" />
+      <input id="hint"   class="h-12 rounded-xl border px-4" placeholder="Check # or table name (optional)" />
+      <button id="linkBtn" class="h-12 rounded-xl bg-slate-900 text-white">Link</button>
+    </div>
+
+    <div id="choices" class="hidden mt-6"></div>
+
+    <div id="green" class="hidden mt-6 rounded-xl bg-emerald-100 text-emerald-900 p-4">
+      <p class="font-medium">Member verified: <span id="lnameShow"></span></p>
+      <p class="text-sm">Ticket linked. Customer can now see their live receipt.</p>
+    </div>
+  </div>
+
+<script>
+// ---- helpers ----
+function showAlert(msg, ok=false){
+  const el = document.getElementById('alert');
+  el.className = 'mt-3 rounded-lg px-3 py-2 text-sm ' +
+    (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+  el.innerHTML = msg;
+  el.classList.remove('hidden');
+}
+
+function getCSRFCookie(){
+  const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function getCSRFToken(){
+  return getCSRFCookie() || (document.querySelector('meta[name="csrf-token"]')?.content || '');
+}
+
+async function postJSON(url, body){
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCSRFToken()
+    },
+    credentials: 'same-origin',  // send session cookie
+    body: JSON.stringify(body || {})
+  });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  return { ok: r.ok, status: r.status, data };
+}
+
+// ---- UI wiring ----
+document.getElementById('linkBtn').onclick = async () => {
+  const member = document.getElementById('member').value.trim();
+  const lname  = document.getElementById('lname').value.trim();
+  const hint   = document.getElementById('hint').value.trim();
+
+  if (!member) return showAlert('Enter a member number');
+
+  const res = await postJSON('/api/link-member', {
+    member_number: member,
+    last_name: lname,
+    check_hint: hint
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return showAlert('Forbidden (CSRF). Refresh the page and try again, or ensure you are on the same origin.');
+    }
+    return showAlert(res.data?.error || 'Request failed.');
+  }
+
+  const data = res.data;
+
+  // Multiple candidates -> show picker
+  if (data.multiple) {
+    const box = document.getElementById('choices');
+    box.innerHTML =
+      '<p class="mb-2">Multiple tickets matched. Choose one:</p>' +
+      data.candidates.map(c =>
+        `<button data-id="${c.ticket_id}" class="ticket-choice mr-2 mt-2 px-3 py-2 rounded-lg border hover:bg-slate-50">${c.label}</button>`
+      ).join('');
+    box.classList.remove('hidden');
+
+    box.onclick = async (e) => {
+      if (!e.target.classList.contains('ticket-choice')) return;
+      const ticket_id = e.target.getAttribute('data-id');
+      const r2 = await postJSON('/api/link-member', {
+        member_number: member,
+        last_name: lname,
+        ticket_id
+      });
+      if (!r2.ok) return showAlert(r2.data?.error || 'Link failed.');
+      document.getElementById('lnameShow').textContent = r2.data.member_last || '';
+      document.getElementById('green').classList.remove('hidden');
+      showAlert('Member linked to ticket.', true);
+    };
+  } else {
+    document.getElementById('lnameShow').textContent = data.member_last || '';
+    document.getElementById('green').classList.remove('hidden');
+    showAlert('Member linked to ticket.', true);
+  }
+};
+</script>
+</body>
+</html>
+

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views
+from . import views, views_staff
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -53,4 +53,8 @@ urlpatterns = [
     path("restaurant/onboard",views.restaurant_onboard,name = "restaurant_onboard"),
     path("debug/session", views.debug_session),
     path("api/precheck-user", views.precheck_user_api, name="precheck_user_api"),
+    path("staff", views_staff.staff_console, name="staff_console"),
+    path("api/link-member", views_staff.api_link_member_to_ticket, name="link_member"),
+    path("api/ticket/<str:member_number>", views_staff.api_ticket_receipt, name="ticket_receipt"),
+    path("api/close/<str:member_number>", views_staff.api_close_tab, name="close_tab"),
 ]

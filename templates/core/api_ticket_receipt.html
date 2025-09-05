@@ -1,0 +1,54 @@
+<!-- templates/core/customer_ticket.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 p-6">
+  <div class="max-w-xl mx-auto bg-white rounded-2xl shadow p-6">
+    <h1 class="text-2xl font-bold">Your check</h1>
+    <ul id="items" class="mt-4 space-y-2"></ul>
+    <div class="mt-4 text-right">
+      <div>Subtotal: <span id="sub">$0.00</span></div>
+      <div>Tax: <span id="tax">$0.00</span></div>
+      <div class="text-xl font-semibold">Total: <span id="tot">$0.00</span></div>
+    </div>
+    <button id="closeBtn" class="mt-6 w-full h-12 rounded-xl bg-slate-900 text-white">Close tab</button>
+    <div id="msg" class="hidden mt-3 text-sm rounded-lg px-3 py-2"></div>
+  </div>
+
+<script>
+const member = new URLSearchParams(location.search).get('member');
+function dollars(c){ return (c/100).toFixed(2); }
+async function refresh(){
+  const r = await fetch(`/api/ticket/${encodeURIComponent(member)}`);
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok){ return; }
+  const ul = document.getElementById('items'); ul.innerHTML='';
+  for(const i of data.items){
+    const li = document.createElement('li');
+    li.className='flex justify-between';
+    li.innerHTML = `<span>${i.qty}× ${i.name}</span><span>$${dollars(i.cents)}</span>`;
+    ul.appendChild(li);
+  }
+  document.getElementById('sub').textContent = `$${dollars(data.subtotal_cents)}`;
+  document.getElementById('tax').textContent = `$${dollars(data.tax_cents)}`;
+  document.getElementById('tot').textContent = `$${dollars(data.total_cents)}`;
+}
+setInterval(refresh, 4000); refresh();
+
+document.getElementById('closeBtn').onclick = async ()=>{
+  const r = await fetch(`/api/close/${encodeURIComponent(member)}`,{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({reference: `demo_${Date.now()}`})
+  });
+  const data = await r.json().catch(()=>({}));
+  const el = document.getElementById('msg');
+  if(r.ok){ el.className='mt-3 text-sm rounded-lg px-3 py-2 bg-emerald-100 text-emerald-900'; el.textContent='Tab closed. Enjoy!'; }
+  else   { el.className='mt-3 text-sm rounded-lg px-3 py-2 bg-red-100 text-red-900'; el.textContent=data.error||'Error'; }
+  el.classList.remove('hidden');
+};
+</script>
+</body>
+</html>

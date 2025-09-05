@@ -3,7 +3,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.encoding import force_str
-import uuid, hashlib, os
+import uuid, hashlib
 
 # ---------- Profiles ----------
 class OwnerProfile(models.Model):
@@ -109,4 +109,23 @@ class PhoneOTP(models.Model):
     def hash_code(code: str) -> str:
         salt = os.environ.get("OTP_SALT", "change_me_salt")
         return hashlib.sha256(f"{salt}:{code}".encode()).hexdigest()
+
+class Member(models.Model):
+    # your global member
+    number = models.CharField(max_length=20, unique=True, db_index=True)
+    last_name = models.CharField(max_length=64)
+    customer = models.ForeignKey(CustomerProfile, on_delete=models.CASCADE)
+    # optional: link to a CustomerProfile/User, phone, etc.
+
+class TicketLink(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE)
+    location_id = models.CharField(max_length=64)      # Omnivore location
+    ticket_id   = models.CharField(max_length=64, db_index=True)
+    server_name = models.CharField(max_length=64, blank=True)
+    status      = models.CharField(max_length=16, default="open")  # open|closing|closed
+    opened_at   = models.DateTimeField(auto_now_add=True)
+    closed_at   = models.DateTimeField(null=True, blank=True)
+    last_total  = models.IntegerField(default=0)  # cents
+    external_txn_id = models.CharField(max_length=64, blank=True)  # if you charge via Stripe, etc.
+
 

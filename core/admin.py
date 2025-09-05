@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import RestaurantProfile,ManagerProfile,ManagerInvite, CustomerProfile, OwnerProfile, Ownership
+from .models import RestaurantProfile,ManagerProfile,ManagerInvite, CustomerProfile, OwnerProfile, Ownership, Member, TicketLink
 
 admin.site.register(ManagerInvite)
 admin.site.register(CustomerProfile)
@@ -28,3 +28,6 @@ class OwnerProfileAdmin(admin.ModelAdmin):
 @admin.register(ManagerProfile)
 class ManagerProfileAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "restaurant", "phone", "phone_verified")
+
+admin.site.register(Member)
+admin.site.register(TicketLink)
