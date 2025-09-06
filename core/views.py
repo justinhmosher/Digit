@@ -44,7 +44,24 @@ def debug_session(request):
     return JsonResponse({"keys": list(request.session.keys())}, safe=False)
 
 def homepage(request):
-	return render(request,"core/homepage.html")
+    """
+    Public page. Shows Recommendations to everyone.
+    Shows Transactions + Profile only when:
+      - user is authenticated, AND
+      - they have a CustomerProfile.
+    """
+    has_customer = False
+    if request.user.is_authenticated:
+        # choose ONE of these implementations:
+        # 1) fast existence check (works if FK is named 'user')
+        has_customer = CustomerProfile.objects.filter(user=request.user).exists()
+        # 2) or hasattr(request.user, "customerprofile")  # if you prefer attribute access
+
+    ctx = {
+        "has_customer": has_customer,
+        # Any other context you render into the page can go here.
+    }
+    return render(request, "core/homepage.html", ctx)
 
 def _generate_code(n=6):
     return "".join(str(random.randint(0,9)) for _ in range(n))

@@ -1,14 +1,14 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff
+from . import views, views_staff, views_home
 from django.conf import settings
 from django.conf.urls.static import static
 
 app_name = 'core'
 
 urlpatterns = [
-	path('',views.homepage,name="homepage"),
+	path('',views_home.customer_home,name="homepage"),
     path("customer/signup", views.signup, name="signup"),
 	path('customer/signup/api/',views.customer_begin_api,name="customer_begin_api"),
     path('customer/precheck/',views.customer_precheck_api, name ="customer_precheck_api"),
@@ -55,6 +55,6 @@ urlpatterns = [
     path("api/precheck-user", views.precheck_user_api, name="precheck_user_api"),
     path("staff", views_staff.staff_console, name="staff_console"),
     path("api/link-member", views_staff.api_link_member_to_ticket, name="link_member"),
-    path("api/ticket/<str:member_number>", views_staff.api_ticket_receipt, name="ticket_receipt"),
-    path("api/close/<str:member_number>", views_staff.api_close_tab, name="close_tab"),
+    path("api/ticket/<member>/receipt", views_staff.api_ticket_receipt, name="ticket_receipt"),
+    path("api/ticket/<member>/close", views_staff.api_close_tab, name="close_tab"),
 ]

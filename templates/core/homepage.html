@@ -3,167 +3,679 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Dine N Dash — Seamless Dining Payments</title>
+  <title>Dine N Dash — Customer</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: { DEFAULT: "#0f172a" }, // slate-900
-            accent: { DEFAULT: "#10b981" } // emerald-500
-          }
-        }
-      }
-    }
-  </script>
 </head>
-<body class="bg-gradient-to-b from-white to-slate-50 text-slate-900 antialiased">
-  <!-- NAV -->
-  <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur">
+<body class="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900"
+      data-live="{{ has_live_order|yesno:'1,0' }}" data-member="{{ member_number|default:'' }}">
+  <!-- Toast (errors/info) -->
+  <div id="toast" class="pointer-events-none fixed inset-x-0 top-3 z-[100] flex justify-center px-4 hidden">
+    <div id="toastBox"
+         class="pointer-events-auto max-w-xl w-full rounded-2xl border px-4 py-3 shadow-lg bg-white text-slate-800
+                flex items-start gap-3">
+      <div id="toastIcon" class="mt-[2px] h-5 w-5 rounded-full bg-slate-400"></div>
+      <div class="flex-1">
+        <div id="toastTitle" class="font-semibold">Notice</div>
+        <div id="toastMsg" class="text-sm mt-0.5"></div>
+      </div>
+      <button id="toastClose" class="ml-3 rounded-xl border px-2 py-1 text-xs hover:bg-slate-50">Dismiss</button>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
     <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
+        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
         <span class="font-semibold tracking-tight">Dine N Dash</span>
       </a>
-      <!-- Top-right CTAs: now visible on mobile too (no hidden class) -->
-      <nav class="hidden md:flex items-center gap-8 text-sm">
-        <a href="#how" class="hover:text-slate-700">How it works</a>
-        <a href="#features" class="hover:text-slate-700">Features</a>
-        <a href="#faq" class="hover:text-slate-700">FAQ</a>
+
+      <!-- Desktop nav -->
+      <nav class="hidden md:flex items-center gap-1">
+        {% if user.is_authenticated and has_customer %}
+          {% if has_live_order %}
+            <button data-tab="live" class="tab relative px-4 py-2 rounded-2xl text-sm border">
+              Live Order
+              <span class="absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+            </button>
+          {% endif %}
+          <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
+          <button data-tab="txn" class="tab px-4 py-2 rounded-2xl text-sm border">Transactions</button>
+          <button data-tab="profile" class="tab px-4 py-2 rounded-2xl text-sm border">Profile</button>
+        {% else %}
+          <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
+        {% endif %}
       </nav>
+
+      <!-- Right-side actions -->
       <div class="flex items-center gap-2">
-        <a href="/restaurant/signin" class="inline-block">
-          <button class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">Restaurant Sign In</button>
+        <a href="{% url 'core:restaurant_signin' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+          Restaurant sign in
         </a>
-        <a href="/signin" class="inline-block">
-          <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Customer Sign In</button>
-        </a>
+
+        {% if user.is_authenticated %}
+          <a href="{% url 'core:signout' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+            Sign out
+          </a>
+        {% else %}
+          <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+            Sign in
+          </a>
+        {% endif %}
+
+        <button id="openMobile" aria-label="Open menu" class="md:hidden inline-flex rounded-xl border p-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
       </div>
     </div>
   </header>
 
-  <!-- HERO -->
-  <section class="relative">
-    <div class="mx-auto max-w-7xl px-4 py-16 md:py-24 grid md:grid-cols-2 gap-10 items-center">
-      <div>
-        <div class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs mb-4">
-          <span class="h-2 w-2 rounded-full bg-accent"></span> Live in select cities
+  <!-- Mobile drawer -->
+  <div id="drawerWrap" class="fixed inset-0 z-40 md:hidden pointer-events-none" aria-hidden="true">
+    <div id="drawerBackdrop" class="absolute inset-0 bg-black/30 opacity-0 transition-opacity"></div>
+    <aside id="drawer"
+           class="absolute top-0 left-0 h-full w-80 max-w-[85%] bg-white shadow-xl border-r border-slate-200
+                  -translate-x-full transform transition-transform duration-300"
+           role="dialog" aria-modal="true">
+      <div class="flex items-center justify-between px-4 py-4 border-b">
+        <div class="flex items-center gap-3">
+          <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
+          <span class="font-semibold">Dine N Dash</span>
         </div>
-        <h1 class="text-4xl md:text-6xl font-bold tracking-tight leading-tight">
-          Dine smarter. Pay faster. <span class="text-slate-500">No checks, no cards.</span>
-        </h1>
-        <p class="mt-5 text-slate-600 text-lg">
-          Dine N Dash is a seamless dining payment system designed to make paying at restaurants effortless.
-          Instead of waiting for the check or pulling out a credit card, diners simply provide their member
-          number at the start of the meal. The restaurant bills them directly through a secure account, so there’s
-          no need for cards, cash, or waiting at the table. This makes the dining experience faster, smoother, and
-          more enjoyable for both customers and staff. By removing the friction of traditional payment, Dine N Dash
-          turns the end of a meal into a truly hassle-free experience.
-        </p>
-
-        <!-- Primary CTAs (hero) -->
-        <div class="mt-6 flex flex-col sm:flex-row gap-3">
-          <a href="/signin">
-            <button class="h-12 rounded-2xl bg-brand text-white px-6 font-medium hover:bg-brand/90 w-full sm:w-auto">
-              Customer Sign In
-            </button>
-          </a>
-          <a href="/restaurant/signin">
-            <button class="h-12 rounded-2xl border px-6 font-medium hover:bg-slate-50 w-full sm:w-auto">
-              Restaurant Sign In
-            </button>
-          </a>
-        </div>
-
-        <!-- Optional waitlist -->
-        <form action="#" method="post" class="mt-6 flex flex-col sm:flex-row gap-3">
-          <input type="email" name="email" required placeholder="Join the waitlist with your email"
-                 class="h-12 rounded-2xl border px-4 w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-accent/50" />
-          <button class="h-12 rounded-2xl bg-accent text-white px-6 font-medium hover:bg-emerald-600">
-            Get early access
-          </button>
-        </form>
-        <div class="mt-3 text-xs text-slate-500">No spam. Cancel anytime.</div>
+        <button id="closeMobile" aria-label="Close menu" class="rounded-xl border p-2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
-      <!-- Product visual (no points/rewards language) -->
-      <div class="md:pl-10">
-        <div class="relative rounded-3xl overflow-hidden shadow-2xl">
-          <img src="https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=2069&auto=format&fit=crop"
-               alt="Dining scene" class="h-full w-full object-cover" />
-          <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
-          <div class="absolute bottom-4 left-4 right-4 grid grid-cols-2 gap-3">
-            <div class="rounded-xl bg-white/90 backdrop-blur p-4">
-              <div class="text-sm font-semibold">Active Tab</div>
-              <ul class="mt-2 text-sm text-slate-600 space-y-1">
-                <li class="flex items-center gap-2">✅ Table 12 · Member #4829</li>
-                <li class="flex items-center gap-2">✅ Auto-billed on close</li>
-              </ul>
+      <div class="p-4 space-y-2">
+        {% if user.is_authenticated and has_customer %}
+          {% if has_live_order %}
+            <button data-tab="live" class="m-tab relative w-full text-left px-4 py-3 rounded-xl text-base border">
+              Live Order
+              <span class="absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+            </button>
+          {% endif %}
+          <button data-tab="rec" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Recommendations</button>
+          <button data-tab="txn" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Transactions</button>
+          <button data-tab="profile" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Profile</button>
+        {% else %}
+          <button data-tab="rec" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Recommendations</button>
+        {% endif %}
+
+        <div class="pt-4 space-y-2">
+          <a href="{% url 'core:restaurant_signin' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
+            Restaurant sign in
+          </a>
+
+          {% if user.is_authenticated %}
+            <a href="{% url 'core:signout' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
+              Sign out
+            </a>
+          {% else %}
+            <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
+              Sign in
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- LIVE ORDER PANEL -->
+  {% if user.is_authenticated and has_customer and has_live_order %}
+  <main id="panel-live" class="mx-auto max-w-3xl px-4 py-8 hidden">
+    <div class="rounded-3xl border bg-white p-6 shadow-sm">
+      <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold tracking-tight">Your Live Order</h2>
+        <span id="liveServer" class="text-sm text-slate-500"></span>
+      </div>
+
+      <div id="liveEmpty" class="mt-3 text-slate-600 hidden">No active ticket found.</div>
+
+      <div id="liveBody" class="mt-4">
+        <div id="liveLoading" class="text-slate-600">Loading your order…</div>
+
+        <div id="liveContent" class="hidden">
+          <ul id="liveItems" class="divide-y"></ul>
+
+          <div class="mt-4 grid gap-2 text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Subtotal</span>
+              <span id="liveSubtotal" class="font-medium">$0.00</span>
             </div>
-            <div class="rounded-xl bg-white/90 backdrop-blur p-4">
-              <div class="text-sm font-semibold">Secure Billing</div>
-              <div class="text-slate-600 text-sm">Tokenized charges • Instant receipt • No cards on table</div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Tax</span>
+              <span id="liveTax" class="font-medium">$0.00</span>
             </div>
+            <div class="flex items-center justify-between">
+              <label for="tipPct" class="text-slate-500">Tip</label>
+              <div class="flex items-center gap-2">
+                <input id="tipPct" type="number" min="0" max="100" step="1" value="15"
+                       class="w-16 rounded-xl border px-2 py-1 text-right"> <span>%</span>
+                <span id="liveTipAmt" class="font-medium">$0.00</span>
+              </div>
+            </div>
+            <div class="flex items-center justify-between border-t pt-2">
+              <span class="text-slate-700 font-semibold">Total</span>
+              <span id="liveTotal" class="text-lg font-semibold">$0.00</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-700">Amount Due</span>
+              <span id="liveDue" class="font-semibold">$0.00</span>
+            </div>
+          </div>
+
+          <div class="mt-6 flex items-center justify-end gap-3">
+            <button id="refreshLive" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Refresh</button>
+            <button id="closeTabBtn" class="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm">
+              Close Out
+            </button>
           </div>
         </div>
       </div>
     </div>
-  </section>
+  </main>
+  {% endif %}
 
-  <!-- HOW IT WORKS (no points mentioned) -->
-  <section id="how" class="mx-auto max-w-7xl px-4 py-16">
-    <div class="grid md:grid-cols-3 gap-6">
-      <div class="rounded-2xl border p-6">
-        <div class="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center">1</div>
-        <h3 class="mt-3 text-xl font-semibold">Check in with member #</h3>
-        <p class="mt-2 text-slate-600">Provide your member number when seated. Your tab opens automatically.</p>
+  <!-- Recommendations -->
+  <main id="panel-rec" class="mx-auto max-w-7xl px-4 py-8 grid lg:grid-cols-12 gap-6">
+    <section class="lg:col-span-8">
+      <div class="flex items-start justify-between">
+        <div>
+          <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Where everyone’s eating</h1>
+          <p class="text-slate-600 mt-1">Top restaurants by transaction volume</p>
+        </div>
+        <button id="infoBtn" aria-label="About this chart"
+                class="rounded-full border w-9 h-9 grid place-items-center text-slate-700 hover:bg-slate-50">?</button>
       </div>
-      <div class="rounded-2xl border p-6">
-        <div class="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center">2</div>
-        <h3 class="mt-3 text-xl font-semibold">Enjoy the meal</h3>
-        <p class="mt-2 text-slate-600">No cards on the table. Your account stays linked in the background.</p>
-      </div>
-      <div class="rounded-2xl border p-6">
-        <div class="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center">3</div>
-        <h3 class="mt-3 text-xl font-semibold">Walk out—you're billed</h3>
-        <p class="mt-2 text-slate-600">When the server closes the check, you’re securely charged and sent a receipt.</p>
-      </div>
-    </div>
-  </section>
 
-  <!-- FAQ -->
-  <section id="faq" class="mx-auto max-w-5xl px-4 pb-16">
-    <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-6">Frequently asked</h2>
-    <div class="space-y-4">
-      <details class="rounded-xl border bg-white p-5">
-        <summary class="font-medium cursor-pointer">Do I need my card at the table?</summary>
-        <p class="mt-3 text-slate-600">No. Give your member number at seating; we handle billing securely on the backend.</p>
-      </details>
-      <details class="rounded-xl border bg-white p-5">
-        <summary class="font-medium cursor-pointer">Is this secure?</summary>
-        <p class="mt-3 text-slate-600">Yes—tokenized charges, encrypted transport, and PCI-compliant processors.</p>
-      </details>
-    </div>
-  </section>
+      <div id="infoBox" class="hidden mt-3 rounded-2xl border bg-white p-4 text-sm shadow-sm">
+        <p class="text-slate-700">
+          <span class="font-semibold">How rankings work:</span>
+          We aggregate anonymized transactions over the past 14 days. Bars show relative volume; tap a row to see details.
+          New openings are flagged and may rank quickly if they surge.
+        </p>
+      </div>
 
-  <!-- FOOTER -->
+      <div class="mt-6 flex items-center gap-3">
+        <button id="geoBtn" class="rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Use Current Location</button>
+        <input id="cityInput" type="text" placeholder="Filter by city or ZIP"
+               class="rounded-2xl border px-3 py-2 text-sm w-64" />
+      </div>
+
+      <div id="rankings" class="mt-6">
+        <ul id="rankList" class="divide-y"></ul>
+      </div>
+    </section>
+
+    <aside class="lg:col-span-4">
+      <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 class="text-lg font-semibold">Details</h2>
+        <div id="detailsEmpty" class="mt-2 text-sm text-slate-600">
+          Tap any bar on the left to see more info about a restaurant.
+        </div>
+        <div id="detailsBox" class="mt-4 space-y-2 hidden">
+          <div class="text-sm"><span class="text-slate-500">Name:</span> <span id="dName" class="font-medium"></span></div>
+          <div class="text-sm"><span class="text-slate-500">Address:</span> <span id="dAddr" class="font-medium"></span></div>
+          <div class="text-sm"><span class="text-slate-500">Transactions:</span> <span id="dTx" class="font-medium"></span></div>
+          <div class="text-sm"><span class="text-slate-500">Opened:</span> <span id="dOpened" class="font-medium"></span></div>
+          <div class="pt-2">
+            <a id="mapsLink" target="_blank" rel="noreferrer"
+               class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Open in Maps</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">New openings</h2>
+          <span class="text-xs text-slate-500">Last 60 days</span>
+        </div>
+        <ul id="newOpenings" class="mt-3 space-y-3"></ul>
+      </div>
+    </aside>
+  </main>
+
+  {% if user.is_authenticated and has_customer %}
+    <!-- Transactions -->
+    <main id="panel-txn" class="mx-auto max-w-7xl px-4 py-10 hidden">
+      <div class="rounded-3xl border bg-white p-6">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <h2 class="text-2xl font-bold tracking-tight">Your Transactions</h2>
+          <div id="txnCount" class="text-sm text-slate-600"></div>
+        </div>
+
+        <div class="mt-4 overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="text-left text-slate-500">
+              <tr>
+                <th class="py-3 pr-4">Date</th>
+                <th class="py-3 pr-4">Restaurant</th>
+                <th class="py-3 pr-4">City</th>
+                <th class="py-3 pr-4 text-right">Subtotal</th>
+                <th class="py-3 pr-4 text-right">Tip</th>
+                <th class="py-3 pr-4 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="txnBody" class="divide-y"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- Profile -->
+    <main id="panel-profile" class="mx-auto max-w-3xl px-4 py-10 grid gap-6 hidden">
+      <section class="rounded-3xl border bg-white p-6">
+        <h2 class="text-xl font-semibold">Member Info</h2>
+        <div class="mt-4 flex items-center justify-between">
+          <div>
+            <div class="text-sm text-slate-500">Member number</div>
+            <div id="memberNum" class="text-2xl font-bold tracking-wider"></div>
+          </div>
+          <button id="copyBtn" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Copy</button>
+        </div>
+      </section>
+
+      <section class="rounded-3xl border bg-white p-6">
+        <h2 class="text-xl font-semibold">Card on file</h2>
+        <div class="mt-4 flex items-center justify-between">
+          <div>
+            <div class="text-sm text-slate-500">Default payment method</div>
+            <div id="cardLine" class="text-lg font-semibold"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Update</button>
+            <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Remove</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  {% endif %}
+
   <footer class="border-t border-slate-200">
-    <div class="mx-auto max-w-7xl px-4 py-10 grid md:grid-cols-3 gap-6 items-center">
-      <div class="text-sm text-slate-600">© <script>document.write(new Date().getFullYear())</script> Dine N Dash. All rights reserved.</div>
-      <div class="text-center text-sm">
-        <a href="/terms" class="hover:underline">Terms</a> · <a href="/privacy" class="hover:underline">Privacy</a>
-      </div>
-      <div class="flex justify-end gap-3">
-        <a href="/restaurant/signin">
-          <button class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">Restaurant Sign In</button>
-        </a>
-        <a href="/signin">
-          <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Customer Sign In</button>
-        </a>
-      </div>
+    <div class="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-slate-600">
+      © <span id="year"></span> Dine N Dash
     </div>
   </footer>
+
+  <script>
+    // ---- Demo data for Recommendations ----
+    const data = [
+      { name: "Kumo Izakaya", tx: 312, address: "221 Market St, San Francisco, CA", opened: "2024-11-12", city: "san francisco" },
+      { name: "Café Verona", tx: 289, address: "48 Clement Ave, San Francisco, CA", opened: "2023-04-04", city: "san francisco" },
+      { name: "Sol y Mar", tx: 251, address: "901 Sunset Blvd, Los Angeles, CA", opened: "2023-08-10", city: "los angeles" },
+      { name: "The Garden Room", tx: 198, address: "12 Fern Way, Oakland, CA", opened: "2022-03-28", city: "oakland" },
+      { name: "Front Porch BBQ", tx: 176, address: "77 King St, San Mateo, CA", opened: "2021-07-19", city: "san mateo" },
+      { name: "Neon Noodles", tx: 165, address: "5 Battery St, San Francisco, CA", opened: "2025-08-01", city: "san francisco" },
+      { name: "Mar y Tierra", tx: 142, address: "300 Pier Point, San Francisco, CA", opened: "2025-07-29", city: "san francisco" },
+      { name: "Fire & Fig", tx: 138, address: "41 Canvas Ln, San Jose, CA", opened: "2025-07-25", city: "san jose" },
+      { name: "Tamarind Hall", tx: 132, address: "16 Cedar St, Berkeley, CA", opened: "2024-02-03", city: "berkeley" },
+      { name: "Blue Finch", tx: 129, address: "600 Grove St, Palo Alto, CA", opened: "2023-11-02", city: "palo alto" },
+      { name: "Porto 9", tx: 121, address: "9 Embarcadero, San Francisco, CA", opened: "2022-12-12", city: "san francisco" },
+      { name: "No. 17 Bistro", tx: 117, address: "17 Olive Ave, Mountain View, CA", opened: "2025-04-14", city: "mountain view" },
+      { name: "Citrus & Oak", tx: 112, address: "450 Park Rd, Burlingame, CA", opened: "2023-06-09", city: "burlingame" },
+      { name: "Umami Bay", tx: 106, address: "19 Harbor Dr, Sausalito, CA", opened: "2025-06-30", city: "sausalito" },
+      { name: "Nova Pizzeria", tx: 101, address: "88 Mission St, San Francisco, CA", opened: "2022-01-21", city: "san francisco" },
+      { name: "Spice Alley", tx: 96,  address: "431 Palm St, San Jose, CA", opened: "2024-08-18", city: "san jose" },
+      { name: "Tide & Tonic", tx: 93,  address: "73 Beach Rd, Santa Cruz, CA", opened: "2025-07-12", city: "santa cruz" },
+      { name: "Morning Glory", tx: 90, address: "10 Sunrise Ave, Oakland, CA", opened: "2023-09-09", city: "oakland" },
+      { name: "Echo Ramen", tx: 85, address: "55 Sound St, Daly City, CA", opened: "2025-07-30", city: "daly city" },
+      { name: "Birch & Bone", tx: 82, address: "22 Grove Ter, San Francisco, CA", opened: "2025-08-08", city: "san francisco" },
+    ];
+    const txns = [
+      { id: "t1007", date: "2025-08-18", restaurant: "Kumo Izakaya",   city: "San Francisco", subtotal: 64.2, tipPct: 18 },
+      { id: "t1006", date: "2025-08-12", restaurant: "Café Verona",    city: "San Francisco", subtotal: 49.9, tipPct: 20 },
+      { id: "t1005", date: "2025-08-09", restaurant: "Sol y Mar",      city: "Los Angeles",   subtotal: 77.35, tipPct: 18 },
+      { id: "t1004", date: "2025-08-03", restaurant: "Front Porch BBQ",city: "San Mateo",     subtotal: 37.1, tipPct: 15 },
+      { id: "t1003", date: "2025-07-28", restaurant: "Blue Finch",     city: "Palo Alto",     subtotal: 68.0, tipPct: 20 },
+    ];
+
+    const member = document.body.dataset.member || "";
+    const hasLive = document.body.dataset.live === "1";
+
+    // ---- State ----
+    let tab = "rec";
+    let mobileOpen = false;
+    let locationFilter = "";
+    let active = null;
+    let openInfo = false;
+    let live = { subtotal: 0, tax: 0, total: 0, due: 0 };
+
+    // ---- Helpers ----
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+    const fmt = (cents) => `$${(cents/100).toFixed(2)}`;
+    function getCookie(name) {
+      const v = `; ${document.cookie}`;
+      const p = v.split(`; ${name}=`);
+      if (p.length === 2) return p.pop().split(";").shift();
+    }
+    // Toast helpers
+    function showToast(msg, {title="Notice", tone="info"} = {}) {
+      const t = $("#toast");
+      const box = $("#toastBox");
+      $("#toastTitle").textContent = title;
+      $("#toastMsg").textContent = String(msg || "");
+      const toneCls = tone === "error"
+        ? "border-red-200 bg-red-50"
+        : tone === "success"
+          ? "border-emerald-200 bg-emerald-50"
+          : "border-slate-200 bg-white";
+      box.className = `pointer-events-auto max-w-xl w-full rounded-2xl border px-4 py-3 shadow-lg ${toneCls} text-slate-800 flex items-start gap-3`;
+      $("#toastIcon").className = `mt-[2px] h-5 w-5 rounded-full ${tone==="error"?"bg-red-400":tone==="success"?"bg-emerald-400":"bg-slate-400"}`;
+      t.classList.remove("hidden");
+      const close = () => t.classList.add("hidden");
+      $("#toastClose").onclick = close;
+      setTimeout(close, 6000);
+    }
+
+    function getTabIds() {
+      const tabs = new Set([...$$('[data-tab]')].map(b => b.dataset.tab));
+      return Array.from(tabs);
+    }
+
+    function setTab(next) {
+      const TAB_IDS = getTabIds();
+      if (!TAB_IDS.includes(next)) next = hasLive ? 'live' : 'rec';
+
+      $$(".tab").forEach(b => {
+        const is = b.dataset.tab === next;
+        b.className = "tab px-4 py-2 rounded-2xl text-sm border " + (is ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
+      });
+      $$(".m-tab").forEach(b => {
+        const is = b.dataset.tab === next;
+        b.className = "m-tab w-full text-left px-4 py-3 rounded-xl text-base border " + (is ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
+      });
+      TAB_IDS.forEach(id => {
+        const panel = $("#panel-"+id);
+        if (panel) panel.classList.toggle("hidden", id !== next);
+      });
+      tab = next;
+      if (tab === "live") fetchLive();
+    }
+
+    function openDrawer(on) {
+      mobileOpen = on;
+      const wrap = $("#drawerWrap");
+      const drawer = $("#drawer");
+      const backdrop = $("#drawerBackdrop");
+      wrap.classList.toggle("pointer-events-none", !mobileOpen);
+      drawer.style.transform = mobileOpen ? "translateX(0)" : "translateX(-100%)";
+      backdrop.style.opacity = mobileOpen ? "1" : "0";
+    }
+
+    // ----- Recommendations -----
+    function filteredSorted() {
+      const q = (locationFilter || "").trim().toLowerCase();
+      let list = data;
+      if (q) {
+        list = data.filter(r =>
+          (r.city || "").includes(q) || (r.address || "").toLowerCase().includes(q)
+        );
+      }
+      return list.slice().sort((a,b) => b.tx - a.tx);
+    }
+    function isNew(d) { return new Date(d.opened) >= new Date("2025-07-01"); }
+
+    function renderRec() {
+      const sorted = filteredSorted();
+      const maxTx = sorted.length ? sorted[0].tx : 1;
+      const top5 = new Set(sorted.slice(0,5).map(d => d.name));
+
+      const ul = $("#rankList");
+      if (!ul) return;
+      ul.innerHTML = "";
+      sorted.forEach((r, i) => {
+        const li = document.createElement("li");
+        li.className = "py-3";
+        const isTop = top5.has(r.name);
+        const newBadge = isNew(r);
+        li.innerHTML = `
+          <button class="w-full text-left group rounded-2xl p-3 hover:bg-white hover:shadow-sm transition border
+                         ${isTop ? "border-amber-300 bg-gradient-to-r from-amber-50/70 to-white":"border-slate-200 bg-white/70"}">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold ${isTop ? "bg-amber-400 text-white":"bg-slate-900 text-white"}">${i+1}</div>
+                <div class="min-w-0">
+                  <div class="font-semibold truncate flex items-center gap-2">
+                    ${r.name}
+                    ${isTop ? `<span class="text-amber-600 text-xs font-semibold">Top 5</span>` : ""}
+                    ${newBadge ? `<span class="text-emerald-600 text-xs font-semibold">New</span>` : ""}
+                  </div>
+                  <div class="text-xs text-slate-500 truncate">${r.address}</div>
+                </div>
+              </div>
+              <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx} tx</div>
+            </div>
+            <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div class="h-full ${isTop ? "bg-amber-400":"bg-slate-900/80"} transition-[width] duration-700"
+                   style="width:${Math.round((r.tx / maxTx) * 100)}%"></div>
+            </div>
+          </button>`;
+        li.querySelector("button").addEventListener("click", () => setActive(r));
+        ul.appendChild(li);
+      });
+
+      const listNew = sorted.filter(isNew);
+      const ulNew = $("#newOpenings");
+      if (!ulNew) return;
+      ulNew.innerHTML = "";
+      listNew.forEach(r => {
+        const li = document.createElement("li");
+        li.className = "rounded-2xl border border-slate-200 p-3 hover:bg-slate-50";
+        li.innerHTML = `
+          <div class="font-medium flex items-center gap-2">
+            ${r.name} <span class="text-emerald-600 text-xs font-semibold">New</span>
+          </div>
+          <div class="text-xs text-slate-500">${r.address}</div>
+          <div class="text-xs text-slate-500">Opened ${new Date(r.opened).toLocaleDateString()}</div>`;
+        ulNew.appendChild(li);
+      });
+    }
+
+    function setActive(r) {
+      const empty = $("#detailsEmpty");
+      const box = $("#detailsBox");
+      if (!empty || !box) return;
+      empty.classList.add("hidden");
+      box.classList.remove("hidden");
+      $("#dName").textContent = r.name;
+      $("#dAddr").textContent = r.address;
+      $("#dTx").textContent = r.tx;
+      $("#dOpened").textContent = new Date(r.opened).toLocaleDateString();
+      $("#mapsLink").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}`;
+    }
+
+    function renderTxn() {
+      const body = $("#txnBody");
+      const count = $("#txnCount");
+      if (!body || !count) return;
+      body.innerHTML = "";
+      txns.forEach(t => {
+        const tip = +(t.subtotal * (t.tipPct / 100)).toFixed(2);
+        const total = +(t.subtotal + tip).toFixed(2);
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-3 pr-4">${t.date}</td>
+          <td class="py-3 pr-4">${t.restaurant}</td>
+          <td class="py-3 pr-4">${t.city}</td>
+          <td class="py-3 pr-4 text-right">$${t.subtotal.toFixed(2)}</td>
+          <td class="py-3 pr-4 text-right">${t.tipPct}% ($${tip.toFixed(2)})</td>
+          <td class="py-3 pr-4 text-right font-semibold">$${total.toFixed(2)}</td>`;
+        body.appendChild(tr);
+      });
+      count.textContent = `${txns.length} total`;
+    }
+
+    function renderProfile() {
+      const mem = $("#memberNum");
+      const cardLine = $("#cardLine");
+      if (!mem || !cardLine) return;
+      mem.textContent = member || "—";
+      cardLine.textContent = `Visa •••• 4242`;
+    }
+
+    // -------- LIVE ORDER: fetch + render + close --------
+    function tipAmount() {
+      const el = $("#tipPct");
+      if (!el) return 0;
+      const pct = Math.max(0, parseFloat(el.value || "15"));
+      return Math.round(live.subtotal * (pct / 100));
+    }
+
+    function updateTipAndTotals() {
+      const tip = tipAmount();
+      $("#liveTipAmt").textContent = fmt(tip);
+      const totalWithTip = live.subtotal + live.tax + tip;
+      $("#liveTotal").textContent = fmt(totalWithTip);
+      $("#liveDue").textContent = fmt(live.due);
+    }
+
+    async function fetchLive() {
+      const p = $("#panel-live");
+      if (!p || !member) return;
+      const loading = $("#liveLoading");
+      const content = $("#liveContent");
+      const empty = $("#liveEmpty");
+      loading.classList.remove("hidden");
+      content.classList.add("hidden");
+      empty.classList.add("hidden");
+
+      try {
+        const r = await fetch(`/api/ticket/${encodeURIComponent(member)}/receipt`);
+        if (!r.ok) throw new Error("no live");
+        const j = await r.json();
+
+        if (!j.ok) throw new Error("no live");
+
+        $("#liveServer").textContent = j.server ? `Server: ${j.server}` : "";
+
+        const ul = $("#liveItems");
+        ul.innerHTML = "";
+        (j.items || []).forEach(it => {
+          const qty = it.qty || 1;
+          const li = document.createElement("li");
+          li.className = "py-3 flex items-center justify-between";
+          li.innerHTML = `
+            <div class="min-w-0">
+              <div class="font-medium truncate">${it.name || "Item"}</div>
+              <div class="text-xs text-slate-500">x${qty}</div>
+            </div>
+            <div class="text-sm font-medium">${fmt((it.cents || 0) * qty)}</div>
+          `;
+          ul.appendChild(li);
+        });
+
+        live.subtotal = j.subtotal_cents || 0;
+        live.tax = j.tax_cents || 0;
+        live.total = j.total_cents || (live.subtotal + live.tax);
+        live.due = j.due_cents || live.total;
+
+        $("#liveSubtotal").textContent = fmt(live.subtotal);
+        $("#liveTax").textContent = fmt(live.tax);
+        updateTipAndTotals();
+
+        loading.classList.add("hidden");
+        content.classList.remove("hidden");
+      } catch (e) {
+        loading.classList.add("hidden");
+        content.classList.add("hidden");
+        empty.classList.remove("hidden");
+      }
+    }
+
+    async function closeTab() {
+      const csrftoken = getCookie("csrftoken");
+      try {
+        const r = await fetch(`/api/ticket/${encodeURIComponent(member)}/close`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrftoken || "",
+          },
+          body: JSON.stringify({ reference: `dn-web-${Date.now()}`,tip_cents: tipAmount()  }),
+        });
+        const j = await r.json().catch(()=>({}));
+        if (r.ok && j.ok) {
+          showToast("Tab closed. Thank you!", {title: "Success", tone: "success"});
+          setTab("rec");
+        } else {
+          // <-- show Omnivore detail if present
+          showToast((j && (j.detail || j.error)) || "Unable to close tab.", {title: "Payment failed", tone: "error"});
+        }
+      } catch (err) {
+        showToast("Network error. Please try again.", {title: "Network", tone: "error"});
+      }
+    }
+
+    // ---- Events ----
+    document.addEventListener("DOMContentLoaded", () => {
+      const y = $("#year"); if (y) y.textContent = new Date().getFullYear();
+
+      $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+      $$(".m-tab").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); openDrawer(false); }));
+
+      const openBtn = $("#openMobile");
+      const closeBtn = $("#closeMobile");
+      const backdrop = $("#drawerBackdrop");
+      if (openBtn) openBtn.addEventListener("click", () => openDrawer(true));
+      if (closeBtn) closeBtn.addEventListener("click", () => openDrawer(false));
+      if (backdrop) backdrop.addEventListener("click", () => openDrawer(false));
+
+      $("#toastClose").addEventListener("click", () => $("#toast").classList.add("hidden"));
+
+      const infoBtn = $("#infoBtn");
+      if (infoBtn) infoBtn.addEventListener("click", () => {
+        openInfo = !openInfo;
+        const box = $("#infoBox");
+        if (box) box.classList.toggle("hidden", !openInfo);
+      });
+
+      const geoBtn = $("#geoBtn");
+      if (geoBtn) geoBtn.addEventListener("click", () => {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(pos => {
+          const lat = pos.coords.latitude.toFixed(3);
+          const lng = pos.coords.longitude.toFixed(3);
+          locationFilter = `${lat}, ${lng}`;
+          const input = $("#cityInput");
+          if (input) input.value = locationFilter;
+          renderRec();
+        });
+      });
+
+      const cityInput = $("#cityInput");
+      if (cityInput) cityInput.addEventListener("input", (e) => {
+        locationFilter = e.target.value;
+        renderRec();
+      });
+
+      const copyBtn = $("#copyBtn");
+      if (copyBtn) copyBtn.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(member || ""); } catch {}
+      });
+
+      const tipPct = $("#tipPct");
+      if (tipPct) tipPct.addEventListener("input", updateTipAndTotals);
+      $("#refreshLive")?.addEventListener("click", fetchLive);
+      $("#closeTabBtn")?.addEventListener("click", closeTab);
+
+      setTab(hasLive ? "live" : "rec");
+      renderRec();
+      renderTxn();
+      renderProfile();
+      if (hasLive) fetchLive();
+    });
+  </script>
 </body>
 </html>
-

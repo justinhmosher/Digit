@@ -12,7 +12,7 @@ from .omnivore import (
     list_open_tickets,
     get_ticket,
     get_ticket_items,
-    create_external_payment,
+    create_payment_with_tender_type
 )
 
 LOCATION_ID = config("OMNIVORE_LOCATION_ID")
@@ -139,13 +139,13 @@ def api_link_member_to_ticket(request):
 
 
 @require_GET
-def api_ticket_receipt(request, member_number):
+def api_ticket_receipt(request, member):
     """
     Return a live receipt for the most recent *open* link for this member.
     """
     tl = (
         TicketLink.objects
-        .filter(member__number=member_number, status="open")
+        .filter(member__number=member, status="open")
         .order_by("-opened_at")
         .first()
     )
@@ -190,21 +190,35 @@ def api_ticket_receipt(request, member_number):
         "due_cents": due,
     })
 
+# core/views_staff.py
+from decouple import config
+from django.http import JsonResponse
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
+import json
+
+from .models import TicketLink
+from .omnivore import get_ticket, create_payment_with_tender_type
+
+OMNIVORE_TENDER_TYPE_ID = config("OMNIVORE_TENDER_TYPE_ID", default="100")  # 100 = "3rd Party"
+
+def _due_cents(ticket: dict) -> int:
+    totals = (ticket or {}).get("totals") or {}
+    return int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
+
 
 @ensure_csrf_cookie
 @csrf_protect
 @require_POST
-def api_close_tab(request, member_number):
-    """
-    Close the linked ticket by recording an external payment equal to the current 'due'.
-    Body: { reference: "your-charge-id" }
-    """
+def api_close_tab(request, member):
     data = json.loads(request.body.decode() or "{}")
     reference = (data.get("reference") or "demo_txn").strip()
+    tip_cents = int(data.get("tip_cents") or 0)   # <<--- read tip
 
     tl = (
         TicketLink.objects
-        .filter(member__number=member_number, status="open")
+        .filter(member__number=member, status="open")
         .order_by("-opened_at")
         .first()
     )
@@ -216,9 +230,21 @@ def api_close_tab(request, member_number):
     if amount <= 0:
         return JsonResponse({"ok": False, "error": "Nothing due."}, status=400)
 
-    # (1) In production: charge via Stripe/processor here and set 'reference' to the charge id.
-    # (2) Reflect that payment on the POS as an EXTERNAL payment:
-    create_external_payment(tl.location_id, tl.ticket_id, amount, reference)
+    try:
+        # For this adapter: send CASH with required tip; do NOT send name/reference/tender_type
+        create_payment_with_tender_type(
+            tl.location_id,
+            tl.ticket_id,
+            amount_cents=amount,
+            tender_type_id=None,      # explicit: do not include tender_type
+            reference=reference,      # we'll ignore this inside the poster
+            tip_cents=tip_cents,      # pass the tip cents
+        )
+    except Exception as e:
+        return JsonResponse(
+            {"ok": False, "error": "omnivore_payment_failed", "detail": str(e)},
+            status=502,
+        )
 
     tl.status = "closed"
     tl.external_txn_id = reference
@@ -226,3 +252,5 @@ def api_close_tab(request, member_number):
     tl.save(update_fields=["status", "external_txn_id", "closed_at"])
 
     return JsonResponse({"ok": True})
+
+
