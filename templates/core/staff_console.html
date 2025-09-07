@@ -53,12 +53,23 @@ async function postJSON(url, body){
       'Content-Type': 'application/json',
       'X-CSRFToken': getCSRFToken()
     },
-    credentials: 'same-origin',  // send session cookie
+    credentials: 'same-origin',
     body: JSON.stringify(body || {})
   });
   let data = {};
   try { data = await r.json(); } catch {}
   return { ok: r.ok, status: r.status, data };
+}
+
+// Resolve the URL from Django (namespaced)
+const linkMemberUrl = "{% url 'core:link_member' %}";
+
+// Call the API
+async function linkMember(member, lname, hintOrTicketId, isExact=false) {
+  const payload = isExact
+    ? { member_number: member, last_name: lname, ticket_id: hintOrTicketId }
+    : { member_number: member, last_name: lname, check_hint: hintOrTicketId };
+  return postJSON(linkMemberUrl, payload);
 }
 
 // ---- UI wiring ----
@@ -69,22 +80,20 @@ document.getElementById('linkBtn').onclick = async () => {
 
   if (!member) return showAlert('Enter a member number');
 
-  const res = await postJSON('/api/link-member', {
-    member_number: member,
-    last_name: lname,
-    check_hint: hint
-  });
+  // 1) initial link attempt
+  const res = await linkMember(member, lname, hint, false);
 
   if (!res.ok) {
     if (res.status === 403) {
-      return showAlert('Forbidden (CSRF). Refresh the page and try again, or ensure you are on the same origin.');
+      return showAlert('Forbidden (CSRF). Refresh and try again (same origin required).');
     }
-    return showAlert(res.data?.error || 'Request failed.');
+    const msg = res.data?.error || res.data?.detail || 'Request failed.';
+    return showAlert(msg);
   }
 
   const data = res.data;
 
-  // Multiple candidates -> show picker
+  // 2) Multiple candidates -> show choices
   if (data.multiple) {
     const box = document.getElementById('choices');
     box.innerHTML =
@@ -94,26 +103,33 @@ document.getElementById('linkBtn').onclick = async () => {
       ).join('');
     box.classList.remove('hidden');
 
-    box.onclick = async (e) => {
-      if (!e.target.classList.contains('ticket-choice')) return;
-      const ticket_id = e.target.getAttribute('data-id');
-      const r2 = await postJSON('/api/link-member', {
-        member_number: member,
-        last_name: lname,
-        ticket_id
-      });
-      if (!r2.ok) return showAlert(r2.data?.error || 'Link failed.');
+    // Prevent duplicate listeners:
+    box.replaceWith(box.cloneNode(true));
+    const box2 = document.getElementById('choices');
+
+    box2.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.ticket-choice');
+      if (!btn) return;
+      const ticket_id = btn.getAttribute('data-id');
+
+      const r2 = await linkMember(member, lname, ticket_id, true);
+      if (!r2.ok) {
+        const m2 = r2.data?.error || r2.data?.detail || 'Link failed.';
+        return showAlert(m2);
+      }
       document.getElementById('lnameShow').textContent = r2.data.member_last || '';
       document.getElementById('green').classList.remove('hidden');
       showAlert('Member linked to ticket.', true);
-    };
+    });
   } else {
+    // 3) Single match -> success
     document.getElementById('lnameShow').textContent = data.member_last || '';
     document.getElementById('green').classList.remove('hidden');
     showAlert('Member linked to ticket.', true);
   }
 };
 </script>
+
 </body>
 </html>
 

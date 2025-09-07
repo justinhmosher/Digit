@@ -78,7 +78,7 @@ def customer_home(request: HttpRequest) -> HttpResponse:
         "has_live_order": has_live_order,
         "member_number": member_number,
     }
-    return render(request, "core/homepage.html", ctx)
+    return render(request,"core/homepage.html", ctx)
 
 # ---------------------------
 # Auth utility (used by your HTML)

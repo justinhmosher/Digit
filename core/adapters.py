@@ -3,9 +3,10 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from allauth.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from allauth.socialaccount.models import SocialLogin
+from allauth.socialaccount.models import SocialLogin, SocialAccount
 from allauth.account.utils import perform_login
 from django.contrib.auth import get_user_model
+from urllib.parse import quote
 
 from .models import OwnerProfile, RestaurantProfile, CustomerProfile, ManagerProfile  # + ManagerProfile
 
@@ -23,6 +24,7 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
             request.session.modified = True
             raise ImmediateHttpResponse(redirect(to_url_name))
 
+        email = (sociallogin.user.email or "").lower()
         # Resolve the local user if possible
         user = None
         if sociallogin.is_existing:
@@ -31,6 +33,16 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
             email = (sociallogin.user.email or "").lower()
             if email:
                 user = User.objects.filter(email__iexact=email).first()
+
+        if user and not sociallogin.is_existing:
+            if user.has_usable_password() and not SocialAccount.objects.filter(
+                user=user, provider=sociallogin.account.provider
+            ).exists():
+                login_url = reverse("core:signin")
+                # carry context so the UI can show a friendly message
+                login_url += f"?reason=password-account&email={quote(email)}"
+                raise ImmediateHttpResponse(redirect(login_url))
+        # ---------------------------------------------------------
 
         # ===== MANAGER FLOW =====
         if gate_role == "manager":
