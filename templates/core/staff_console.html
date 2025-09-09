@@ -4,32 +4,40 @@
 <head>
   <meta charset="utf-8" />
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Expose CSRF token for non-form fetch requests -->
   <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>Staff — Link Member to Check</title>
 </head>
 <body class="bg-slate-50 min-h-screen p-6">
   <div class="max-w-xl mx-auto bg-white rounded-2xl shadow p-6">
-    <h1 class="text-2xl font-bold">Link Member to Check</h1>
+    <h1 class="text-2xl font-bold">Send Verification Link</h1>
+    <p class="text-slate-600 mt-1 text-sm">
+      Enter the member and the check hint (or exact ticket). We’ll text the member a secure link to verify with their 4-digit PIN.
+    </p>
+
     <div id="alert" class="hidden mt-3 rounded-lg px-3 py-2 text-sm"></div>
 
     <div class="mt-6 grid gap-4">
       <input id="member" class="h-12 rounded-xl border px-4" placeholder="Member number" />
-      <input id="lname"  class="h-12 rounded-xl border px-4" placeholder="Last name (confirm)" />
-      <input id="hint"   class="h-12 rounded-xl border px-4" placeholder="Check # or table name (optional)" />
-      <button id="linkBtn" class="h-12 rounded-xl bg-slate-900 text-white">Link</button>
+      <input id="lname"  class="h-12 rounded-xl border px-4" placeholder="Last name (optional confirm)" />
+      <input id="hint"   class="h-12 rounded-xl border px-4" placeholder="Check #, table name, or server (optional)" />
+      <div class="flex items-center gap-2">
+        <button id="linkBtn" class="h-12 px-5 rounded-xl bg-slate-900 text-white disabled:opacity-50">Send Link</button>
+        <span id="busy" class="hidden text-sm text-slate-500">Sending…</span>
+      </div>
     </div>
 
+    <!-- Multiple candidates -->
     <div id="choices" class="hidden mt-6"></div>
 
+    <!-- Success box -->
     <div id="green" class="hidden mt-6 rounded-xl bg-emerald-100 text-emerald-900 p-4">
-      <p class="font-medium">Member verified: <span id="lnameShow"></span></p>
-      <p class="text-sm">Ticket linked. Customer can now see their live receipt.</p>
+      <p class="font-medium">Verification link sent to: <span id="lnameShow"></span></p>
+      <p class="text-sm">Ask the guest to open the link and enter their 4-digit PIN. The ticket will link automatically after verification.</p>
     </div>
   </div>
 
 <script>
-// ---- helpers ----
+/* ---------------- helpers ---------------- */
 function showAlert(msg, ok=false){
   const el = document.getElementById('alert');
   el.className = 'mt-3 rounded-lg px-3 py-2 text-sm ' +
@@ -37,7 +45,11 @@ function showAlert(msg, ok=false){
   el.innerHTML = msg;
   el.classList.remove('hidden');
 }
-
+function clearAlert(){
+  const el = document.getElementById('alert');
+  el.classList.add('hidden');
+  el.innerHTML = '';
+}
 function getCSRFCookie(){
   const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
   return m ? decodeURIComponent(m[1]) : null;
@@ -45,14 +57,10 @@ function getCSRFCookie(){
 function getCSRFToken(){
   return getCSRFCookie() || (document.querySelector('meta[name="csrf-token"]')?.content || '');
 }
-
 async function postJSON(url, body){
   const r = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': getCSRFToken()
-    },
+    headers: {'Content-Type':'application/json','X-CSRFToken': getCSRFToken()},
     credentials: 'same-origin',
     body: JSON.stringify(body || {})
   });
@@ -60,28 +68,33 @@ async function postJSON(url, body){
   try { data = await r.json(); } catch {}
   return { ok: r.ok, status: r.status, data };
 }
-
-// Resolve the URL from Django (namespaced)
-const linkMemberUrl = "{% url 'core:link_member' %}";
-
-// Call the API
-async function linkMember(member, lname, hintOrTicketId, isExact=false) {
-  const payload = isExact
-    ? { member_number: member, last_name: lname, ticket_id: hintOrTicketId }
-    : { member_number: member, last_name: lname, check_hint: hintOrTicketId };
-  return postJSON(linkMemberUrl, payload);
+function setBusy(on){
+  document.getElementById('linkBtn').disabled = on;
+  document.getElementById('busy').classList.toggle('hidden', !on);
 }
 
-// ---- UI wiring ----
+/* --------- endpoint (NEW flow: send link only) --------- */
+const beginLinkUrl = "{% url 'core:link_member' %}";
+
+async function beginLink(member, lname, hintOrTicketId, useExact){
+  const payload = useExact
+    ? { member_number: member, last_name: lname, ticket_id: hintOrTicketId }
+    : { member_number: member, last_name: lname, check_hint: hintOrTicketId };
+  return postJSON(beginLinkUrl, payload);
+}
+
+/* ---------------- UI wiring ---------------- */
 document.getElementById('linkBtn').onclick = async () => {
+  clearAlert();
   const member = document.getElementById('member').value.trim();
   const lname  = document.getElementById('lname').value.trim();
   const hint   = document.getElementById('hint').value.trim();
 
   if (!member) return showAlert('Enter a member number');
 
-  // 1) initial link attempt
-  const res = await linkMember(member, lname, hint, false);
+  setBusy(true);
+  const res = await beginLink(member, lname, hint, false);
+  setBusy(false);
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -93,43 +106,60 @@ document.getElementById('linkBtn').onclick = async () => {
 
   const data = res.data;
 
-  // 2) Multiple candidates -> show choices
+  // Multiple candidates -> show picker
   if (data.multiple) {
     const box = document.getElementById('choices');
     box.innerHTML =
-      '<p class="mb-2">Multiple tickets matched. Choose one:</p>' +
+      '<p class="mb-2">Multiple open checks matched. Choose one to text the link for:</p>' +
       data.candidates.map(c =>
         `<button data-id="${c.ticket_id}" class="ticket-choice mr-2 mt-2 px-3 py-2 rounded-lg border hover:bg-slate-50">${c.label}</button>`
       ).join('');
     box.classList.remove('hidden');
 
-    // Prevent duplicate listeners:
-    box.replaceWith(box.cloneNode(true));
-    const box2 = document.getElementById('choices');
+    // Rebind click safely
+    const newBox = box.cloneNode(true);
+    box.parentNode.replaceChild(newBox, box);
 
-    box2.addEventListener('click', async (e) => {
+    newBox.addEventListener('click', async (e) => {
       const btn = e.target.closest('.ticket-choice');
       if (!btn) return;
       const ticket_id = btn.getAttribute('data-id');
 
-      const r2 = await linkMember(member, lname, ticket_id, true);
+      setBusy(true);
+      const r2 = await beginLink(member, lname, ticket_id, true);
+      setBusy(false);
+
       if (!r2.ok) {
-        const m2 = r2.data?.error || r2.data?.detail || 'Link failed.';
+        const m2 = r2.data?.error || r2.data?.detail || 'Send failed.';
         return showAlert(m2);
       }
-      document.getElementById('lnameShow').textContent = r2.data.member_last || '';
+
+      // SMS sent — show success
+      document.getElementById('lnameShow').textContent = lname || '(member)';
       document.getElementById('green').classList.remove('hidden');
-      showAlert('Member linked to ticket.', true);
+
+      const sent = r2.data?.sent;
+      if (sent && sent.ok === false && sent.error) {
+        // Twilio failure but 200 from our API (we bubbled details)
+        return showAlert(`SMS error: ${sent.error}`);
+      }
+      showAlert('Verification link sent via SMS.', true);
     });
-  } else {
-    // 3) Single match -> success
-    document.getElementById('lnameShow').textContent = data.member_last || '';
-    document.getElementById('green').classList.remove('hidden');
-    showAlert('Member linked to ticket.', true);
+
+    return;
   }
+
+  // Single match — SMS sent already
+  document.getElementById('lnameShow').textContent = lname || '(member)';
+  document.getElementById('green').classList.remove('hidden');
+
+  const sent = data?.sent;
+  if (sent && sent.ok === false && sent.error) {
+    return showAlert(`SMS error: ${sent.error}`);
+  }
+  showAlert('Verification link sent via SMS.', true);
 };
 </script>
-
 </body>
 </html>
 

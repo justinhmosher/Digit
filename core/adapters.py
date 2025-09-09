@@ -34,18 +34,18 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
             if email:
                 user = User.objects.filter(email__iexact=email).first()
 
-        if user and not sociallogin.is_existing:
-            if user.has_usable_password() and not SocialAccount.objects.filter(
-                user=user, provider=sociallogin.account.provider
-            ).exists():
-                login_url = reverse("core:signin")
-                # carry context so the UI can show a friendly message
-                login_url += f"?reason=password-account&email={quote(email)}"
-                raise ImmediateHttpResponse(redirect(login_url))
         # ---------------------------------------------------------
 
         # ===== MANAGER FLOW =====
         if gate_role == "manager":
+            if user and not sociallogin.is_existing:
+                if user.has_usable_password() and not SocialAccount.objects.filter(
+                    user=user, provider=sociallogin.account.provider
+                ).exists():
+                    login_url = reverse("core:restaurant_signin")
+                    # carry context so the UI can show a friendly message
+                    login_url += f"?reason=password-account&email={quote(email)}"
+                    raise ImmediateHttpResponse(redirect(login_url))
             # Must be an existing user with a ManagerProfile
             if not user:
                 # No local user for this email → not invited
@@ -66,6 +66,14 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
 
         # ===== OWNER FLOW =====
         if gate_role == "owner":
+            if user and not sociallogin.is_existing:
+                if user.has_usable_password() and not SocialAccount.objects.filter(
+                    user=user, provider=sociallogin.account.provider
+                ).exists():
+                    login_url = reverse("core:restaurant_signin")
+                    # carry context so the UI can show a friendly message
+                    login_url += f"?reason=password-account&email={quote(email)}"
+                    raise ImmediateHttpResponse(redirect(login_url))
             if not user:
                 return stash_and_gate("core:oauth_owner_phone_page")
 
@@ -86,6 +94,14 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
             else:
                 raise ImmediateHttpResponse(redirect("core:restaurant_onboard"))
 
+        if user and not sociallogin.is_existing:
+                if user.has_usable_password() and not SocialAccount.objects.filter(
+                    user=user, provider=sociallogin.account.provider
+                ).exists():
+                    login_url = reverse("core:signin")
+                    # carry context so the UI can show a friendly message
+                    login_url += f"?reason=password-account&email={quote(email)}"
+                    raise ImmediateHttpResponse(redirect(login_url))
         # ===== CUSTOMER FLOW =====
         if sociallogin.is_existing:
             u = sociallogin.account.user

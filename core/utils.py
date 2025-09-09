@@ -85,3 +85,32 @@ def send_manager_invite_email(to_email: str, invite_link: str, restaurant_name: 
     # Non-2xx? raise with details so you see why
     if not (200 <= resp.status_code < 300):
         raise RuntimeError(f"SendGrid failed: {resp.status_code} {resp.body}")
+
+
+TWILIO_FROM_NUMBER = config("TWILIO_FROM_NUMBER", default="")
+
+def send_sms(to_number: str, body: str) -> dict:
+    """
+    Send an SMS via Twilio. If Twilio env vars are missing, no-op gracefully.
+    Returns: {"ok": bool, "sid": str|None, "error": str|None}
+    """
+    if not (ACCOUNT_SID and AUTH_TOKEN and TWILIO_FROM_NUMBER):
+        return {"ok": False, "sid": None, "error": "Twilio not configured"}
+
+    try:
+        # Local import so the project doesn't require twilio unless used
+        from twilio.rest import Client
+    except Exception as e:
+        return {"ok": False, "sid": None, "error": f"Twilio SDK not installed: {e}"}
+
+    try:
+        client = Client(ACCOUNT_SID, AUTH_TOKEN)
+        msg = client.messages.create(
+            to='+18777804236',
+            from_=TWILIO_FROM_NUMBER,
+            body=body,
+        )
+        return {"ok": True, "sid": msg.sid, "error": None}
+    except Exception as e:
+        return {"ok": False, "sid": None, "error": str(e)}
+

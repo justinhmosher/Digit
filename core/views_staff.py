@@ -14,6 +14,11 @@ from .omnivore import (
     get_ticket_items,
     create_payment_with_tender_type
 )
+# add these imports near your other imports
+from django.core import signing
+from django.urls import reverse
+from .utils import send_sms
+
 
 LOCATION_ID = config("OMNIVORE_LOCATION_ID")
 
@@ -64,44 +69,38 @@ def _match_ticket_hint(t: dict, hint: str) -> bool:
 @require_POST
 def api_link_member_to_ticket(request):
     """
-    Link a member to an open POS ticket.
+    Staff provides: member_number, last_name (optional), and either ticket_id or check_hint.
+    We find/resolve ONE open ticket, build a signed token with (member, ticket_id, tl=None),
+    and send the customer a verification link via SMS.
 
-    POST JSON:
-      - member_number (required)
-      - last_name (optional human confirmation)
-      - check_hint (optional: table name, partial ticket number, server check name)
-      - ticket_id (optional: if front-end already chose exact ticket)
-
-    Responses:
-      { ok, ticket_id, server_name, member_last }               # success
-      { ok: True, multiple: True, candidates: [{ticket_id,label}, ...] }  # need staff to choose
-      404 with {error: "..."} if no member or no open ticket matched
+    Response:
+      { ok: True, sent: {ok, sid?, error?} } on success
+      { ok: True, multiple: True, candidates: [...] } if multiple matches
+      4xx with {error: "..."} on failure
     """
     data = json.loads(request.body.decode() or "{}")
-
     member_number = (data.get("member_number") or "").strip()
     last_name     = (data.get("last_name") or "").strip()
     check_hint    = (data.get("check_hint") or "").strip()
     ticket_id     = (data.get("ticket_id") or "").strip()
 
-    # validate member
-    m = Member.objects.filter(number=member_number).first()
+    # 1) validate member
+    m = Member.objects.filter(number=member_number).select_related("customer").first()
     if not m or (last_name and m.last_name.lower() != last_name.lower()):
         return JsonResponse({"ok": False, "error": "Member not found or last name mismatch."}, status=404)
 
-    # if ticket_id provided, short-circuit search
-    ticket = None
+    # 2) resolve ticket
     if ticket_id:
         try:
-            ticket = get_ticket(LOCATION_ID, ticket_id)
+            t = get_ticket(LOCATION_ID, ticket_id)
         except Exception:
             return JsonResponse({"ok": False, "error": "Ticket not found."}, status=404)
-        if not ticket.get("open", True):
+        if not t.get("open", True):
             return JsonResponse({"ok": False, "error": "Ticket is not open."}, status=404)
+        chosen_id = str(t.get("id"))
     else:
-        # search open tickets
-        candidates = list_open_tickets(LOCATION_ID)  # already limited to open
-        hits = [t for t in candidates if _match_ticket_hint(t, check_hint)]
+        cands = list_open_tickets(LOCATION_ID)
+        hits = [tt for tt in cands if _match_ticket_hint(tt, check_hint)]
         if not hits:
             return JsonResponse({"ok": False, "error": "No open check matched that hint."}, status=404)
         if len(hits) > 1:
@@ -110,32 +109,41 @@ def api_link_member_to_ticket(request):
                 "multiple": True,
                 "candidates": [
                     {
-                        "ticket_id": t.get("id"),
+                        "ticket_id": tt.get("id"),
                         "label": (
-                            str(t.get("ticket_number") or "") or
-                            _emp_name(t) or
-                            t.get("name") or
-                            str(t.get("id"))
+                            str(tt.get("ticket_number") or "") or
+                            _emp_name(tt) or
+                            tt.get("name") or
+                            str(tt.get("id"))
                         ),
-                    } for t in hits
+                    } for tt in hits
                 ],
             })
-        ticket = hits[0]
+        chosen_id = str(hits[0].get("id"))
 
-    tl = TicketLink.objects.create(
-        member=m,
-        location_id=LOCATION_ID,
-        ticket_id=str(ticket.get("id")),
-        server_name=_emp_name(ticket) or "",
-        last_total=_due_cents(ticket),
-    )
-
-    return JsonResponse({
-        "ok": True,
-        "ticket_id": tl.ticket_id,
-        "server_name": tl.server_name,
-        "member_last": m.last_name,
+    # 3) build verification link token (no TicketLink yet)
+    token = signing.TimestampSigner().sign_object({
+        "m": m.number,
+        "loc": LOCATION_ID,
+        "ticket": chosen_id,
+        # you could include a nonce here if you want one-time enforcement
     })
+    verify_path = reverse("core:verify_member", args=[m.number])
+    verify_url  = request.build_absolute_uri(f"{verify_path}?t={token}")
+
+    # 4) send SMS
+    phone = getattr(getattr(m, "customer", None), "phone", "") or ""
+    if not phone:
+        return JsonResponse({"ok": False, "error": "Member has no phone on file."}, status=400)
+
+    body = (
+        "Dine N Dash: Tap to verify your visit, then enter your 4-digit PIN.\n"
+        f"{verify_url}"
+    )
+    sent = send_sms(phone, body)
+
+    return JsonResponse({"ok": True, "sent": sent})
+
 
 
 @require_GET

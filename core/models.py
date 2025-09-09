@@ -91,7 +91,7 @@ class ManagerInvite(models.Model):
     def is_valid(self):
         return self.accepted_at is None and self.expires_at > timezone.now()
 
-
+"""
 class PhoneOTP(models.Model):
     PURPOSES  = (("login","login"), ("signup","signup"))
     phone     = models.CharField(max_length=20, db_index=True)
@@ -109,6 +109,7 @@ class PhoneOTP(models.Model):
     def hash_code(code: str) -> str:
         salt = os.environ.get("OTP_SALT", "change_me_salt")
         return hashlib.sha256(f"{salt}:{code}".encode()).hexdigest()
+"""
 
 class Member(models.Model):
     # your global member
