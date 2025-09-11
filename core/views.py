@@ -245,82 +245,6 @@ def customer_precheck_api(request):
         "has_verified_phone": has_verified_phone
     })
 
-@require_POST
-def customer_begin_api(request):
-    """
-    NEW endpoint for the customer page's second step.
-    Accepts:
-      - existing user path: {email, phone?}
-      - new user path: {email, first_name, last_name, phone, password1, password2}
-    Decides which path based on whether User(email) exists.
-    Sends SMS OTP and stashes a session bundle.
-    """
-    import json
-    data = json.loads(request.body.decode() or "{}")
-
-    email = (data.get("email") or "").strip().lower()
-    if not email:
-        return JsonResponse({"ok": False, "error": "Email is required."}, status=400)
-
-    user = User.objects.filter(email=email).first()
-    if CustomerProfile.objects.filter(user__email=email).exists():
-        return JsonResponse({
-            "ok": False,
-            "error": "You already have a customer account. Please sign in.",
-            "signin_url": reverse("core:signin")
-        }, status=409)
-    is_existing = bool(user)
-
-    # Decide phone source:
-    phone_raw = (data.get("phone") or "").strip()
-    if is_existing and not phone_raw:
-        phone_raw = _get_verified_phone_for_user(user) or ""
-
-    if not phone_raw:
-        return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
-
-    # Normalize phone
-    try:
-        phone_e164 = to_e164_us(phone_raw)
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
-
-    # Validate fields for NEW users
-    first_name = (data.get("first_name") or "").strip()
-    last_name  = (data.get("last_name") or "").strip()
-    p1 = data.get("password1") or ""
-    p2 = data.get("password2") or ""
-
-    need_email_otp = False
-    if not is_existing:
-        # For new users we need first/last/passwords
-        if not (first_name and last_name and p1 and p2):
-            return JsonResponse({"ok": False, "error": "Please fill all fields."}, status=400)
-        if p1 != p2:
-            return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
-        need_email_otp = True
-
-    # Send phone OTP
-    try:
-        send_sms_otp(phone_e164)
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
-
-    # Stash session bundle
-    request.session[CUSTOMER_SSR] = {
-        "email": email,
-        "existing": is_existing,
-        "first_name": first_name,
-        "last_name": last_name,
-        "phone": phone_e164,
-        "password1": p1,
-        "need_email_otp": need_email_otp,
-        "phone_verified": False,
-        "email_verified": False,
-    }
-    request.session.modified = True
-
-    return JsonResponse({"ok": True, "stage": "phone", "phone_e164": phone_e164})
 
 @require_POST
 def customer_begin_api(request):
@@ -430,28 +354,16 @@ def verify_otp(request):
         user = User.objects.filter(email=ss["email"]).first()
         if not user:
             return JsonResponse({"ok": False, "error": "Account not found."}, status=400)
-
-        # Ensure CustomerProfile + flags
-        cp, _ = CustomerProfile.objects.get_or_create(user=user)
-        cp.phone = phone_e164
-        if hasattr(cp, "phone_verified"):
-            cp.phone_verified = True
-        if hasattr(cp, "email_verified"):
-            cp.email_verified = True  # we consider email verified for existing user
-        cp.save()
-
-        if not user.is_active:
-            user.is_active = True
-            user.save(update_fields=["is_active"])
-
-        # Optionally log them in right now
-        # login(request, user)
-
-        # Clear or keep session as you prefer
-        request.session.pop(CUSTOMER_SSR, None)
+        # Mark verified flags in the pending bundle; we’ll finish after card.
+        ss["phone_verified"] = True
+        ss["email_verified"] = True  # safe to treat existing email as verified
+        ss["stage"] = "need_card"    # <- force the card step next
+        request.session[CUSTOMER_SSR] = ss
         request.session.modified = True
 
-        return JsonResponse({"ok": True, "redirect": "/profile"})
+        # Send to add-card to save a payment method first
+        add_url = reverse("core:add_card") + "?next=/profile"
+        return JsonResponse({"ok": True, "redirect": add_url})
 
     # New user path → send email OTP
     try:

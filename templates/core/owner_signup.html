@@ -2,6 +2,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <meta charset="utf-8" />
   <title>Owner Sign Up — Dine N Dash</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -135,7 +136,21 @@
 
 <script>
   // Helpers
-  function csrf(){ const m=document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/); return m?m[1]:''; }
+    function csrf() {
+    // 1) Try cookie (normal case)
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+
+    // 2) Try meta tag
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta && meta.content) return meta.content;
+
+    // 3) Try hidden input if one exists on the page
+    const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (input && input.value) return input.value;
+
+    return "";
+  }
   function flash(msg, ok=false){
     const el=document.getElementById('alert');
     el.className='mt-4 text-sm px-4 py-3 rounded-md ' + (ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');

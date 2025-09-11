@@ -55,22 +55,45 @@ def add_card(request):
         "next": request.GET.get("next") or "/profile",
     })
 
-
 @require_POST
 def finalize_signup(request):
     """
-    Called by browser after confirmCardSetup succeeds. We receive the setup_intent_id.
-    We verify it with Stripe, then create User & CustomerProfile, attach PM as default, log them in.
+    Called by the browser after Stripe confirmCardSetup succeeds.
+    Works for:
+      - NEW users (phone+email OTP verified) -> create User + CustomerProfile
+      - EXISTING users (phone verified)      -> ensure CustomerProfile
+
+    Session requirements:
+      ss["stage"] == "need_card"
+      ss["email"] present
+      For new users: ss["phone_verified"] and ss["email_verified"] True
+      For existing:  ss["existing"] True and ss["phone_verified"] True
     """
     import json
+
     data = json.loads(request.body.decode() or "{}")
     setup_intent_id = (data.get("setup_intent_id") or "").strip()
     if not setup_intent_id:
         return JsonResponse({"ok": False, "error": "Missing setup_intent_id"}, status=400)
 
-    ss = request.session.get(CUSTOMER_SSR)
-    if not ss or not ss.get("email_verified") or not ss.get("phone_verified"):
-        return JsonResponse({"ok": False, "error": "Signup session missing or incomplete."}, status=400)
+    ss = request.session.get(CUSTOMER_SSR) or {}
+    email = (ss.get("email") or "").strip().lower()
+    if ss.get("stage") != "need_card" or not email:
+        return JsonResponse({"ok": False, "error": "Signup session invalid or expired."}, status=400)
+
+    is_existing = bool(ss.get("existing"))
+    phone_verified = bool(ss.get("phone_verified"))
+    email_verified = bool(ss.get("email_verified"))
+
+    # Security gates:
+    if is_existing:
+        # Existing users must have verified phone
+        if not phone_verified:
+            return JsonResponse({"ok": False, "error": "Phone not verified."}, status=400)
+    else:
+        # New users must have both verified
+        if not (phone_verified and email_verified):
+            return JsonResponse({"ok": False, "error": "Verification incomplete."}, status=400)
 
     # Retrieve SetupIntent to validate
     try:
@@ -86,29 +109,35 @@ def finalize_signup(request):
     if not (pm_id and customer_id):
         return JsonResponse({"ok": False, "error": "Payment method not found on SetupIntent."}, status=400)
 
-    # Create Django user & CustomerProfile NOW (first time we touch DB)
-    email = ss["email"]
-    first_name = ss.get("first_name") or ""
-    last_name  = ss.get("last_name") or ""
-    phone      = ss.get("phone") or ""
-    password1  = ss.get("password1")  # present for new users
-
+    # ------------- Create / fetch the Django user -------------
     user = User.objects.filter(email=email).first()
     if not user:
+        # NEW user path (create account now)
         user = User.objects.create_user(
             username=email,
             email=email,
-            password=password1,
-            first_name=first_name,
-            last_name=last_name,
+            password=ss.get("password1") or User.objects.make_random_password(),
+            first_name=ss.get("first_name", ""),
+            last_name=ss.get("last_name", ""),
         )
-    user.is_active = True
-    user.save(update_fields=["is_active"])
 
+    # Ensure active
+    if not user.is_active:
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+    # ------------- Create / update CustomerProfile -------------
     cp, _ = CustomerProfile.objects.get_or_create(user=user)
-    cp.phone = phone
-    if hasattr(cp, "phone_verified"): cp.phone_verified = True
-    if hasattr(cp, "email_verified"): cp.email_verified  = True
+    # Use phone we collected/verified during OTP for either flow
+    if ss.get("phone"):
+        cp.phone = ss["phone"]
+    # Mark verifications (existing: phone True, email True; new: both True)
+    if hasattr(cp, "phone_verified"):
+        cp.phone_verified = True
+    if hasattr(cp, "email_verified"):
+        cp.email_verified = True
+
+    # Tie Stripe IDs
     cp.stripe_customer_id = customer_id
     cp.default_payment_method = pm_id
     cp.save()
@@ -119,11 +148,9 @@ def finalize_signup(request):
     except Exception:
         pass
 
-    # Clear the pending session
+    # Clear pending session + log in
     request.session.pop(CUSTOMER_SSR, None)
     request.session.modified = True
-
-    # Optionally log them in
     login(request, user)
 
     return JsonResponse({"ok": True, "redirect": "/profile"})

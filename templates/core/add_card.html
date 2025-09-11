@@ -4,88 +4,166 @@
 <head>
   <meta charset="utf-8">
   <title>Add Card — Dine N Dash</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="https://js.stripe.com/v3/"></script>
   <style>
+    :root{
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --ink: #111827;
+      --muted:#6b7280;
+      --border:#e5e7eb;
+      --shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+      --radius: 16px;
+    }
+
+    /* Page layout: sticky footer, centered content */
+    html, body { height: 100%; }
     body {
-      font-family: ui-sans-serif, system-ui, sans-serif;
-      background: linear-gradient(to bottom, #ffffff, #f8fafc);
-      color: #1f2937;
-      min-height: 100vh;
       margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+                   "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
+      color: var(--ink);
+      background: linear-gradient(to bottom, #fff, var(--bg));
+    }
+    .wrap {
+      min-height: 100%;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      align-items: center;
     }
+    main {
+      flex: 1 0 auto;
+      display: grid;
+      place-items: center;
+      padding: clamp(16px, 3vw, 32px);
+    }
+
+    /* Form card */
     .box {
       width: 100%;
-      max-width: 420px;
-      padding: 2rem;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 1rem;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+      max-width: 460px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: clamp(16px, 4vw, 28px);
     }
     h2 {
+      margin: 0 0 .75rem;
       text-align: center;
-      font-size: 1.5rem;
+      font-size: clamp(20px, 2.2vw, 24px);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .sub {
+      margin: 0 0 1rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    /* Stripe Element shell */
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+    label {
+      font-size: .875rem;
       font-weight: 600;
-      margin-bottom: 1.5rem;
     }
     #card {
-      padding: .75rem;
-      border: 1px solid #e5e7eb;
-      border-radius: .5rem;
-      margin-bottom: 1rem;
+      padding: 12px 14px;
       background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 12px;          /* nice touch target on iPhone */
     }
-    button {
+
+    /* Button + message */
+    .btn {
       width: 100%;
-      padding: .75rem;
-      background: #111827;
-      color: #fff;
-      font-weight: 500;
-      font-size: 1rem;
+      margin-top: 12px;
+      padding: 12px 16px;
       border: 0;
-      border-radius: .5rem;
+      border-radius: 12px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 600;
+      font-size: 1rem;
+      line-height: 1;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: transform .06s ease, opacity .2s ease;
+      touch-action: manipulation;
     }
-    button:hover {
-      background: #1f2937cc;
-    }
+    .btn:active { transform: translateY(1px); }
     #m {
-      margin-top: .75rem;
-      font-size: .875rem;
+      margin-top: 8px;
       text-align: center;
+      font-size: .9rem;
     }
+
     .secure {
-      margin-top: 1rem;
-      font-size: .75rem;
+      margin-top: 14px;
       text-align: center;
-      color: #6b7280;
+      color: var(--muted);
+      font-size: .8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      user-select: none;
     }
+    .secure svg { width: 14px; height: 14px; }
+
+    /* Footer pinned to bottom */
     footer {
-      margin-top: 2rem;
-      font-size: .75rem;
-      color: #9ca3af;
+      flex: 0 0 auto;
+      padding: 16px;
       text-align: center;
+      color: #9ca3af;
+      font-size: .85rem;
+    }
+
+    /* Mobile polish */
+    @media (max-width: 420px) {
+      .box { border-radius: 14px; }
+      #card { min-height: 56px; }        /* extra room for iOS keyboard */
+      .btn { padding: 14px 16px; font-size: 1.05rem; }
     }
   </style>
 </head>
 <body>
-  <div class="box">
-    <h2>Add a card to finish signup</h2>
-    <form id="f">
-      <div id="card"></div>
-      <button type="submit">Save card</button>
-      <div id="m"></div>
-    </form>
-    <p class="secure">🔒 Payments are secure and protected with Stripe.</p>
+  <div class="wrap">
+    <main>
+      <div class="box">
+        <h2>Add a card to finish signup</h2>
+        <p class="sub">Use a debit or credit card. You can change this later.</p>
+
+        <form id="f" novalidate>
+          {% csrf_token %}
+          <div class="field">
+            <label for="card">Card details</label>
+            <div id="card"></div>
+          </div>
+
+          <button type="submit" class="btn">Save card</button>
+          <div id="m"></div>
+
+          <div class="secure" aria-hidden="true">
+            <!-- lock icon -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M7 10V7a5 5 0 0110 0v3"/>
+              <rect x="5" y="10" width="14" height="10" rx="2" ry="2"/>
+            </svg>
+            <span>Payments are secure and protected with Stripe.</span>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <footer>&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</footer>
   </div>
 
-  <footer>&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</footer>
-
+  <!-- ✅ JS block kept exactly the same -->
 <script>
   (function(){
     const stripe = Stripe("{{ pk|escapejs }}");
@@ -94,9 +172,14 @@
     card.mount("#card");
 
     const form = document.getElementById("f");
-    const msg = document.getElementById("m");
+    const msg  = document.getElementById("m");
 
-    function getCsrf(){
+    function getCsrf() {
+      // Prefer the hidden input Django rendered
+      const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
+      if (input && input.value) return input.value;
+
+      // Fallback to cookie
       const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
       return m ? decodeURIComponent(m[1]) : "";
     }
@@ -106,7 +189,6 @@
       msg.style.color = "#374151";
       msg.textContent = "Saving card…";
 
-      // 1) Save the card with Stripe (SetupIntent)
       const { error, setupIntent } = await stripe.confirmCardSetup(
         "{{ client_secret|escapejs }}",
         { payment_method: { card } }
@@ -117,14 +199,12 @@
         msg.textContent = error.message || "Could not save card.";
         return;
       }
-
       if (!setupIntent || setupIntent.status !== "succeeded") {
         msg.style.color = "red";
         msg.textContent = "Card was not confirmed. Please try again.";
         return;
       }
 
-      // 2) Tell Django to finalize signup (create User + CustomerProfile, attach PM, login)
       try {
         const r = await fetch("{% url 'core:finalize_signup' %}", {
           method: "POST",
@@ -135,17 +215,14 @@
           credentials: "same-origin",
           body: JSON.stringify({ setup_intent_id: setupIntent.id })
         });
-
         const data = await r.json();
         if (!r.ok || !data.ok) {
           msg.style.color = "red";
           msg.textContent = data.error || "Could not finalize signup.";
           return;
         }
-
-        // 3) Follow server’s redirect (e.g., /profile)
         window.location.href = data.redirect || "/profile";
-      } catch (err) {
+      } catch {
         msg.style.color = "red";
         msg.textContent = "Network error finalizing signup.";
       }
