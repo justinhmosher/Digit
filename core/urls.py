@@ -59,6 +59,7 @@ urlpatterns = [
     path("api/ticket/<member>/close", views_staff.api_close_tab, name="close_tab"),
     path("verify/<member>/", veiws_verify.verify_member, name="verify_member"),
     path("staff/state", views_staff.api_staff_board_state, name="staff_board_state"),
+    path("add-card/", views_payments.add_card, name="add_card"),
     path("set-pin/", views_payments.set_pin, name="set_pin"),
     path("save-pin/", views_payments.save_pin_finalize, name="save_pin_finalize"),
 

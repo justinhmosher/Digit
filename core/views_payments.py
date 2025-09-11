@@ -15,6 +15,8 @@ from .utils import ensure_stripe_customer_by_email, create_setup_intent_for_cust
 from decouple import config
 from .constants import CUSTOMER_SSR
 from . import views, views_staff, views_home, veiws_verify, views_payments
+from django.contrib.auth.hashers import make_password
+
 
 User = get_user_model()
 stripe.api_key = config('STRIPE_SK')
