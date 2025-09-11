@@ -55,47 +55,53 @@ def add_card(request):
         "next": request.GET.get("next") or "/profile",
     })
 
-@require_POST
-def finalize_signup(request):
+@ensure_csrf_cookie
+def set_pin(request):
     """
-    Called by the browser after Stripe confirmCardSetup succeeds.
-    Works for:
-      - NEW users (phone+email OTP verified) -> create User + CustomerProfile
-      - EXISTING users (phone verified)      -> ensure CustomerProfile
+    Show a small 2-field PIN form right after card save.
+    Stores the setup_intent_id temporarily in session.
+    """
+    ss = request.session.get(CUSTOMER_SSR)
+    if not ss or not ss.get("email_verified") or not ss.get("phone_verified"):
+        return redirect("/customer/signup")
 
-    Session requirements:
-      ss["stage"] == "need_card"
-      ss["email"] present
-      For new users: ss["phone_verified"] and ss["email_verified"] True
-      For existing:  ss["existing"] True and ss["phone_verified"] True
+    si = (request.GET.get("si") or "").strip()
+    if not si:
+        return redirect("/customer/signup")
+
+    # stash SI in session so POST doesn't rely on querystring
+    ss["pending_setup_intent_id"] = si
+    request.session[CUSTOMER_SSR] = ss
+    request.session.modified = True
+
+    return render(request, "core/set_pin.html", {
+        "next": request.GET.get("next") or "/profile",
+    })
+
+
+@require_POST
+def save_pin_finalize(request):
+    """
+    Validate the PIN, then finalize signup using the previously-saved setup_intent_id.
     """
     import json
-
     data = json.loads(request.body.decode() or "{}")
-    setup_intent_id = (data.get("setup_intent_id") or "").strip()
+    pin1 = (data.get("pin1") or "").strip()
+    pin2 = (data.get("pin2") or "").strip()
+    next_url = (data.get("next") or "/profile").strip()
+
+    if not (pin1.isdigit() and len(pin1) == 4 and pin1 == pin2):
+        return JsonResponse({"ok": False, "error": "Enter matching 4-digit PIN."}, status=400)
+
+    ss = request.session.get(CUSTOMER_SSR)
+    if not ss or not ss.get("email_verified") or not ss.get("phone_verified"):
+        return JsonResponse({"ok": False, "error": "Signup session missing or incomplete."}, status=400)
+
+    setup_intent_id = ss.get("pending_setup_intent_id")
     if not setup_intent_id:
-        return JsonResponse({"ok": False, "error": "Missing setup_intent_id"}, status=400)
+        return JsonResponse({"ok": False, "error": "Missing saved card reference."}, status=400)
 
-    ss = request.session.get(CUSTOMER_SSR) or {}
-    email = (ss.get("email") or "").strip().lower()
-    if ss.get("stage") != "need_card" or not email:
-        return JsonResponse({"ok": False, "error": "Signup session invalid or expired."}, status=400)
-
-    is_existing = bool(ss.get("existing"))
-    phone_verified = bool(ss.get("phone_verified"))
-    email_verified = bool(ss.get("email_verified"))
-
-    # Security gates:
-    if is_existing:
-        # Existing users must have verified phone
-        if not phone_verified:
-            return JsonResponse({"ok": False, "error": "Phone not verified."}, status=400)
-    else:
-        # New users must have both verified
-        if not (phone_verified and email_verified):
-            return JsonResponse({"ok": False, "error": "Verification incomplete."}, status=400)
-
-    # Retrieve SetupIntent to validate
+    # Retrieve SI to validate
     try:
         si = stripe.SetupIntent.retrieve(setup_intent_id)
     except Exception as e:
@@ -107,51 +113,46 @@ def finalize_signup(request):
     pm_id = si.get("payment_method")
     customer_id = si.get("customer")
     if not (pm_id and customer_id):
-        return JsonResponse({"ok": False, "error": "Payment method not found on SetupIntent."}, status=400)
+        return JsonResponse({"ok": False, "error": "Payment method missing from SetupIntent."}, status=400)
 
-    # ------------- Create / fetch the Django user -------------
+    # Create (or fetch) user now, then CustomerProfile — same as your finalize flow
+    email = ss["email"]
+    first_name = ss.get("first_name") or ""
+    last_name  = ss.get("last_name") or ""
+    phone      = ss.get("phone") or ""
+    password1  = ss.get("password1")  # present for new flows
+
     user = User.objects.filter(email=email).first()
     if not user:
-        # NEW user path (create account now)
         user = User.objects.create_user(
-            username=email,
-            email=email,
-            password=ss.get("password1") or User.objects.make_random_password(),
-            first_name=ss.get("first_name", ""),
-            last_name=ss.get("last_name", ""),
+            username=email, email=email, password=password1,
+            first_name=first_name, last_name=last_name
         )
+    user.is_active = True
+    user.save(update_fields=["is_active"])
 
-    # Ensure active
-    if not user.is_active:
-        user.is_active = True
-        user.save(update_fields=["is_active"])
-
-    # ------------- Create / update CustomerProfile -------------
     cp, _ = CustomerProfile.objects.get_or_create(user=user)
-    # Use phone we collected/verified during OTP for either flow
-    if ss.get("phone"):
-        cp.phone = ss["phone"]
-    # Mark verifications (existing: phone True, email True; new: both True)
-    if hasattr(cp, "phone_verified"):
-        cp.phone_verified = True
-    if hasattr(cp, "email_verified"):
-        cp.email_verified = True
-
-    # Tie Stripe IDs
+    cp.phone = phone
+    if hasattr(cp, "phone_verified"):  cp.phone_verified = True
+    if hasattr(cp, "email_verified"):  cp.email_verified  = True
     cp.stripe_customer_id = customer_id
     cp.default_payment_method = pm_id
+    cp.pin_hash = make_password(pin1)   # ✅ save hashed PIN
     cp.save()
 
-    # Make PM default on the Stripe customer
+    # Make PM default at Stripe
     try:
         stripe.Customer.modify(customer_id, invoice_settings={"default_payment_method": pm_id})
     except Exception:
         pass
 
-    # Clear pending session + log in
+    # cleanup session
+    for k in ("pending_setup_intent_id",):
+        ss.pop(k, None)
+    request.session[CUSTOMER_SSR] = ss
     request.session.pop(CUSTOMER_SSR, None)
     request.session.modified = True
-    login(request, user)
 
-    return JsonResponse({"ok": True, "redirect": "/profile"})
+    login(request, user)
+    return JsonResponse({"ok": True, "redirect": next_url})
 

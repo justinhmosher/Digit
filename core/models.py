@@ -23,6 +23,7 @@ class CustomerProfile(models.Model):
     email_verified = models.BooleanField(default=False)
     stripe_customer_id     = models.CharField(max_length=64, blank=True)
     default_payment_method = models.CharField(max_length=64, blank=True)
+    pin_hash = models.CharField(max_length=128, blank=True, null=True) 
 
     def __str__(self):
         return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
