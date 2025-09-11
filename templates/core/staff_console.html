@@ -1,38 +1,61 @@
-<!-- templates/core/staff_console.html -->
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
+  <title>Staff Console</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>Staff — Link Member to Check</title>
 </head>
 <body class="bg-slate-50 min-h-screen p-6">
-  <div class="max-w-xl mx-auto bg-white rounded-2xl shadow p-6">
-    <h1 class="text-2xl font-bold">Send Verification Link</h1>
-    <p class="text-slate-600 mt-1 text-sm">
-      Enter the member and the check hint (or exact ticket). We’ll text the member a secure link to verify with their 4-digit PIN.
-    </p>
+  <div class="max-w-7xl mx-auto">
+    <h1 class="text-2xl font-bold mb-4">Server Console</h1>
+    <p class="text-slate-600 mb-6">Pending = waiting for guest verification (yellow). Open = verified & live (green). Closed = paid within last 12 hours (gray).</p>
 
-    <div id="alert" class="hidden mt-3 rounded-lg px-3 py-2 text-sm"></div>
+    <!-- Alerts -->
+    <div id="alert" class="hidden rounded-lg px-3 py-2 text-sm mb-4"></div>
 
-    <div class="mt-6 grid gap-4">
-      <input id="member" class="h-12 rounded-xl border px-4" placeholder="Member number" />
-      <input id="lname"  class="h-12 rounded-xl border px-4" placeholder="Last name (optional confirm)" />
-      <input id="hint"   class="h-12 rounded-xl border px-4" placeholder="Check #, table name, or server (optional)" />
-      <div class="flex items-center gap-2">
-        <button id="linkBtn" class="h-12 px-5 rounded-xl bg-slate-900 text-white disabled:opacity-50">Send Link</button>
-        <span id="busy" class="hidden text-sm text-slate-500">Sending…</span>
-      </div>
+    <!-- Board -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Pending -->
+      <section>
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold">Pending verification</h2>
+          <button id="refreshBtn" class="text-sm text-slate-600 hover:underline">Refresh</button>
+        </div>
+        <div id="col-pending" class="space-y-3"></div>
+      </section>
+
+      <!-- Open -->
+      <section>
+        <h2 class="font-semibold mb-2">Open tabs</h2>
+        <div id="col-open" class="space-y-3"></div>
+      </section>
+
+      <!-- Closed -->
+      <section>
+        <h2 class="font-semibold mb-2">Closed (last 12h)</h2>
+        <div id="col-closed" class="space-y-3"></div>
+      </section>
     </div>
 
-    <!-- Multiple candidates -->
-    <div id="choices" class="hidden mt-6"></div>
+    <!-- Create/Assign -->
+    <div class="mt-10 bg-white rounded-2xl shadow p-6">
+      <h3 class="font-semibold text-lg">Create / Assign Guests</h3>
+      <p class="text-sm text-slate-600 mb-4">
+        Enter an open check hint (ticket #, table, or server). Add one or more member numbers (comma-separated).
+        We’ll text each guest a verification link; once they PIN verify, their ticket appears under “Open tabs”.
+      </p>
 
-    <!-- Success box -->
-    <div id="green" class="hidden mt-6 rounded-xl bg-emerald-100 text-emerald-900 p-4">
-      <p class="font-medium">Verification link sent to: <span id="lnameShow"></span></p>
-      <p class="text-sm">Ask the guest to open the link and enter their 4-digit PIN. The ticket will link automatically after verification.</p>
+      <div class="grid gap-3 md:grid-cols-2">
+        <input id="create-hint" class="h-12 rounded-xl border px-4" placeholder="Check # / table / server" />
+        <input id="create-lastname" class="h-12 rounded-xl border px-4" placeholder="(Optional) Last name confirmation" />
+        <input id="create-members" class="h-12 rounded-xl border px-4 md:col-span-2" placeholder="Member numbers (e.g. MOSH6155, ABC1234)" />
+      </div>
+
+      <div class="mt-4 flex gap-3">
+        <button id="sendLinksBtn" class="h-12 px-5 rounded-xl bg-slate-900 text-white disabled:opacity-50">Send Verification Links</button>
+        <span id="busy" class="hidden text-sm text-slate-500 self-center">Working…</span>
+      </div>
     </div>
   </div>
 
@@ -40,124 +63,203 @@
 /* ---------------- helpers ---------------- */
 function showAlert(msg, ok=false){
   const el = document.getElementById('alert');
-  el.className = 'mt-3 rounded-lg px-3 py-2 text-sm ' +
+  el.className = 'rounded-lg px-3 py-2 text-sm mb-4 ' +
     (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
   el.innerHTML = msg;
   el.classList.remove('hidden');
 }
 function clearAlert(){
   const el = document.getElementById('alert');
-  el.classList.add('hidden');
-  el.innerHTML = '';
+  el.classList.add('hidden'); el.innerHTML='';
 }
 function getCSRFCookie(){
-  const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
 function getCSRFToken(){
   return getCSRFCookie() || (document.querySelector('meta[name="csrf-token"]')?.content || '');
 }
+async function getJSON(url){
+  const r = await fetch(url, {credentials:'same-origin'});
+  let data={}; try{data=await r.json()}catch(e){}
+  return {ok:r.ok,status:r.status,data};
+}
 async function postJSON(url, body){
   const r = await fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json','X-CSRFToken': getCSRFToken()},
-    credentials: 'same-origin',
-    body: JSON.stringify(body || {})
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFToken()},
+    credentials:'same-origin',
+    body: JSON.stringify(body||{})
   });
-  let data = {};
-  try { data = await r.json(); } catch {}
-  return { ok: r.ok, status: r.status, data };
+  let data={}; try{data=await r.json()}catch(e){}
+  return {ok:r.ok,status:r.status,data};
 }
+function cents(n){ return (n/100).toFixed(2); }
+
+/* ---------------- endpoints ---------------- */
+const boardUrl     = "{% url 'core:staff_board_state' %}";
+const sendLinkUrl  = "{% url 'core:link_member' %}";
+function closeUrl(member){ return "{% url 'core:close_tab' '__MEM__' %}".replace('__MEM__', member); }
+
+/* ---------------- renderer ---------------- */
+function cardBase(c,bg){
+  return `<div class="rounded-xl border shadow-sm ${bg}">${c}</div>`;
+}
+function renderPending(list){
+  const col = document.getElementById('col-pending');
+  col.innerHTML = list.map(x=>{
+    const body = `
+      <div class="p-4">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Table: ${x.table || '-'}</div>
+          <div class="text-xs text-slate-500">#${x.ticket_number || x.ticket_id}</div>
+        </div>
+        <div class="mt-1 text-sm text-slate-700">
+          Member: <span class="font-mono">${x.member}</span> • ${x.member_last}
+        </div>
+        <div class="mt-2 flex gap-2">
+          <button class="resend px-3 py-1 rounded-lg bg-amber-500 text-white" data-m="${x.member}" data-t="${x.ticket_id}" data-last="${x.member_last}">
+            Resend Link
+          </button>
+        </div>
+      </div>`;
+    return cardBase(body,'bg-amber-50');
+  }).join('') || `<div class="text-sm text-slate-500">Nothing pending.</div>`;
+}
+function renderOpen(list){
+  const col = document.getElementById('col-open');
+  col.innerHTML = list.map(x=>{
+    const body = `
+      <div class="p-4">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Table: ${x.table || '-'}</div>
+          <div class="text-xs text-slate-500">#${x.ticket_number || x.ticket_id}</div>
+        </div>
+        <div class="mt-1 text-sm text-slate-700">
+          ${x.server ? 'Server: '+x.server+' • ' : ''}Due: $${cents(x.due_cents)}
+        </div>
+        <div class="mt-2 text-xs text-slate-600">Members: ${x.members.join(', ') || '-'}</div>
+        <div class="mt-3 flex items-center gap-2">
+          <input class="tip border rounded-lg h-9 px-2 w-24" placeholder="Tip (¢)" data-m="${x.members[0] || ''}">
+          <button class="close px-3 py-1 rounded-lg bg-emerald-600 text-white" data-m="${x.members[0] || ''}">
+            Close Out
+          </button>
+          <button class="split px-3 py-1 rounded-lg border">Split / Customize</button>
+        </div>
+      </div>`;
+    return cardBase(body,'bg-emerald-50');
+  }).join('') || `<div class="text-sm text-slate-500">No open tabs.</div>`;
+}
+function renderClosed(list){
+  const col = document.getElementById('col-closed');
+  col.innerHTML = list.map(x=>{
+    const body = `
+      <div class="p-4">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Ticket #${x.ticket_number || x.ticket_id}</div>
+          <div class="text-xs text-slate-500">${x.closed_ago || ''}</div>
+        </div>
+        <div class="mt-1 text-sm text-slate-700">
+          Member: <span class="font-mono">${x.member}</span> • ${x.member_last}
+        </div>
+        <div class="text-xs text-slate-500 mt-1">Server: ${x.server || '-'}</div>
+      </div>`;
+    return cardBase(body,'bg-slate-50');
+  }).join('') || `<div class="text-sm text-slate-500">Nothing closed in last 12h.</div>`;
+}
+
+/* ---------------- fetching ---------------- */
+async function loadBoard(){
+  const res = await getJSON(boardUrl);
+  if(!res.ok){ return showAlert(res.data?.error || 'Failed to load board.'); }
+  clearAlert();
+  renderPending(res.data.pending||[]);
+  renderOpen(res.data.open||[]);
+  renderClosed(res.data.closed||[]);
+}
+document.getElementById('refreshBtn').onclick = loadBoard;
+setInterval(loadBoard, 8000); // auto refresh every 8s
+loadBoard();
+
+/* ---------------- actions ---------------- */
+// resend link on pending
+document.addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button.resend');
+  if(!btn) return;
+  const member = btn.dataset.m;
+  const ticket = btn.dataset.t;
+  const last   = btn.dataset.last || '';
+  const r = await postJSON(sendLinkUrl, {
+    member_number: member, last_name: last, ticket_id: ticket
+  });
+  if(!r.ok) return showAlert(r.data?.error || 'Failed to resend link');
+  if(r.data?.sent && r.data.sent.ok===false) {
+    return showAlert('SMS error: ' + (r.data.sent.error || 'send failed'));
+  }
+  showAlert('Verification link re-sent.', true);
+});
+
+// close out on open
+document.addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button.close');
+  if(!btn) return;
+  const member = btn.dataset.m;
+  const tipInput = btn.parentElement.querySelector('input.tip');
+  const tip = parseInt((tipInput?.value || '0'), 10) || 0;
+
+  const r = await postJSON(closeUrl(member), { tip_cents: tip, reference: 'staff-close' });
+  if(!r.ok){ 
+    return showAlert(r.data?.error || r.data?.detail || 'Close failed');
+  }
+  showAlert('Closed out.', true);
+  loadBoard();
+});
+
+// (placeholder) split
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('button.split');
+  if(!btn) return;
+  showAlert('Split editor coming soon (server assigns items to members).', true);
+});
+
+/* ---------------- create / send links ---------------- */
 function setBusy(on){
-  document.getElementById('linkBtn').disabled = on;
+  document.getElementById('sendLinksBtn').disabled = on;
   document.getElementById('busy').classList.toggle('hidden', !on);
 }
-
-/* --------- endpoint (NEW flow: send link only) --------- */
-const beginLinkUrl = "{% url 'core:link_member' %}";
-
-async function beginLink(member, lname, hintOrTicketId, useExact){
-  const payload = useExact
-    ? { member_number: member, last_name: lname, ticket_id: hintOrTicketId }
-    : { member_number: member, last_name: lname, check_hint: hintOrTicketId };
-  return postJSON(beginLinkUrl, payload);
-}
-
-/* ---------------- UI wiring ---------------- */
-document.getElementById('linkBtn').onclick = async () => {
+document.getElementById('sendLinksBtn').onclick = async ()=>{
   clearAlert();
-  const member = document.getElementById('member').value.trim();
-  const lname  = document.getElementById('lname').value.trim();
-  const hint   = document.getElementById('hint').value.trim();
+  const hint  = document.getElementById('create-hint').value.trim();
+  const lname = document.getElementById('create-lastname').value.trim();
+  const members = (document.getElementById('create-members').value || '')
+                    .split(',')
+                    .map(s=>s.trim())
+                    .filter(Boolean);
 
-  if (!member) return showAlert('Enter a member number');
+  if(!hint || members.length===0){
+    return showAlert('Enter a check hint and at least one member number.');
+  }
 
   setBusy(true);
-  const res = await beginLink(member, lname, hint, false);
+  let failures = [];
+  for(const m of members){
+    const r = await postJSON(sendLinkUrl, {
+      member_number: m,
+      last_name: lname,
+      check_hint: hint
+    });
+    if(!r.ok || (r.data?.sent && r.data.sent.ok===false)){
+      failures.push(m);
+    }
+  }
   setBusy(false);
 
-  if (!res.ok) {
-    if (res.status === 403) {
-      return showAlert('Forbidden (CSRF). Refresh and try again (same origin required).');
-    }
-    const msg = res.data?.error || res.data?.detail || 'Request failed.';
-    return showAlert(msg);
+  if(failures.length){
+    showAlert('Some links failed for: ' + failures.join(', '));
+  }else{
+    showAlert('Verification links sent.', true);
   }
-
-  const data = res.data;
-
-  // Multiple candidates -> show picker
-  if (data.multiple) {
-    const box = document.getElementById('choices');
-    box.innerHTML =
-      '<p class="mb-2">Multiple open checks matched. Choose one to text the link for:</p>' +
-      data.candidates.map(c =>
-        `<button data-id="${c.ticket_id}" class="ticket-choice mr-2 mt-2 px-3 py-2 rounded-lg border hover:bg-slate-50">${c.label}</button>`
-      ).join('');
-    box.classList.remove('hidden');
-
-    // Rebind click safely
-    const newBox = box.cloneNode(true);
-    box.parentNode.replaceChild(newBox, box);
-
-    newBox.addEventListener('click', async (e) => {
-      const btn = e.target.closest('.ticket-choice');
-      if (!btn) return;
-      const ticket_id = btn.getAttribute('data-id');
-
-      setBusy(true);
-      const r2 = await beginLink(member, lname, ticket_id, true);
-      setBusy(false);
-
-      if (!r2.ok) {
-        const m2 = r2.data?.error || r2.data?.detail || 'Send failed.';
-        return showAlert(m2);
-      }
-
-      // SMS sent — show success
-      document.getElementById('lnameShow').textContent = lname || '(member)';
-      document.getElementById('green').classList.remove('hidden');
-
-      const sent = r2.data?.sent;
-      if (sent && sent.ok === false && sent.error) {
-        // Twilio failure but 200 from our API (we bubbled details)
-        return showAlert(`SMS error: ${sent.error}`);
-      }
-      showAlert('Verification link sent via SMS.', true);
-    });
-
-    return;
-  }
-
-  // Single match — SMS sent already
-  document.getElementById('lnameShow').textContent = lname || '(member)';
-  document.getElementById('green').classList.remove('hidden');
-
-  const sent = data?.sent;
-  if (sent && sent.ok === false && sent.error) {
-    return showAlert(`SMS error: ${sent.error}`);
-  }
-  showAlert('Verification link sent via SMS.', true);
+  loadBoard();
 };
 </script>
 </body>

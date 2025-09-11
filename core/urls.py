@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff, views_home, veiws_verify
+from . import views, views_staff, views_home, veiws_verify, views_payments
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -58,4 +58,8 @@ urlpatterns = [
     path("api/ticket/<member>/receipt", views_staff.api_ticket_receipt, name="ticket_receipt"),
     path("api/ticket/<member>/close", views_staff.api_close_tab, name="close_tab"),
     path("verify/<member>/", veiws_verify.verify_member, name="verify_member"),
+    path("staff/state", views_staff.api_staff_board_state, name="staff_board_state"),
+    path("add-card/", views_payments.add_card, name="add_card"),
+    path("finalize-signup/", views_payments.finalize_signup, name="finalize_signup"),
+
 ]

@@ -466,12 +466,15 @@ def verify_otp(request):
         "message": "Phone verified. We sent a 6-digit code to your email."
     })
 
+CUSTOMER_SSR = "customer_signup_session"
 
 @require_POST
 def verify_email_otp(request):
     """
-    Replaced: complete CUSTOMER signup for NEW users only.
-    Consumes session bundle and creates the Django user + CustomerProfile.
+    After email OTP succeeds for NEW users:
+      - DO NOT create the user/profile yet.
+      - Stash verified signup data in session.
+      - Redirect to /add-card/ to force card collection first.
     """
     import json
     data = json.loads(request.body.decode() or "{}")
@@ -487,7 +490,7 @@ def verify_email_otp(request):
     if not code:
         return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
 
-    # Verify email OTP
+    # Verify email OTP (your existing function)
     try:
         status = check_email_otp(ss["email"], code)
     except Exception as e:
@@ -495,36 +498,16 @@ def verify_email_otp(request):
     if status != "approved":
         return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
-    # Create final user
-    user = User.objects.filter(email=ss["email"]).first()
-    if user:
-        # Edge: someone created it in the meantime. Keep their password.
-        pass
-    else:
-        user = User.objects.create_user(
-            username=ss["email"],
-            email=ss["email"],
-            password=ss["password1"],
-            first_name=ss["first_name"],
-            last_name=ss["last_name"],
-        )
-    user.is_active = True
-    user.save(update_fields=["is_active"])
-
-    # Create customer profile
-    cp, _ = CustomerProfile.objects.get_or_create(user=user)
-    cp.phone = ss["phone"]
-    if hasattr(cp, "phone_verified"):
-        cp.phone_verified = True
-    if hasattr(cp, "email_verified"):
-        cp.email_verified = True
-    cp.save()
-
-    # Cleanup
-    request.session.pop(CUSTOMER_SSR, None)
+    # Mark email verified in the pending bundle
+    ss["stage"] = "need_card"          # <- add this
+    ss["stage_set_at"] = timezone.now().isoformat()  # optional, for debugging/expiry
+    ss["email_verified"] = True
+    request.session[CUSTOMER_SSR] = ss
     request.session.modified = True
 
-    return JsonResponse({"ok": True, "message": "Verified. Please sign in.", "redirect": "/profile"})
+    # Force card step now (no DB user yet)
+    add_url = reverse("core:add_card") + "?next=/profile"
+    return JsonResponse({"ok": True, "redirect": add_url})
 
 
 def oauth_phone_page(request):

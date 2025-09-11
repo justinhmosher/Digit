@@ -21,6 +21,8 @@ class CustomerProfile(models.Model):
     phone          = models.CharField(max_length=32, unique=True)
     phone_verified = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
+    stripe_customer_id     = models.CharField(max_length=64, blank=True)
+    default_payment_method = models.CharField(max_length=64, blank=True)
 
     def __str__(self):
         return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
@@ -90,26 +92,6 @@ class ManagerInvite(models.Model):
     @property
     def is_valid(self):
         return self.accepted_at is None and self.expires_at > timezone.now()
-
-"""
-class PhoneOTP(models.Model):
-    PURPOSES  = (("login","login"), ("signup","signup"))
-    phone     = models.CharField(max_length=20, db_index=True)
-    purpose   = models.CharField(max_length=10, choices=PURPOSES, default="signup")
-    code_hash = models.CharField(max_length=128)
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    attempts   = models.PositiveIntegerField(default=0)
-    is_used    = models.BooleanField(default=False)
-
-    def is_expired(self):
-        return timezone.now() >= self.expires_at
-
-    @staticmethod
-    def hash_code(code: str) -> str:
-        salt = os.environ.get("OTP_SALT", "change_me_salt")
-        return hashlib.sha256(f"{salt}:{code}".encode()).hexdigest()
-"""
 
 class Member(models.Model):
     # your global member

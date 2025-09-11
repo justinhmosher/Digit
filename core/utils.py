@@ -114,3 +114,27 @@ def send_sms(to_number: str, body: str) -> dict:
     except Exception as e:
         return {"ok": False, "sid": None, "error": str(e)}
 
+# core/stripe_utils.py
+import stripe
+from django.conf import settings
+
+stripe.api_key = config('STRIPE_SK')
+
+def ensure_stripe_customer_by_email(email: str, metadata: dict | None = None) -> str:
+    """
+    Create (or reuse) a Stripe Customer by email for a *pending* signup.
+    You can simply always create a new one; re-use is optional.
+    """
+    customer = stripe.Customer.create(
+        email=email or None,
+        metadata=metadata or {},
+    )
+    return customer.id
+
+def create_setup_intent_for_customer(customer_id: str) -> stripe.SetupIntent:
+    return stripe.SetupIntent.create(
+        customer=customer_id,
+        payment_method_types=["card"],
+        usage="off_session",
+    )
+

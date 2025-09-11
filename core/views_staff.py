@@ -261,4 +261,88 @@ def api_close_tab(request, member):
 
     return JsonResponse({"ok": True})
 
+# --- add near other imports ---
+from datetime import timedelta
+from django.utils.timesince import timesince
+
+# === Board page stays the same URL you already use ===
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def staff_console(request):
+    # now just serves the new UI; no backend change needed here
+    return render(request, "core/staff_console.html", {})
+
+# === Board state API ===
+@require_GET
+def api_staff_board_state(request):
+    """
+    Returns three lists:
+    - pending: TicketLink.status == 'pending'
+    - open:    TicketLink.status == 'open'
+    - closed:  TicketLink.status == 'closed' AND closed_at within 12h
+    """
+    now = timezone.now()
+    cutoff = now - timedelta(hours=12)
+
+    # PENDING
+    pending_qs = (
+        TicketLink.objects
+        .select_related("member")
+        .filter(status="pending")
+        .order_by("-opened_at")[:100]
+    )
+    pending = []
+    for tl in pending_qs:
+        pending.append({
+            "ticket_id": tl.ticket_id,
+            "ticket_number": None,   # could be filled by POS call if you want
+            "table": None,           # same
+            "member": tl.member.number,
+            "member_last": tl.member.last_name,
+            "opened_ago": timesince(tl.opened_at) + " ago",
+        })
+
+    # OPEN
+    open_qs = (
+        TicketLink.objects
+        .select_related("member")
+        .filter(status="open")
+        .order_by("-opened_at")[:100]
+    )
+    # group by ticket_id so one card shows all members attached
+    open_map = {}
+    for tl in open_qs:
+        open_map.setdefault(tl.ticket_id, {
+            "ticket_id": tl.ticket_id,
+            "ticket_number": None,
+            "table": None,
+            "server": tl.server_name or "",
+            "members": [],
+            "due_cents": tl.last_total or 0,
+        })
+        open_map[tl.ticket_id]["members"].append(tl.member.number)
+
+    open_list = list(open_map.values())
+
+    # CLOSED (last 12h)
+    closed_qs = (
+        TicketLink.objects
+        .select_related("member")
+        .filter(status="closed", closed_at__gte=cutoff)
+        .order_by("-closed_at")[:100]
+    )
+    closed = []
+    for tl in closed_qs:
+        closed.append({
+            "ticket_id": tl.ticket_id,
+            "ticket_number": None,
+            "member": tl.member.number,
+            "member_last": tl.member.last_name,
+            "server": tl.server_name or "",
+            "closed_ago": timesince(tl.closed_at) + " ago" if tl.closed_at else "",
+        })
+
+    return JsonResponse({"ok": True, "pending": pending, "open": open_list, "closed": closed})
+
+
 

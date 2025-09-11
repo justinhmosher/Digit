@@ -1,0 +1,119 @@
+<!-- templates/core/add_card.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Add Card — Dine N Dash</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: linear-gradient(to bottom, #ffffff, #f8fafc);
+      color: #1f2937;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .box {
+      width: 100%;
+      max-width: 420px;
+      padding: 2rem;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 1rem;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    }
+    h2 {
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+    }
+    #card {
+      padding: .75rem;
+      border: 1px solid #e5e7eb;
+      border-radius: .5rem;
+      margin-bottom: 1rem;
+      background: #f9fafb;
+    }
+    button {
+      width: 100%;
+      padding: .75rem;
+      background: #111827;
+      color: #fff;
+      font-weight: 500;
+      font-size: 1rem;
+      border: 0;
+      border-radius: .5rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #1f2937cc;
+    }
+    #m {
+      margin-top: .75rem;
+      font-size: .875rem;
+      text-align: center;
+    }
+    .secure {
+      margin-top: 1rem;
+      font-size: .75rem;
+      text-align: center;
+      color: #6b7280;
+    }
+    footer {
+      margin-top: 2rem;
+      font-size: .75rem;
+      color: #9ca3af;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>Add a card to finish signup</h2>
+    <form id="f">
+      <div id="card"></div>
+      <button type="submit">Save card</button>
+      <div id="m"></div>
+    </form>
+    <p class="secure">🔒 Payments are secure and protected with Stripe.</p>
+  </div>
+
+  <footer>&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</footer>
+
+  <script>
+    (function(){
+      const stripe = Stripe("{{ pk|escapejs }}");
+      const elements = stripe.elements();
+      const card = elements.create("card");
+      card.mount("#card");
+
+      const form = document.getElementById("f");
+      const msg = document.getElementById("m");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        msg.textContent = "Saving card…";
+
+        const {error, setupIntent} = await stripe.confirmCardSetup(
+          "{{ client_secret|escapejs }}",
+          { payment_method: { card } }
+        );
+
+        if(error){
+          msg.style.color = "red";
+          msg.textContent = error.message;
+        } else if(setupIntent.status === "succeeded"){
+          window.location.href = "{{ next|default:'/profile' }}";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
+
