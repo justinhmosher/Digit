@@ -86,34 +86,73 @@
 
   <footer>&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</footer>
 
-  <script>
-    (function(){
-      const stripe = Stripe("{{ pk|escapejs }}");
-      const elements = stripe.elements();
-      const card = elements.create("card");
-      card.mount("#card");
+<script>
+  (function(){
+    const stripe = Stripe("{{ pk|escapejs }}");
+    const elements = stripe.elements();
+    const card = elements.create("card");
+    card.mount("#card");
 
-      const form = document.getElementById("f");
-      const msg = document.getElementById("m");
+    const form = document.getElementById("f");
+    const msg = document.getElementById("m");
 
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        msg.textContent = "Saving card…";
+    function getCsrf(){
+      const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+      return m ? decodeURIComponent(m[1]) : "";
+    }
 
-        const {error, setupIntent} = await stripe.confirmCardSetup(
-          "{{ client_secret|escapejs }}",
-          { payment_method: { card } }
-        );
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.style.color = "#374151";
+      msg.textContent = "Saving card…";
 
-        if(error){
+      // 1) Save the card with Stripe (SetupIntent)
+      const { error, setupIntent } = await stripe.confirmCardSetup(
+        "{{ client_secret|escapejs }}",
+        { payment_method: { card } }
+      );
+
+      if (error) {
+        msg.style.color = "red";
+        msg.textContent = error.message || "Could not save card.";
+        return;
+      }
+
+      if (!setupIntent || setupIntent.status !== "succeeded") {
+        msg.style.color = "red";
+        msg.textContent = "Card was not confirmed. Please try again.";
+        return;
+      }
+
+      // 2) Tell Django to finalize signup (create User + CustomerProfile, attach PM, login)
+      try {
+        const r = await fetch("{% url 'core:finalize_signup' %}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrf()
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({ setup_intent_id: setupIntent.id })
+        });
+
+        const data = await r.json();
+        if (!r.ok || !data.ok) {
           msg.style.color = "red";
-          msg.textContent = error.message;
-        } else if(setupIntent.status === "succeeded"){
-          window.location.href = "{{ next|default:'/profile' }}";
+          msg.textContent = data.error || "Could not finalize signup.";
+          return;
         }
-      });
-    })();
-  </script>
+
+        // 3) Follow server’s redirect (e.g., /profile)
+        window.location.href = data.redirect || "/profile";
+      } catch (err) {
+        msg.style.color = "red";
+        msg.textContent = "Network error finalizing signup.";
+      }
+    });
+  })();
+</script>
+
 </body>
 </html>
 
