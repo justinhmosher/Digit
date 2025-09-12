@@ -421,6 +421,26 @@ def verify_email_otp(request):
     add_url = reverse("core:add_card") + "?next=/profile"
     return JsonResponse({"ok": True, "redirect": add_url})
 
+# core/utils_signup.py (or in core/views_payments.py if you prefer)
+from .constants import CUSTOMER_SSR
+
+def seed_pending_card_session(request, *, user, phone_e164: str):
+    """
+    Prime the signup session so the existing /add-card -> /set-pin -> save_pin_finalize
+    pipeline can run for Google OAuth users as well.
+    """
+    ss = {
+        "email": (getattr(user, "email", "") or "").strip().lower(),
+        "first_name": getattr(user, "first_name", "") or "",
+        "last_name": getattr(user, "last_name", "") or "",
+        "phone": phone_e164 or "",
+        "email_verified": True,     # OAuth email is trusted
+        "phone_verified": True,     # we just OTP-verified it
+        "stage": "need_card",       # gate that /add-card checks
+    }
+    request.session[CUSTOMER_SSR] = ss
+    request.session.modified = True
+
 
 def oauth_phone_page(request):
 	print("DEBUG session keys:", list(request.session.keys()))
@@ -432,42 +452,41 @@ def oauth_phone_page(request):
 
 # core/views.py
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
-
 from core.models import CustomerProfile, OwnerProfile, ManagerProfile
-# Reuse your existing OTP util
+from core.utils import send_sms_otp, check_sms_otp, seed_pending_card_session  # your existing utils
 
-SESSION_KEY = "oauth_verify_existing"  # where we stash {email, phone}
-
+SESSION_KEY = "oauth_verify_existing"  # {email, phone}
 
 @login_required
 @require_http_methods(["GET", "POST"])
 def oauth_verify_existing(request):
     """
-    All-in-one social-OTP finisher for CUSTOMERS:
-      - GET:
-          * determine email (from request.user.email)
-          * try to find phone on: CustomerProfile -> OwnerProfile -> ManagerProfile
-          * if phone found: send OTP, stash {email, phone}, render code step
-          * else: render phone step
-      - POST (JSON):
-          action = "init"   -> accept phone, send OTP, stash {email, phone}
-          action = "resend" -> resend OTP to stashed phone
-          action = "verify" -> check OTP; create/ensure CustomerProfile, set phone/verified, redirect
+    Social-OTP finisher for CUSTOMERS who already have a Django user via Google OAuth.
+
+    GET:
+      - Determine email from request.user
+      - Try to locate a phone on Customer/Owner/Manager profiles
+      - If found: send OTP, stash {email, phone} in session, render code step
+      - Else: render phone entry step
+
+    POST (JSON):
+      action="init"   -> accept phone, send OTP, stash {email, phone}
+      action="resend" -> resend OTP to stashed phone
+      action="verify" -> verify code, ensure CustomerProfile, seed pending card session, redirect to /add-card
     """
     user = request.user
     if not user.is_authenticated:
         return redirect("core:signin")
 
-    # Always normalize email to lowercase
     email = (getattr(user, "email", "") or "").strip().lower()
+
     if request.method == "GET":
-        # Try to find best phone on existing profiles (for THIS user/email)
+        # Try to find a phone (prefer CustomerProfile for THIS user)
         phone = ""
-        # Prefer CustomerProfile for this user
         cp = CustomerProfile.objects.filter(user=user).first()
         if cp and cp.phone:
             phone = cp.phone
@@ -480,12 +499,10 @@ def oauth_verify_existing(request):
             if mp and mp.phone:
                 phone = mp.phone
 
-        # If we got a phone, send OTP and land them on code step immediately.
         if phone:
             try:
                 send_sms_otp(phone)
             except Exception as e:
-                # If SMS fails, just fall back to phone entry step with error banner.
                 return render(
                     request,
                     "core/oath_verify_existing.html",
@@ -496,7 +513,6 @@ def oauth_verify_existing(request):
                         "server_error": f"Failed to send SMS: {e}",
                     },
                 )
-            # Stash session
             request.session[SESSION_KEY] = {"email": email, "phone": phone}
             request.session.modified = True
             return render(
@@ -505,12 +521,12 @@ def oauth_verify_existing(request):
                 {
                     "email": email,
                     "phone_prefilled": phone,
-                    "start_on_code": True,   # show code UI first
+                    "start_on_code": True,
                     "server_error": "",
                 },
             )
 
-        # No phone found → ask for phone first
+        # No phone on file -> ask for phone
         return render(
             request,
             "core/oath_verify_existing.html",
@@ -522,7 +538,7 @@ def oauth_verify_existing(request):
             },
         )
 
-    # --- POST JSON actions ---
+    # -------- POST JSON actions --------
     import json
     try:
         data = json.loads((request.body or b"").decode() or "{}")
@@ -533,7 +549,6 @@ def oauth_verify_existing(request):
     sess = request.session.get(SESSION_KEY) or {}
 
     if action == "init":
-        # Accept phone, send OTP, stash in session
         phone = (data.get("phone") or "").strip()
         if not phone:
             return JsonResponse({"ok": False, "error": "Phone is required."}, status=400)
@@ -541,7 +556,6 @@ def oauth_verify_existing(request):
             send_sms_otp(phone)
         except Exception as e:
             return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
-
         request.session[SESSION_KEY] = {"email": email, "phone": phone}
         request.session.modified = True
         return JsonResponse({"ok": True, "stage": "code", "phone": phone})
@@ -562,30 +576,35 @@ def oauth_verify_existing(request):
         if not code or not phone:
             return JsonResponse({"ok": False, "error": "Missing code or phone."}, status=400)
         try:
-            status = check_sms_otp(phone, code)  # must return "approved" on success
+            status = check_sms_otp(phone, code)
         except Exception as e:
             return JsonResponse({"ok": False, "error": f"Verification error: {e}"}, status=500)
         if status != "approved":
             return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
-        # Ensure/Update CustomerProfile for this user
-        cp, created = CustomerProfile.objects.get_or_create(user=user)
+        # Ensure/refresh profile flags
+        cp, _ = CustomerProfile.objects.get_or_create(user=user)
         cp.phone = phone
         cp.phone_verified = True
-        # If you consider social email = verified email:
         if hasattr(cp, "email_verified"):
             cp.email_verified = True
         cp.save()
 
-        # Cleanup session and go to profile
+        # ✅ Seed pending card/pin and send to /add-card
+        seed_pending_card_session(request, user=user, phone_e164=phone)
+        add_url = reverse("core:add_card") + "?next=/profile"
+
+        # cleanup this temp session
         try:
             del request.session[SESSION_KEY]
         except KeyError:
             pass
         request.session.modified = True
-        return JsonResponse({"ok": True, "redirect": reverse("core:profile")})
+
+        return JsonResponse({"ok": True, "redirect": add_url})
 
     return JsonResponse({"ok": False, "error": "Unknown action."}, status=400)
+
 
 
 def customer_google_start(request):
@@ -661,20 +680,42 @@ def oauth_phone_init(request):
     request.session.modified = True
     return JsonResponse({"ok": True, "phone_e164": phone_e164})
 
+# core/views.py
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse
+from django.urls import reverse
+from allauth.socialaccount.models import SocialLogin
+from allauth.account.utils import perform_login
+from django.contrib.auth import get_user_model
+from core.models import CustomerProfile
+
+User = get_user_model()
+
 @require_POST
 def oauth_phone_verify(request):
+    """
+    POST {code} after sending an OTP during Google OAuth signup.
+
+    - Verify code
+    - Restore SocialLogin
+    - Ensure/link Django user to Google
+    - Create/update CustomerProfile (mark phone/email verified)
+    - Log them in
+    - ✅ Seed pending card session
+    - Redirect to /add-card/?next=/profile
+    """
+    import json
     sess = request.session
     if "pending_sociallogin" not in sess or "pending_phone" not in sess:
         return JsonResponse({"ok": False, "error": "Session expired. Restart Google sign-up."}, status=400)
 
-    # 1) Read input
     data = json.loads(request.body.decode() or "{}")
     code = (data.get("code") or "").strip()
     phone_e164 = sess["pending_phone"]
     if not code:
         return JsonResponse({"ok": False, "error": "Enter the 6-digit code."}, status=400)
 
-    # 2) Verify phone via Twilio
+    # Verify OTP
     try:
         status = check_sms_otp(phone_e164, code)
     except Exception as e:
@@ -682,29 +723,27 @@ def oauth_phone_verify(request):
     if status != "approved":
         return JsonResponse({"ok": False, "error": "Invalid or expired code."}, status=400)
 
-    # 3) Restore the pending SocialLogin
+    # Restore SocialLogin
     try:
         sociallogin = SocialLogin.deserialize(sess["pending_sociallogin"])
     except Exception:
         return JsonResponse({"ok": False, "error": "Could not restore pending login."}, status=400)
 
-    # 4) Ensure we have a *saved* Django user, then attach the social account
     email = (sess.get("pending_email") or sociallogin.user.email or "").lower()
     if not email:
         return JsonResponse({"ok": False, "error": "Missing email from Google."}, status=400)
 
+    # Ensure we have a saved user, then link Google
     user = User.objects.filter(email=email).first()
     if not user:
-        # create a minimal saved user; we activate after phone verified
         user = User.objects.create_user(username=email, email=email)
         user.set_unusable_password()
-        user.is_active = True  # phone verified => allow login
+        user.is_active = True
         user.save(update_fields=["is_active"])
 
-    # Link this Google account to the user (works for new or existing users)
-    sociallogin.connect(request, user)  # creates/updates SocialAccount & token
+    sociallogin.connect(request, user)
 
-    # 5) Create/update the profile
+    # Update profile flags
     profile, _ = CustomerProfile.objects.get_or_create(user=user)
     profile.phone = phone_e164
     if hasattr(profile, "phone_verified"):
@@ -713,14 +752,20 @@ def oauth_phone_verify(request):
         profile.email_verified = True
     profile.save()
 
-    # 6) Log the user in and clean session
+    # Log in
     perform_login(request, user, email_verification="none")
 
+    # ✅ Seed pending card/pin and redirect to add-card
+    seed_pending_card_session(request, user=user, phone_e164=phone_e164)
+    add_url = reverse("core:add_card") + "?next=/profile"
+
+    # Clean up temp session
     for k in ("pending_sociallogin", "pending_phone", "pending_email"):
         sess.pop(k, None)
     sess.modified = True
 
-    return JsonResponse({"ok": True, "redirect": "/profile"})
+    return JsonResponse({"ok": True, "redirect": add_url})
+
 
 
 # core/views.py

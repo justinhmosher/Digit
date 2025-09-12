@@ -4,6 +4,7 @@ from decouple import config
 import os
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from .constants import CUSTOMER_SSR
 
 
 ACCOUNT_SID = config("TWILIO_ACCOUNT_SID")
@@ -138,3 +139,19 @@ def create_setup_intent_for_customer(customer_id: str) -> stripe.SetupIntent:
         usage="off_session",
     )
 
+def seed_pending_card_session(request, *, user, phone_e164: str):
+    """
+    Prime the signup session so the existing /add-card -> /set-pin -> save_pin_finalize
+    pipeline can run for Google OAuth users as well.
+    """
+    ss = {
+        "email": (getattr(user, "email", "") or "").strip().lower(),
+        "first_name": getattr(user, "first_name", "") or "",
+        "last_name": getattr(user, "last_name", "") or "",
+        "phone": phone_e164 or "",
+        "email_verified": True,     # OAuth email is trusted
+        "phone_verified": True,     # we just OTP-verified it
+        "stage": "need_card",       # gate that /add-card checks
+    }
+    request.session[CUSTOMER_SSR] = ss
+    request.session.modified = True

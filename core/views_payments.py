@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 
 import stripe
-
+from allauth.socialaccount.models import SocialAccount
 from .models import CustomerProfile, Member
 from .utils import ensure_stripe_customer_by_email, create_setup_intent_for_customer
 from decouple import config
@@ -22,6 +22,37 @@ import re
 
 User = get_user_model()
 stripe.api_key = config('STRIPE_SK')
+
+def _names_from_google(user):
+    """
+    Try to get first/last name from the linked Google SocialAccount.
+    Returns (first, last), either may be '' if not available.
+    """
+    first = (getattr(user, "first_name", "") or "").strip()
+    last  = (getattr(user, "last_name", "") or "").strip()
+
+    if first and last:
+        return first, last
+
+    sa = SocialAccount.objects.filter(user=user, provider="google").first()
+    if not sa:
+        return first, last
+
+    data = (sa.extra_data or {})
+    first2 = (data.get("given_name") or "").strip()
+    last2  = (data.get("family_name") or "").strip()
+    if not (first2 or last2):
+        # Fallback: split "name"
+        full = (data.get("name") or "").strip()
+        if full:
+            parts = full.split()
+            if len(parts) >= 2:
+                first2, last2 = parts[0], " ".join(parts[1:])
+            else:
+                first2 = full
+
+    return first or first2, last or last2
+
 
 @ensure_csrf_cookie
 def add_card(request):
@@ -87,7 +118,7 @@ def set_pin(request):
 def save_pin_finalize(request):
     """
     Validate the PIN, then finalize signup using the previously-saved setup_intent_id.
-    Also create a unique Member.number for this customer.
+    Also fills in missing names from Google OAuth, and assigns a unique member number.
     """
     import json
     data = json.loads(request.body.decode() or "{}")
@@ -106,12 +137,11 @@ def save_pin_finalize(request):
     if not setup_intent_id:
         return JsonResponse({"ok": False, "error": "Missing saved card reference."}, status=400)
 
-    # Validate the SetupIntent
+    # Validate SetupIntent
     try:
         si = stripe.SetupIntent.retrieve(setup_intent_id)
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Stripe error: {e}"}, status=400)
-
     if si.get("status") != "succeeded":
         return JsonResponse({"ok": False, "error": "Card was not saved."}, status=400)
 
@@ -120,87 +150,101 @@ def save_pin_finalize(request):
     if not (pm_id and customer_id):
         return JsonResponse({"ok": False, "error": "Payment method missing from SetupIntent."}, status=400)
 
-    # Create (or fetch) user then CustomerProfile
-    email = ss["email"]
-    first_name = ss.get("first_name") or ""
+    # Create (or fetch) user
+    email      = ss["email"]
+    first_name = (ss.get("first_name") or "").strip()
     last_name  = (ss.get("last_name") or "").strip()
     phone      = (ss.get("phone") or "").strip()
-    password1  = ss.get("password1")  # present for new flows
+    password1  = ss.get("password1")  # may be None for OAuth
 
     user = User.objects.filter(email=email).first()
     if not user:
         user = User.objects.create_user(
-            username=email, email=email, password=password1,
-            first_name=first_name, last_name=last_name
+            username=email, email=email,
+            password=password1 if password1 else None
         )
-    else:
-        # keep names in sync if you want
-        if not user.first_name and first_name:
-            user.first_name = first_name
-        if not user.last_name and last_name:
-            user.last_name = last_name
-    user.is_active = True
-    user.save()
+        if not password1:
+            user.set_unusable_password()
 
+    # If names are blank (common for OAuth), pull from Google social account
+    if not (first_name and last_name):
+        g_first, g_last = _names_from_google(user)
+        first_name = first_name or g_first or ""
+        last_name  = last_name  or g_last  or ""
+
+    # Persist names on the user if we have them
+    changed = False
+    if first_name and user.first_name != first_name:
+        user.first_name = first_name; changed = True
+    if last_name and user.last_name != last_name:
+        user.last_name = last_name; changed = True
+
+    user.is_active = True
+    if changed:
+        user.save(update_fields=["first_name", "last_name", "is_active"])
+    else:
+        user.save(update_fields=["is_active"])
+
+    # CustomerProfile + PIN
     cp, _ = CustomerProfile.objects.get_or_create(user=user)
-    cp.phone = phone
-    if hasattr(cp, "phone_verified"):  cp.phone_verified = True
-    if hasattr(cp, "email_verified"):  cp.email_verified  = True
+    if phone:
+        cp.phone = phone
+    if hasattr(cp, "phone_verified"):
+        cp.phone_verified = True
+    if hasattr(cp, "email_verified"):
+        cp.email_verified  = True
     cp.stripe_customer_id = customer_id
     cp.default_payment_method = pm_id
-    cp.pin_hash = make_password(pin1)   # store hashed PIN
+    cp.pin_hash = make_password(pin1)
     cp.save()
 
-    # ---- Generate unique Member.number and create Member if missing ----
-    # prefix: first 4 letters of last_name (uppercased, pad with X)
-    ln = last_name or (user.last_name or "")
-    prefix = (ln[:4].upper() if ln else "").ljust(4, "X")
-
-    # digits from phone; take last 4; if not available, random 4
-    digits = re.sub(r"\D+", "", phone or "")
-    suffix = (digits[-4:] if len(digits) >= 4 else f"{random.randint(0, 9999):04d}")
-
-    candidate = f"{prefix}{suffix}"
-
-    # If a Member already exists for this CustomerProfile, keep it but ensure last_name is current
-    existing_member = Member.objects.filter(customer=cp).first()
-    if existing_member:
-        if ln and existing_member.last_name != ln:
-            existing_member.last_name = ln
-            existing_member.save(update_fields=["last_name"])
-    else:
-        # Loop until unique 'number' is found
-        tries = 0
-        while Member.objects.filter(number=candidate).exists():
-            suffix = f"{random.randint(0, 9999):04d}"
-            candidate = f"{prefix}{suffix}"
-            tries += 1
-            if tries > 50:
-                # extremely unlikely; add a simple fallback with 5 digits
-                suffix = f"{random.randint(0, 99999):05d}"
-                candidate = f"{prefix}{suffix[-4:]}"  # still keep 4 at the end for the number size
-                if not Member.objects.filter(number=candidate).exists():
-                    break
-
-        Member.objects.create(
-            number=candidate,
-            last_name=ln or user.last_name or "",
-            customer=cp,
-        )
-
-    # ---- Make PM default on the Stripe customer (best-effort) ----
+    # Make PM default at Stripe
     try:
         stripe.Customer.modify(customer_id, invoice_settings={"default_payment_method": pm_id})
     except Exception:
         pass
 
+    # --- Member number (uses last name; falls back gracefully) ---
+    # Prefix = first 4 letters of last name or 'XXXX'
+    ln = (user.last_name or "").strip().upper()
+    prefix = (ln[:4] if ln else "XXXX").ljust(4, "X")
+
+    # Last-4 = digits from phone, else random
+    digits = re.sub(r"\D", "", phone or "")
+    last4 = (digits[-4:] if len(digits) >= 4 else f"{random.randint(0,9999):04d}")
+
+    base = f"{prefix}{last4}"
+
+    from core.models import Member
+    number = base
+    tries = 0
+    while Member.objects.filter(number=number).exists() and tries < 100:
+        number = f"{prefix}{random.randint(0,9999):04d}"
+        tries += 1
+
+    member, created = Member.objects.get_or_create(
+        customer=cp,
+        defaults={"number": number, "last_name": user.last_name or ""},
+    )
+    if not created:
+        # If it exists but is missing fields, fill them
+        updated = False
+        if not member.number:
+            member.number = number; updated = True
+        if not member.last_name and user.last_name:
+            member.last_name = user.last_name; updated = True
+        if updated:
+            member.save()
+
     # cleanup session
-    ss.pop("pending_setup_intent_id", None)
+    for k in ("pending_setup_intent_id",):
+        ss.pop(k, None)
+    request.session[CUSTOMER_SSR] = ss
     request.session.pop(CUSTOMER_SSR, None)
     request.session.modified = True
 
-    # login and go
     login(request, user)
     return JsonResponse({"ok": True, "redirect": next_url})
+
 
 
