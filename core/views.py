@@ -2196,7 +2196,3 @@ def signin(request):
 			return redirect('core:signin')	
 
 	return render(request, "core/signin.html")
-
-def signout(request):
-	logout(request)
-	return redirect('core:homepage')
