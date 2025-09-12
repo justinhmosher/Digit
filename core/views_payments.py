@@ -10,12 +10,14 @@ from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 
 import stripe
 
-from .models import CustomerProfile
+from .models import CustomerProfile, Member
 from .utils import ensure_stripe_customer_by_email, create_setup_intent_for_customer
 from decouple import config
 from .constants import CUSTOMER_SSR
 from . import views, views_staff, views_home, veiws_verify, views_payments
 from django.contrib.auth.hashers import make_password
+import random
+import re
 
 
 User = get_user_model()
@@ -85,6 +87,7 @@ def set_pin(request):
 def save_pin_finalize(request):
     """
     Validate the PIN, then finalize signup using the previously-saved setup_intent_id.
+    Also create a unique Member.number for this customer.
     """
     import json
     data = json.loads(request.body.decode() or "{}")
@@ -103,7 +106,7 @@ def save_pin_finalize(request):
     if not setup_intent_id:
         return JsonResponse({"ok": False, "error": "Missing saved card reference."}, status=400)
 
-    # Retrieve SI to validate
+    # Validate the SetupIntent
     try:
         si = stripe.SetupIntent.retrieve(setup_intent_id)
     except Exception as e:
@@ -117,11 +120,11 @@ def save_pin_finalize(request):
     if not (pm_id and customer_id):
         return JsonResponse({"ok": False, "error": "Payment method missing from SetupIntent."}, status=400)
 
-    # Create (or fetch) user now, then CustomerProfile — same as your finalize flow
+    # Create (or fetch) user then CustomerProfile
     email = ss["email"]
     first_name = ss.get("first_name") or ""
-    last_name  = ss.get("last_name") or ""
-    phone      = ss.get("phone") or ""
+    last_name  = (ss.get("last_name") or "").strip()
+    phone      = (ss.get("phone") or "").strip()
     password1  = ss.get("password1")  # present for new flows
 
     user = User.objects.filter(email=email).first()
@@ -130,8 +133,14 @@ def save_pin_finalize(request):
             username=email, email=email, password=password1,
             first_name=first_name, last_name=last_name
         )
+    else:
+        # keep names in sync if you want
+        if not user.first_name and first_name:
+            user.first_name = first_name
+        if not user.last_name and last_name:
+            user.last_name = last_name
     user.is_active = True
-    user.save(update_fields=["is_active"])
+    user.save()
 
     cp, _ = CustomerProfile.objects.get_or_create(user=user)
     cp.phone = phone
@@ -139,22 +148,59 @@ def save_pin_finalize(request):
     if hasattr(cp, "email_verified"):  cp.email_verified  = True
     cp.stripe_customer_id = customer_id
     cp.default_payment_method = pm_id
-    cp.pin_hash = make_password(pin1)   # ✅ save hashed PIN
+    cp.pin_hash = make_password(pin1)   # store hashed PIN
     cp.save()
 
-    # Make PM default at Stripe
+    # ---- Generate unique Member.number and create Member if missing ----
+    # prefix: first 4 letters of last_name (uppercased, pad with X)
+    ln = last_name or (user.last_name or "")
+    prefix = (ln[:4].upper() if ln else "").ljust(4, "X")
+
+    # digits from phone; take last 4; if not available, random 4
+    digits = re.sub(r"\D+", "", phone or "")
+    suffix = (digits[-4:] if len(digits) >= 4 else f"{random.randint(0, 9999):04d}")
+
+    candidate = f"{prefix}{suffix}"
+
+    # If a Member already exists for this CustomerProfile, keep it but ensure last_name is current
+    existing_member = Member.objects.filter(customer=cp).first()
+    if existing_member:
+        if ln and existing_member.last_name != ln:
+            existing_member.last_name = ln
+            existing_member.save(update_fields=["last_name"])
+    else:
+        # Loop until unique 'number' is found
+        tries = 0
+        while Member.objects.filter(number=candidate).exists():
+            suffix = f"{random.randint(0, 9999):04d}"
+            candidate = f"{prefix}{suffix}"
+            tries += 1
+            if tries > 50:
+                # extremely unlikely; add a simple fallback with 5 digits
+                suffix = f"{random.randint(0, 99999):05d}"
+                candidate = f"{prefix}{suffix[-4:]}"  # still keep 4 at the end for the number size
+                if not Member.objects.filter(number=candidate).exists():
+                    break
+
+        Member.objects.create(
+            number=candidate,
+            last_name=ln or user.last_name or "",
+            customer=cp,
+        )
+
+    # ---- Make PM default on the Stripe customer (best-effort) ----
     try:
         stripe.Customer.modify(customer_id, invoice_settings={"default_payment_method": pm_id})
     except Exception:
         pass
 
     # cleanup session
-    for k in ("pending_setup_intent_id",):
-        ss.pop(k, None)
-    request.session[CUSTOMER_SSR] = ss
+    ss.pop("pending_setup_intent_id", None)
     request.session.pop(CUSTOMER_SSR, None)
     request.session.modified = True
 
+    # login and go
     login(request, user)
     return JsonResponse({"ok": True, "redirect": next_url})
+
 

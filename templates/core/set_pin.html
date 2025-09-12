@@ -20,11 +20,10 @@
     h1{ margin:0 0 8px; font-size:20px; text-align:center; font-weight:700; }
     p.help{ margin:0 0 16px; text-align:center; color:#6b7280; font-size:14px; }
     label{ display:block; font-size:14px; margin:12px 0 6px; }
-    input[type=tel], input[type=password]{
+    input[type=tel]{
       width:100%; height:48px; border:1px solid #e5e7eb; border-radius:10px;
       padding:0 14px; font-size:16px; letter-spacing:.28em; text-align:center;
     }
-    .row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .btn{
       margin-top:16px; width:100%; height:48px; border:0; border-radius:10px;
       background:#111827; color:#fff; font-weight:600; font-size:16px;
@@ -33,9 +32,55 @@
     .msg.err{ color:#b91c1c; }
     .msg.ok{ color:#065f46; }
     footer{ padding:24px 0; text-align:center; color:#9ca3af; font-size:12px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      background: #fee2e2;           /* soft red */
+      color: #991b1b;                 /* dark red text */
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      box-shadow: 0 10px 24px rgba(0,0,0,.08);
+      padding: 12px 14px;
+      font-size: 14px;
+      max-width: 92vw;
+      width: 640px;
+      line-height: 1.35;
+      z-index: 9999;
+      opacity: 0;
+      display: none;
+      text-align: center;
+    }
+    .toast.show {
+      display: block;
+      animation: toastIn .18s ease-out forwards;
+    }
+    .toast.hide {
+      animation: toastOut .18s ease-in forwards;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateX(-50%) translateY(0); }
+      to   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    }
+    .toast strong { font-weight: 700; }
+    .toast u { text-underline-offset: 2px; }
   </style>
 </head>
 <body>
+  <!-- Toast (stays until dismissed) -->
+  <div id="pinToast" class="toast" role="status" aria-live="polite">
+    <strong>Important:</strong> Remember this PIN. It will be <strong>very difficult to reset</strong>.
+    It’s used to confirm payments and security events. This is <u>not your bank PIN</u> — choose any 4 digits.
+    <br><small>(Click this box to dismiss)</small>
+  </div>
+
   <div class="wrap">
     <div class="card">
       <h1>Set your 4-digit PIN</h1>
@@ -44,10 +89,10 @@
       <form id="pinForm">
         {% csrf_token %}
         <label>PIN</label>
-        <input id="pin1" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="••••">
+        <input id="pin1" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••">
 
         <label>Confirm PIN</label>
-        <input id="pin2" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="••••">
+        <input id="pin2" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••">
 
         <button class="btn">Save PIN</button>
         <div id="msg" class="msg"></div>
@@ -59,16 +104,36 @@
 
 <script>
   function csrf() {
-    // Prefer the hidden input Django added with {% csrf_token %}
     const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
     if (input && input.value) return input.value;
-
-    // Fallback to cookie
-    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : "";
   }
 
+  // ---- Toast helpers ----
+  function showToast() {
+    const t = document.getElementById('pinToast');
+    if (!t) return;
+    t.classList.remove('hide');
+    t.classList.add('show');
+    // allow manual dismissal
+    t.addEventListener('click', () => { t.classList.remove('show'); t.classList.add('hide'); }, { once:true });
+  }
+
+  // Restrict inputs to digits only
+  function digitsOnly(el) {
+    el.addEventListener('input', () => {
+      el.value = el.value.replace(/\D/g, '').slice(0, 4);
+    });
+  }
+
   (function(){
+    window.addEventListener('DOMContentLoaded', () => {
+      showToast();
+      digitsOnly(document.getElementById('pin1'));
+      digitsOnly(document.getElementById('pin2'));
+    });
+
     const form = document.getElementById('pinForm');
     const msg  = document.getElementById('msg');
     const next = "{{ next|default:'/profile'|escapejs }}";
