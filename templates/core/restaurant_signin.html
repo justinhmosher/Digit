@@ -37,9 +37,7 @@
   <main class="flex-1 flex items-center justify-center px-6 py-12">
     <section class="w-full max-w-2xl">
       <div class="bg-white border border-slate-200 rounded-3xl shadow-sm p-8">
-        <!-- put this just inside the white card, above the tabs -->
-<div id="alert" class="hidden mb-4 text-sm px-4 py-3 rounded-md"></div>
-
+        <div id="alert" class="hidden mb-4 text-sm px-4 py-3 rounded-md"></div>
 
         <!-- Tabs -->
         <div class="flex gap-2 mb-6">
@@ -51,58 +49,58 @@
                   class="tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">
             Manager
           </button>
+          <button id="tabStaff"
+                  class="tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">
+            Staff
+          </button>
         </div>
 
         <!-- OWNER PANEL -->
-<div id="panelOwner" class="space-y-6">
-  <div>
-    <h1 class="text-2xl font-bold">Owner Sign In</h1>
-    <p class="text-sm text-slate-600 mt-1">
-      Don’t have an owner account?
-      <a href="{% url 'core:owner_signup' %}" class="text-brand underline">Create owner account</a>.
-    </p>
-  </div>
+        <div id="panelOwner" class="space-y-6">
+          <div>
+            <h1 class="text-2xl font-bold">Owner Sign In</h1>
+            <p class="text-sm text-slate-600 mt-1">
+              Don’t have an owner account?
+              <a href="{% url 'core:owner_signup' %}" class="text-brand underline">Create owner account</a>.
+            </p>
+          </div>
 
-  <!-- The ONLY owner form; note the id -->
-  <form id="ownerSignInForm" action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
-    {% csrf_token %}
-    <input type="hidden" name="portal" value="owner">
+          <form id="ownerSignInForm" action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="portal" value="owner">
 
-    <div>
-      <label class="block text-sm font-medium mb-1" for="ownerEmail">Email</label>
-      <input id="ownerEmail" name="email" type="email" required
-             class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-             placeholder="owner@restaurant.com" autocomplete="username">
-    </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" for="ownerEmail">Email</label>
+              <input id="ownerEmail" name="email" type="email" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="owner@restaurant.com" autocomplete="username">
+            </div>
 
-    <div>
-      <label class="block text-sm font-medium mb-1" for="ownerPassword">Password</label>
-      <input id="ownerPassword" name="password" type="password" required
-             class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
-             placeholder="••••••••" autocomplete="current-password">
-    </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" for="ownerPassword">Password</label>
+              <input id="ownerPassword" name="password" type="password" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="••••••••" autocomplete="current-password">
+            </div>
 
-    <button type="submit"
-            class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
-      Sign In
-    </button>
-  </form>
+            <button type="submit"
+                    class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
+              Sign In
+            </button>
+          </form>
 
-  <!-- Divider -->
-  <div class="flex items-center gap-3">
-    <div class="h-px flex-1 bg-slate-200"></div>
-    <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
-    <div class="h-px flex-1 bg-slate-200"></div>
-  </div>
+          <div class="flex items-center gap-3">
+            <div class="h-px flex-1 bg-slate-200"></div>
+            <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+            <div class="h-px flex-1 bg-slate-200"></div>
+          </div>
 
-  <!-- Google OAuth (Owner) -->
-  <a href="{% url 'core:owner_google_start' %}"
-     class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
-    <span class="font-medium">Continue with Google</span>
-  </a>
-</div>
-
+          <a href="{% url 'core:owner_google_start' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
 
         <!-- MANAGER PANEL -->
         <div id="panelManager" class="space-y-6 hidden">
@@ -136,20 +134,58 @@
               Sign In
             </button>
           </form>
-            <!-- Divider -->
-  <div class="flex items-center gap-3">
-    <div class="h-px flex-1 bg-slate-200"></div>
-    <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
-    <div class="h-px flex-1 bg-slate-200"></div>
-  </div>
 
-  <!-- Google OAuth (Owner) -->
-  <a href="{% url 'core:manager_google_start' %}"
-     class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
-    <span class="font-medium">Continue with Google</span>
-  </a>
-</div>
+          <div class="flex items-center gap-3">
+            <div class="h-px flex-1 bg-slate-200"></div>
+            <span class="text-xs uppercase tracking-wide text-slate-500">or</span>
+            <div class="h-px flex-1 bg-slate-200"></div>
+          </div>
+
+          <a href="{% url 'core:manager_google_start' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
+
+        <!-- STAFF PANEL -->
+        <div id="panelStaff" class="space-y-6 hidden">
+          <div>
+            <h2 class="text-2xl font-bold">Staff Sign In</h2>
+            <p class="text-sm text-slate-600 mt-1">
+              Staff must accept an invite from a manager/owner first. After accepting, sign in here.
+            </p>
+          </div>
+
+          <form id="staffSignInForm" action="{% url 'core:restaurant_signin' %}" method="post" class="space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="portal" value="staff">
+
+            <div>
+              <label class="block text-sm font-medium mb-1" for="staffEmail">Email</label>
+              <input id="staffEmail" name="email" type="email" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="you@example.com" autocomplete="username">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1" for="staffPassword">Password</label>
+              <input id="staffPassword" name="password" type="password" required
+                     class="w-full h-12 rounded-2xl border px-4 focus:ring-2 focus:ring-accent/50"
+                     placeholder="••••••••" autocomplete="current-password">
+            </div>
+
+            <button type="submit"
+                    class="w-full h-12 rounded-2xl bg-brand text-white font-medium hover:bg-brand/90">
+              Sign In
+            </button>
+          </form>
+            <a href="{% url 'core:staff_google_start' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="h-5 w-5" alt="Google">
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
         </div>
 
       </div>
@@ -168,97 +204,93 @@
   <script>
     const tabOwner   = document.getElementById('tabOwner');
     const tabManager = document.getElementById('tabManager');
+    const tabStaff   = document.getElementById('tabStaff');
     const panelOwner = document.getElementById('panelOwner');
     const panelMgr   = document.getElementById('panelManager');
+    const panelStaff = document.getElementById('panelStaff');
 
+    function btnCls(active){
+      return active
+        ? "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white"
+        : "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
+    }
     function activate(which) {
-      const ownerActive = which === 'owner';
-      panelOwner.classList.toggle('hidden', !ownerActive);
-      panelMgr.classList.toggle('hidden', ownerActive);
+      const isOwner = which === 'owner';
+      const isMgr   = which === 'manager';
+      const isStaff = which === 'staff';
 
-      // button styles
-      if (ownerActive) {
-        tabOwner.className   = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white";
-        tabManager.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
-      } else {
-        tabManager.className = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-brand text-white";
-        tabOwner.className   = "tab-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200";
-      }
+      panelOwner.classList.toggle('hidden', !isOwner);
+      panelMgr.classList.toggle('hidden',   !isMgr);
+      panelStaff.classList.toggle('hidden', !isStaff);
+
+      tabOwner.className   = btnCls(isOwner);
+      tabManager.className = btnCls(isMgr);
+      tabStaff.className   = btnCls(isStaff);
     }
 
-    tabOwner.addEventListener('click', () => activate('owner'));
+    tabOwner.addEventListener('click',   () => activate('owner'));
     tabManager.addEventListener('click', () => activate('manager'));
+    tabStaff.addEventListener('click',   () => activate('staff'));
 
     // Default from query string
     const params = new URLSearchParams(location.search);
-    if (params.get('tab') === 'manager') {
-      activate('manager');
-    } else {
-      activate('owner');
+    const t = params.get('tab');
+    if (t === 'manager')      activate('manager');
+    else if (t === 'staff')   activate('staff');
+    else                      activate('owner');
+
+    // ---- shared helpers ----
+    function showAlert(msg, ok=false) {
+      const el = document.getElementById('alert');
+      el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok
+        ? 'bg-green-100 text-green-800'
+        : 'bg-red-100 text-red-800');
+      el.innerHTML = msg || 'Something went wrong.';
+      el.classList.remove('hidden');
     }
-  function showAlert(msg, ok=false) {
-    const el = document.getElementById('alert');
-    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok
-      ? 'bg-green-100 text-green-800'
-      : 'bg-red-100 text-red-800');
-    el.textContent = msg || 'Something went wrong.';
-    el.classList.remove('hidden');
-  }
+    function getCSRF() {
+      const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+      return m ? m[1] : "";
+    }
+    async function handleJSONSignin(formId) {
+      const form = document.getElementById(formId);
+      if (!form) return;
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        document.getElementById('alert').classList.add('hidden');
 
-  function getCSRF() {
-    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-    return m ? m[1] : "";
-  }
+        const fd = new FormData(form);
+        const r  = await fetch(form.action, {
+          method: "POST",
+          headers: { "X-CSRFToken": getCSRF(), "Accept": "application/json" },
+          body: fd
+        });
 
-  async function handleJSONSignin(formId) {
-    const form = document.getElementById(formId);
-    if (!form) return;
+        let data = {};
+        try { data = await r.json(); } catch {}
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      showAlert('', true); // clears + hides
-      document.getElementById('alert').classList.add('hidden');
+        if (r.ok && data.ok && data.redirect) {
+          window.location.href = data.redirect;
+          return;
+        }
 
-      const fd = new FormData(form);
-      const r = await fetch(form.action, {
-        method: "POST",
-        headers: { "X-CSRFToken": getCSRF(), "Accept": "application/json" },
-        body: fd            // let the browser set multipart/form-data
+        if (!r.ok) {
+          if (data.signup_url) {
+            showAlert(`No owner profile found. <a class="underline" href="${data.signup_url}">Create owner account</a>.`);
+            return;
+          }
+          return showAlert(data.error || "Sign-in failed.");
+        }
+
+        if (r.status === 400) return showAlert(data.error || "Email or password is incorrect.");
+        if (r.status === 403) return showAlert("Permission denied.");
+        return showAlert(data.error || "Sign-in failed.");
       });
+    }
 
-      let data = {};
-      try { data = await r.json(); } catch {}
-
-      if (r.ok && data.ok && data.redirect) {
-        window.location.href = data.redirect;
-        return;
-      }
-
-      // helpful messages for common statuses
-      if (!r.ok) {
-  if (data.signup_url) {
-    showAlert(`No owner profile found. <a class="underline" href="${data.signup_url}">Create owner account</a>.`);
-    return;
-  }
-  return showAlert(data.error || "Sign-in failed.");
-}
-
-      if (r.status === 400) {
-        return showAlert(data.error || "Email or password is incorrect.");
-      }
-      if (r.status === 403) {
-        return showAlert("Permission denied.");
-      }
-      return showAlert(data.error || "Sign-in failed.");
-    });
-  }
-
-  handleJSONSignin("ownerSignInForm");
-  handleJSONSignin("managerSignInForm");
-
-</script>
-
+    handleJSONSignin("ownerSignInForm");
+    handleJSONSignin("managerSignInForm");
+    handleJSONSignin("staffSignInForm");
+  </script>
 </body>
 </html>
-
-

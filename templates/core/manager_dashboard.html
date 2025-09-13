@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <title>Manager Dashboard — Dine N Dash</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-900">
@@ -22,6 +23,7 @@
   </header>
 
   <main class="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <!-- Welcome -->
     <section class="bg-white border border-slate-200 rounded-2xl p-6">
       <h2 class="text-xl font-semibold mb-2">Welcome</h2>
       <p class="text-slate-600">
@@ -39,6 +41,50 @@
       {% endif %}
     </section>
 
+    <!-- Invite Staff -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-6">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Invite staff</h3>
+        {% if not restaurant %}
+          <span class="text-xs text-amber-700">Link this account to a restaurant to invite staff.</span>
+        {% endif %}
+      </div>
+
+      <p class="text-slate-600 text-sm mt-1">
+        Send an email invite to join
+        <span class="font-medium">{{ restaurant.dba_name|default:restaurant.legal_name|default:"your restaurant" }}</span>.
+        The invite link takes them through phone/PIN and lands on the staff console.
+      </p>
+
+      <div id="invite-alert" class="hidden mt-3 rounded-lg px-3 py-2 text-sm"></div>
+
+      <form id="invite-form" class="mt-4 grid gap-3 md:grid-cols-3" {% if not restaurant %}aria-disabled="true"{% endif %}>
+        <input id="invite-email" type="email" required
+               class="h-11 rounded-xl border px-3 md:col-span-2"
+               placeholder="staff@example.com" {% if not restaurant %}disabled{% endif %} />
+        <input id="invite-exp" type="number" min="5" step="5" value="120"
+               class="h-11 rounded-xl border px-3"
+               title="Expiration in minutes" {% if not restaurant %}disabled{% endif %} />
+        <div class="md:col-span-3">
+          <button id="invite-send" type="submit"
+                  class="h-11 px-4 rounded-xl bg-slate-900 text-white disabled:opacity-50"
+                  {% if not restaurant %}disabled{% endif %}>Send invite</button>
+          <span id="invite-busy" class="hidden text-sm text-slate-500 ml-2">Sending…</span>
+        </div>
+      </form>
+
+      <div id="invite-link-wrap" class="hidden mt-3 text-sm">
+        <div class="rounded-xl border p-3 bg-slate-50">
+          <div class="font-medium mb-1">Invite link</div>
+          <div class="flex items-center gap-2 break-all">
+            <a id="invite-link" href="#" class="text-blue-700 underline" target="_blank" rel="noopener">—</a>
+            <button id="invite-copy" class="px-2 py-1 rounded border">Copy</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Next steps -->
     <section class="bg-white border border-slate-200 rounded-2xl p-6">
       <h3 class="text-lg font-semibold mb-2">Next steps</h3>
       <ul class="list-disc ml-5 text-slate-700">
@@ -47,5 +93,67 @@
       </ul>
     </section>
   </main>
+
+  <script>
+    function getCSRFCookie() {
+      const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
+      return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || '');
+    }
+    function showInviteAlert(msg, ok=false){
+      const el = document.getElementById('invite-alert');
+      el.className = 'mt-3 rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    }
+    function setBusy(on){
+      document.getElementById('invite-send').disabled = on;
+      document.getElementById('invite-busy').classList.toggle('hidden', !on);
+    }
+
+    const form = document.getElementById('invite-form');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('invite-email').value.trim();
+        const exp   = parseInt(document.getElementById('invite-exp').value || '120', 10) || 120;
+        if (!email) return showInviteAlert('Please enter an email.');
+
+        setBusy(true);
+        let resp, data={};
+        try {
+          resp = await fetch("{% url 'core:manager_invite_staff' %}", {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json', 'X-CSRFToken': getCSRFCookie() },
+            credentials:'same-origin',
+            body: JSON.stringify({ email: email, expires_minutes: exp })
+          });
+          try { data = await resp.json(); } catch(_){}
+        } catch (err) {
+          setBusy(false);
+          return showInviteAlert('Network error sending invite.');
+        }
+        setBusy(false);
+
+        if (!resp.ok || !data.ok) {
+          return showInviteAlert(data.error || 'Invite failed.');
+        }
+
+        showInviteAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
+        if (data.invite?.link) {
+          const wrap = document.getElementById('invite-link-wrap');
+          const a = document.getElementById('invite-link');
+          a.href = data.invite.link;
+          a.textContent = data.invite.link;
+          wrap.classList.remove('hidden');
+          document.getElementById('invite-copy').onclick = async () => {
+            try { await navigator.clipboard.writeText(data.invite.link); showInviteAlert('Link copied.', true); }
+            catch { showInviteAlert('Could not copy link, copy it manually.'); }
+          };
+        }
+        // reset email field
+        document.getElementById('invite-email').value = '';
+      });
+    }
+  </script>
 </body>
 </html>

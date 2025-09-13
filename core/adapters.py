@@ -8,7 +8,7 @@ from allauth.account.utils import perform_login
 from django.contrib.auth import get_user_model
 from urllib.parse import quote
 
-from .models import OwnerProfile, RestaurantProfile, CustomerProfile, ManagerProfile  # + ManagerProfile
+from .models import OwnerProfile, RestaurantProfile, CustomerProfile, ManagerProfile, StaffProfile  # + ManagerProfile
 
 User = get_user_model()
 
@@ -63,6 +63,34 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
                 sociallogin.connect(request, user)
             perform_login(request, user, email_verification=None)
             raise ImmediateHttpResponse(redirect("core:manager_dashboard"))
+
+            # ===== STAFF FLOW =====
+        if gate_role == "staff":
+            if user and not sociallogin.is_existing:
+                if user.has_usable_password() and not SocialAccount.objects.filter(
+                    user=user, provider=sociallogin.account.provider
+                ).exists():
+                    login_url = reverse("core:restaurant_signin")
+                    # carry context so the UI can show a friendly message
+                    login_url += f"?reason=password-account&email={quote(email)}"
+                    raise ImmediateHttpResponse(redirect(login_url))
+            # Must be an existing user with a StaffProfile
+            if not user:
+                # No local user for this email → not invited
+                signin_url = reverse("core:restaurant_signin") + "?error=staff_invite_required"
+                raise ImmediateHttpResponse(redirect(signin_url))
+
+            mp = getattr(user, "staffprofile", None) or StaffProfile.objects.filter(user=user).first()
+            if not mp:
+                # Not a staff on this account → bounce to restaurant sign-in with error
+                signin_url = reverse("core:restaurant_signin") + "?error=staff_invite_required"
+                raise ImmediateHttpResponse(redirect(signin_url))
+
+            # Good to go: ensure the social account is linked, then log in and redirect
+            if not sociallogin.is_existing:
+                sociallogin.connect(request, user)
+            perform_login(request, user, email_verification=None)
+            raise ImmediateHttpResponse(redirect("core:staff_console"))
 
         # ===== OWNER FLOW =====
         if gate_role == "owner":

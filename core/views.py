@@ -1783,19 +1783,35 @@ def manager_accept_verify(request):
 @login_required
 def manager_dashboard(request):
     """
-    Very simple manager dashboard.
-    Only managers (users with a ManagerProfile) can see it.
+    Manager dashboard. Requires a ManagerProfile.
+    Puts `mp` (manager profile) and `restaurant` in the template context.
     """
-    mp = getattr(request.user, "managerprofile", None)
+    # correct related_name is "manager_profile"
+    mp = getattr(request.user, "manager_profile", None)
+    if mp is None:
+        mp = (
+            ManagerProfile.objects
+            .select_related("restaurant")
+            .filter(user=request.user)
+            .first()
+        )
+
     if not mp:
-        # Not a manager (or not linked yet) -> send to the manager sign-in tab
+        # user isn't a manager -> bounce to manager sign-in tab
         return redirect("/restaurant/signin?tab=manager")
 
-    rp = getattr(mp, "restaurant", None)
-    return render(request, "core/manager_dashboard.html", {
-        "mp": mp,
-        "restaurant": rp,
-    })
+    restaurant = getattr(mp, "restaurant", None)
+
+    # cache selection for other pages, if helpful
+    if restaurant and request.session.get("current_restaurant_id") != restaurant.id:
+        request.session["current_restaurant_id"] = restaurant.id
+        request.session.modified = True
+
+    return render(
+        request,
+        "core/manager_dashboard.html",
+        {"mp": mp, "restaurant": restaurant},
+    )
 # -------------------------
 # PAGES
 # -------------------------
@@ -1836,24 +1852,35 @@ def restaurant_signin(request):
 
     # -------- MANAGER PORTAL --------
     if portal == "manager":
+        if not ManagerProfile.objects.filter(user=user).exists():
+            return JsonResponse(
+                {"ok": False, "error": "No manager profile found for this user. Please ask the owner to invite you."},
+                status=403,
+            )
         return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
 
-    # -------- OWNER PORTAL --------
-    from .models import OwnerProfile, RestaurantProfile
+    # -------- STAFF PORTAL --------
+    if portal == "staff":
+        if not StaffProfile.objects.filter(user=user).exists():
+            return JsonResponse(
+                {"ok": False, "error": "No staff profile found for this user. Please accept your staff invite first."},
+                status=403,
+            )
+        return JsonResponse({"ok": True, "redirect": reverse("core:staff_console")})
 
+    # -------- OWNER PORTAL (default) --------
     owner = OwnerProfile.objects.filter(user=user).first()
     if not owner:
-        # DO NOT create here; send them to owner signup
         return JsonResponse({
             "ok": False,
             "error": "No owner profile found for this user. Please create an owner account first.",
             "signup_url": reverse("core:owner_signup"),
         }, status=403)
 
-    # Owner exists → decide destination based on restaurant ownership
     has_any = RestaurantProfile.objects.filter(owners=owner).exists()
     dest = reverse("core:owner_dashboard") if has_any else reverse("core:restaurant_onboard")
     return JsonResponse({"ok": True, "redirect": dest})
+
 
 
 def owner_has_any_restaurant(owner: OwnerProfile) -> bool:
@@ -1984,12 +2011,6 @@ def post_login_owner(request):
 
     return redirect(reverse("core:owner_dashboard"))
 
-
-
-@login_required
-def manager_dashboard(request):
-    mp = getattr(request.user, "manager_profile", None)
-    return render(request, "core/manager_dashboard.html", {"profile": mp})
 
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods

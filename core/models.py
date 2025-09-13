@@ -35,22 +35,29 @@ class RestaurantProfile(models.Model):
     dba_name   = models.CharField(max_length=255, blank=True)
     email      = models.EmailField()
     phone      = models.CharField(max_length=30, blank=True)
-    address    = models.TextField(blank=True)
-    is_active  = models.BooleanField(default=False)
 
-    # timestamps (handy for ordering)
+    # better to keep structured address for receipts
+    addr_line1 = models.CharField(max_length=160, blank=True)
+    addr_line2 = models.CharField(max_length=160, blank=True)
+    city       = models.CharField(max_length=80,  blank=True)
+    state      = models.CharField(max_length=32,  blank=True)
+    postal     = models.CharField(max_length=32,  blank=True)
+
+    # Omnivore wiring (if you have multiple locations later, make this a child model)
+    omnivore_location_id = models.CharField(max_length=64, blank=True)
+
+    is_active  = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # The **only** link to owners: a M2M through Ownership
-    owners = models.ManyToManyField(
-        'OwnerProfile',
-        through='Ownership',
-        related_name='restaurants'          # lets you do: owner.restaurants.all()
-    )
+    owners = models.ManyToManyField('OwnerProfile', through='Ownership', related_name='restaurants')
+
+    def display_name(self):
+        return self.dba_name or self.legal_name
 
     def __str__(self):
-        return self.dba_name or self.legal_name
+        return self.display_name()
+
 
 
 class Ownership(models.Model):
@@ -94,6 +101,41 @@ class ManagerInvite(models.Model):
     def is_valid(self):
         return self.accepted_at is None and self.expires_at > timezone.now()
 
+# ---------- Staff ----------
+class StaffProfile(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="staff_profile"          # was "manager_profile" -> clashes
+    )
+    phone          = models.CharField(max_length=32, unique=True)
+    phone_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+    restaurant     = models.ForeignKey(
+        RestaurantProfile,
+        on_delete=models.CASCADE,
+        related_name="staff_members",         # was "managers" -> clashes
+        null=True, blank=True
+    )
+
+    def __str__(self):
+        return force_str(getattr(self, "label", None) or f"StaffProfile {self.pk}")
+
+
+class StaffInvite(models.Model):
+    restaurant  = models.ForeignKey(
+        RestaurantProfile,
+        on_delete=models.CASCADE,
+        related_name="staff_invites"          # was "manager_invites" -> clashes
+    )
+    email       = models.EmailField()
+    token       = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    expires_at  = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    @property
+    def is_valid(self):
+        return self.accepted_at is None and self.expires_at > timezone.now()
+
 class Member(models.Model):
     # your global member
     number = models.CharField(max_length=20, unique=True, db_index=True)
@@ -101,15 +143,74 @@ class Member(models.Model):
     customer = models.ForeignKey(CustomerProfile, on_delete=models.CASCADE)
     # optional: link to a CustomerProfile/User, phone, etc.
 
+
 class TicketLink(models.Model):
-    member = models.ForeignKey(Member, on_delete=models.CASCADE)
-    location_id = models.CharField(max_length=64)      # Omnivore location
-    ticket_id   = models.CharField(max_length=64, db_index=True)
-    server_name = models.CharField(max_length=64, blank=True)
-    status      = models.CharField(max_length=16, default="open")  # open|closing|closed
-    opened_at   = models.DateTimeField(auto_now_add=True)
-    closed_at   = models.DateTimeField(null=True, blank=True)
-    last_total  = models.IntegerField(default=0)  # cents
-    external_txn_id = models.CharField(max_length=64, blank=True)  # if you charge via Stripe, etc.
+    STATUS = (("pending","Pending"),("open","Open"),("closed","Closed"))
+
+    member        = models.ForeignKey("Member", on_delete=models.CASCADE, related_name="ticket_links")
+    restaurant    = models.ForeignKey("RestaurantProfile", on_delete=models.PROTECT, related_name="ticket_links")
+    ticket_id     = models.CharField(max_length=64, db_index=True)
+    ticket_number = models.CharField(max_length=32, blank=True)
+    table         = models.CharField(max_length=64, blank=True)
+    server_name   = models.CharField(max_length=120, blank=True)
+
+    status            = models.CharField(max_length=12, choices=STATUS, default="pending", db_index=True)
+    last_total_cents  = models.IntegerField(default=0)
+    currency          = models.CharField(max_length=8, default="USD")
+    opened_at         = models.DateTimeField(default=timezone.now, db_index=True)
+    closed_at         = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    # snapshot (from RestaurantProfile at close; POS fallback if empty)
+    merchant_name  = models.CharField(max_length=160, blank=True)
+    merchant_addr1 = models.CharField(max_length=160, blank=True)
+    merchant_addr2 = models.CharField(max_length=160, blank=True)
+    merchant_city  = models.CharField(max_length=80,  blank=True)
+    merchant_state = models.CharField(max_length=32,  blank=True)
+    merchant_zip   = models.CharField(max_length=32,  blank=True)
+    merchant_phone = models.CharField(max_length=32,  blank=True)
+
+    pos_created_at  = models.DateTimeField(null=True, blank=True)
+    pos_settled_at  = models.DateTimeField(null=True, blank=True)
+
+    items_json      = models.JSONField(default=list, blank=True)
+    discounts_cents = models.IntegerField(default=0)
+    subtotal_cents  = models.IntegerField(default=0)
+    tax_cents       = models.IntegerField(default=0)
+    tip_cents       = models.IntegerField(default=0)
+    total_cents     = models.IntegerField(default=0)
+    paid_cents      = models.IntegerField(default=0)
+    change_cents    = models.IntegerField(default=0)
+
+    tender_brand   = models.CharField(max_length=32,  blank=True)
+    tender_last4   = models.CharField(max_length=8,   blank=True)
+    tender_type    = models.CharField(max_length=64,  blank=True)
+    auth_code      = models.CharField(max_length=64,  blank=True)
+    pos_payment_id = models.CharField(max_length=64,  blank=True)
+    pos_ref        = models.CharField(max_length=128, blank=True)
+
+    raw_ticket_json   = models.JSONField(default=dict, blank=True)
+    raw_payments_json = models.JSONField(default=list,  blank=True)
+
+    emailed_to   = models.EmailField(blank=True)
+    emailed_at   = models.DateTimeField(null=True, blank=True)
+    email_status = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status","opened_at"]),
+            models.Index(fields=["status","closed_at"]),
+            models.Index(fields=["ticket_id","status"]),
+            models.Index(fields=["member","status"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member","restaurant","ticket_id","status"],
+                name="uniq_member_restaurant_ticket_by_status"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.member_id} · {self.restaurant.display_name()} · {self.ticket_number or self.ticket_id} · {self.status}"
+
 
 

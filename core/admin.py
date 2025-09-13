@@ -1,7 +1,8 @@
 from django.contrib import admin
-from .models import RestaurantProfile,ManagerProfile,ManagerInvite, CustomerProfile, OwnerProfile, Ownership, Member, TicketLink
+from .models import RestaurantProfile,ManagerProfile,ManagerInvite, CustomerProfile, OwnerProfile, Ownership, Member, TicketLink, StaffInvite, StaffProfile
 
 admin.site.register(ManagerInvite)
+admin.site.register(StaffInvite)
 admin.site.register(CustomerProfile)
 admin.site.register(Ownership)
 # core/admin.py
@@ -31,3 +32,7 @@ class ManagerProfileAdmin(admin.ModelAdmin):
 
 admin.site.register(Member)
 admin.site.register(TicketLink)
+
+@admin.register(StaffProfile)
+class ManagerProfileAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "restaurant", "phone", "phone_verified")

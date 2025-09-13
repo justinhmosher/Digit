@@ -1,0 +1,74 @@
+{% load static %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Verify Phone</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div class="max-w-xl mx-auto mt-16 bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+    <h1 class="text-2xl font-bold">Verify your phone</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      We sent a code to your phone <strong>{{ phone_mask }}</strong>.
+    </p>
+
+    <div id="alert" class="hidden mt-4 rounded-md px-4 py-3 text-sm"></div>
+
+    <form id="frm" class="mt-6 space-y-4">
+      {% csrf_token %}
+      <input type="hidden" id="token" value="{{ token }}">
+      <input type="hidden" id="email" value="{{ email }}">
+
+      <div>
+        <label class="block text-sm font-medium mb-1">Verification code</label>
+        <input id="code" maxlength="6" inputmode="numeric" pattern="[0-9]*"
+               placeholder="123456"
+               class="w-full h-12 rounded-xl border border-slate-300 px-4">
+      </div>
+
+      <button id="verify" type="submit"
+              class="w-full h-12 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+        Verify
+      </button>
+    </form>
+  </div>
+
+<script>
+  const frm   = document.getElementById('frm');
+  const alert = document.getElementById('alert');
+  const csrf  = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+
+  function flash(msg, ok=false){
+    alert.className = 'mt-4 rounded-md px-4 py-3 text-sm ' +
+      (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+    alert.textContent = msg;
+    alert.classList.remove('hidden');
+  }
+
+  frm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      token: document.getElementById('token').value,
+      email: document.getElementById('email').value.trim().toLowerCase(),
+      code:  document.getElementById('code').value.trim(),
+    };
+
+    const r = await fetch("{% url 'core:staff_accept_verify' %}", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json().catch(()=>({ ok:false, error:"Bad JSON" }));
+
+    if (data.ok && data.redirect) {
+      location.href = data.redirect;
+    } else {
+      flash(data.error || "Verification failed.");
+    }
+  });
+</script>
+</body>
+</html>

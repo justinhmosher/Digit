@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff, views_home, veiws_verify, views_payments
+from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -53,14 +53,24 @@ urlpatterns = [
     path("restaurant/onboard",views.restaurant_onboard,name = "restaurant_onboard"),
     path("debug/session", views.debug_session),
     path("api/precheck-user", views.precheck_user_api, name="precheck_user_api"),
-    path("staff", views_staff.staff_console, name="staff_console"),
     path("api/link-member", views_staff.api_link_member_to_ticket, name="link_member"),
-    path("api/ticket/<member>/receipt", views_staff.api_ticket_receipt, name="ticket_receipt"),
-    path("api/ticket/<member>/close", views_staff.api_close_tab, name="close_tab"),
+    path("api/member/<str:member_number>/receipt", views_home.api_ticket_receipt,name="customer_ticket_receipt"),
     path("verify/<member>/", veiws_verify.verify_member, name="verify_member"),
     path("staff/state", views_staff.api_staff_board_state, name="staff_board_state"),
     path("add-card/", views_payments.add_card, name="add_card"),
     path("set-pin/", views_payments.set_pin, name="set_pin"),
     path("save-pin/", views_payments.save_pin_finalize, name="save_pin_finalize"),
+    path("staff/", views_staff.staff_console, name="staff_console"),
+    path("staff/api/board", views_staff.api_staff_board_state, name="staff_board_state"),
+    path("staff/api/link-member", views_staff.api_link_member_to_ticket, name="link_member"),
+    #path("staff/api/close-ticket", views_staff.api_staff_close_ticket, name="staff_close_ticket"),
 
+    path("verify/<str:member>", veiws_verify.verify_member, name="verify_member"),
+    path("api/receipt/<str:member_number>", views_staff.api_ticket_receipt, name="ticket_receipt"),
+    path("manager/invite-staff", views_add_staff.manager_invite_staff, name="manager_invite_staff"),
+    path("staff/accept", views_add_staff.staff_accept, name="staff_accept"),
+    path("staff/accept/verify", views_add_staff.staff_accept_verify, name="staff_accept_verify"),
+    path("staff/google-start",views_add_staff.staff_google_start, name="staff_google_start"),
+    path("staff/api/close", views_staff.api_staff_close_ticket, name="staff_close_ticket"),
+    path("api/member/<str:member_number>/close", views_home.api_close_tab,name="customer_close_tab"),
 ]

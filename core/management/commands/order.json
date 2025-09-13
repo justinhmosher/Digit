@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "item_id": "REPLACE_WITH_BURGER_ID",
+      "qty": 2,
+      "mods": [
+        { "mod_id": "REPLACE_WITH_EXTRA_CHEESE_ID", "qty": 2 },
+        { "mod_id": "REPLACE_WITH_NO_TOMATO_ID" }
+      ]
+    },
+    { "item_id": "REPLACE_WITH_SANDWICH_ID", "qty": 1, "seat": 2, "price_level": 1 },
+    { "item_id": "REPLACE_WITH_ICED_TEA_ID", "qty": 2 }
+  ]
+}

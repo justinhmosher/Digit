@@ -155,3 +155,39 @@ def seed_pending_card_session(request, *, user, phone_e164: str):
     }
     request.session[CUSTOMER_SSR] = ss
     request.session.modified = True
+
+def send_staff_invite_email(to_email: str, invite_link: str, restaurant_name: str, expires_at) -> None:
+    """
+    Minimal, production-safe SendGrid send.
+    Raises on errors so caller can decide response behavior.
+    """
+    if not API_SENDGRID:
+        raise RuntimeError("Missing API_SENDGRID")
+
+    subject = f"Staff Invite for {restaurant_name}"
+    html = f"""
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5;color:#0f172a">
+      <h2 style="margin:0 0 12px">You’re invited as a manager</h2>
+      <p>You’ve been invited to <strong>{restaurant_name}</strong> on Dine N Dash.</p>
+      <p>
+        Click the button below to accept and set your password. This link expires on
+        <strong>{expires_at:%Y-%m-%d %H:%M}</strong>.
+      </p>
+      <p style="margin:20px 0">
+        <a href="{invite_link}" style="background:#0f172a;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none;display:inline-block">
+          Accept Invite
+        </a>
+      </p>
+      <p>If the button doesn’t work, paste this URL into your browser:<br>
+      <a href="{invite_link}">{invite_link}</a></p>
+      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+      <p style="font-size:12px;color:#64748b">If you didn’t expect this invite, you can ignore this email.</p>
+    </div>
+    """
+
+    sg = SendGridAPIClient(API_SENDGRID)
+    msg = Mail(from_email=FROM_EMAIL, to_emails=to_email, subject=subject, html_content=html)
+    resp = sg.send(msg)
+    # Non-2xx? raise with details so you see why
+    if not (200 <= resp.status_code < 300):
+        raise RuntimeError(f"SendGrid failed: {resp.status_code} {resp.body}")

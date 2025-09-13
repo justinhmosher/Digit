@@ -9,14 +9,15 @@
 <body class="bg-slate-50 min-h-screen p-6">
   <div class="max-w-7xl mx-auto">
     <h1 class="text-2xl font-bold mb-4">Server Console</h1>
-    <p class="text-slate-600 mb-6">Pending = waiting for guest verification (yellow). Open = verified & live (green). Closed = paid within last 12 hours (gray).</p>
+    <p class="text-slate-600 mb-6">
+      Pending = waiting for guest verification (yellow).
+      Open = verified & live (green).
+      Closed = paid within last 12 hours (gray).
+    </p>
 
-    <!-- Alerts -->
     <div id="alert" class="hidden rounded-lg px-3 py-2 text-sm mb-4"></div>
 
-    <!-- Board -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- Pending -->
       <section>
         <div class="flex items-center justify-between mb-2">
           <h2 class="font-semibold">Pending verification</h2>
@@ -25,25 +26,22 @@
         <div id="col-pending" class="space-y-3"></div>
       </section>
 
-      <!-- Open -->
       <section>
         <h2 class="font-semibold mb-2">Open tabs</h2>
         <div id="col-open" class="space-y-3"></div>
       </section>
 
-      <!-- Closed -->
       <section>
         <h2 class="font-semibold mb-2">Closed (last 12h)</h2>
         <div id="col-closed" class="space-y-3"></div>
       </section>
     </div>
 
-    <!-- Create/Assign -->
     <div class="mt-10 bg-white rounded-2xl shadow p-6">
       <h3 class="font-semibold text-lg">Create / Assign Guests</h3>
       <p class="text-sm text-slate-600 mb-4">
         Enter an open check hint (ticket #, table, or server). Add one or more member numbers (comma-separated).
-        We’ll text each guest a verification link; once they PIN verify, their ticket appears under “Open tabs”.
+        We’ll text each guest a verification link.
       </p>
 
       <div class="grid gap-3 md:grid-cols-2">
@@ -60,51 +58,25 @@
   </div>
 
 <script>
-/* ---------------- helpers ---------------- */
 function showAlert(msg, ok=false){
   const el = document.getElementById('alert');
-  el.className = 'rounded-lg px-3 py-2 text-sm mb-4 ' +
-    (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
-  el.innerHTML = msg;
+  el.className = 'rounded-lg px-3 py-2 text-sm mb-4 ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+  el.innerHTML = msg || 'Something went wrong.';
   el.classList.remove('hidden');
 }
-function clearAlert(){
-  const el = document.getElementById('alert');
-  el.classList.add('hidden'); el.innerHTML='';
-}
-function getCSRFCookie(){
-  const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
-}
-function getCSRFToken(){
-  return getCSRFCookie() || (document.querySelector('meta[name="csrf-token"]')?.content || '');
-}
-async function getJSON(url){
-  const r = await fetch(url, {credentials:'same-origin'});
-  let data={}; try{data=await r.json()}catch(e){}
-  return {ok:r.ok,status:r.status,data};
-}
-async function postJSON(url, body){
-  const r = await fetch(url, {
-    method:'POST',
-    headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFToken()},
-    credentials:'same-origin',
-    body: JSON.stringify(body||{})
-  });
-  let data={}; try{data=await r.json()}catch(e){}
-  return {ok:r.ok,status:r.status,data};
-}
+function clearAlert(){ const el = document.getElementById('alert'); el.classList.add('hidden'); el.innerHTML=''; }
+function getCSRFCookie(){ const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : null; }
+function getCSRFToken(){ return getCSRFCookie() || (document.querySelector('meta[name="csrf-token"]')?.content || ''); }
+async function getJSON(url){ const r = await fetch(url, {credentials:'same-origin'}); let d={}; try{d=await r.json()}catch{} return {ok:r.ok,data:d}; }
+async function postJSON(url, body){ const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':getCSRFToken()},credentials:'same-origin',body:JSON.stringify(body||{})}); let d={}; try{d=await r.json()}catch{} return {ok:r.ok,data:d}; }
 function cents(n){ return (n/100).toFixed(2); }
 
-/* ---------------- endpoints ---------------- */
-const boardUrl     = "{% url 'core:staff_board_state' %}";
-const sendLinkUrl  = "{% url 'core:link_member' %}";
-function closeUrl(member){ return "{% url 'core:close_tab' '__MEM__' %}".replace('__MEM__', member); }
+const boardUrl      = "{% url 'core:staff_board_state' %}";
+const sendLinkUrl   = "{% url 'core:link_member' %}";
+const staffCloseUrl = "{% url 'core:staff_close_ticket' %}";
 
-/* ---------------- renderer ---------------- */
-function cardBase(c,bg){
-  return `<div class="rounded-xl border shadow-sm ${bg}">${c}</div>`;
-}
+function cardBase(c,bg){ return `<div class="rounded-xl border shadow-sm ${bg}">${c}</div>`; }
+
 function renderPending(list){
   const col = document.getElementById('col-pending');
   col.innerHTML = list.map(x=>{
@@ -117,15 +89,11 @@ function renderPending(list){
         <div class="mt-1 text-sm text-slate-700">
           Member: <span class="font-mono">${x.member}</span> • ${x.member_last}
         </div>
-        <div class="mt-2 flex gap-2">
-          <button class="resend px-3 py-1 rounded-lg bg-amber-500 text-white" data-m="${x.member}" data-t="${x.ticket_id}" data-last="${x.member_last}">
-            Resend Link
-          </button>
-        </div>
       </div>`;
     return cardBase(body,'bg-amber-50');
   }).join('') || `<div class="text-sm text-slate-500">Nothing pending.</div>`;
 }
+
 function renderOpen(list){
   const col = document.getElementById('col-open');
   col.innerHTML = list.map(x=>{
@@ -140,16 +108,16 @@ function renderOpen(list){
         </div>
         <div class="mt-2 text-xs text-slate-600">Members: ${x.members.join(', ') || '-'}</div>
         <div class="mt-3 flex items-center gap-2">
-          <input class="tip border rounded-lg h-9 px-2 w-24" placeholder="Tip (¢)" data-m="${x.members[0] || ''}">
-          <button class="close px-3 py-1 rounded-lg bg-emerald-600 text-white" data-m="${x.members[0] || ''}">
-            Close Out
+          <input class="tip border rounded-lg h-9 px-2 w-24" placeholder="Tip (¢)" data-ticket="${x.ticket_id}">
+          <button class="close-ticket px-3 py-1 rounded-lg bg-emerald-700 text-white" data-ticket="${x.ticket_id}">
+            Close Ticket
           </button>
-          <button class="split px-3 py-1 rounded-lg border">Split / Customize</button>
         </div>
       </div>`;
     return cardBase(body,'bg-emerald-50');
   }).join('') || `<div class="text-sm text-slate-500">No open tabs.</div>`;
 }
+
 function renderClosed(list){
   const col = document.getElementById('col-closed');
   col.innerHTML = list.map(x=>{
@@ -168,7 +136,6 @@ function renderClosed(list){
   }).join('') || `<div class="text-sm text-slate-500">Nothing closed in last 12h.</div>`;
 }
 
-/* ---------------- fetching ---------------- */
 async function loadBoard(){
   const res = await getJSON(boardUrl);
   if(!res.ok){ return showAlert(res.data?.error || 'Failed to load board.'); }
@@ -177,52 +144,22 @@ async function loadBoard(){
   renderOpen(res.data.open||[]);
   renderClosed(res.data.closed||[]);
 }
+
 document.getElementById('refreshBtn').onclick = loadBoard;
-setInterval(loadBoard, 8000); // auto refresh every 8s
+setInterval(loadBoard, 8000);
 loadBoard();
 
-/* ---------------- actions ---------------- */
-// resend link on pending
 document.addEventListener('click', async (e)=>{
-  const btn = e.target.closest('button.resend');
+  const btn = e.target.closest('button.close-ticket');
   if(!btn) return;
-  const member = btn.dataset.m;
-  const ticket = btn.dataset.t;
-  const last   = btn.dataset.last || '';
-  const r = await postJSON(sendLinkUrl, {
-    member_number: member, last_name: last, ticket_id: ticket
-  });
-  if(!r.ok) return showAlert(r.data?.error || 'Failed to resend link');
-  if(r.data?.sent && r.data.sent.ok===false) {
-    return showAlert('SMS error: ' + (r.data.sent.error || 'send failed'));
-  }
-  showAlert('Verification link re-sent.', true);
-});
-
-// close out on open
-document.addEventListener('click', async (e)=>{
-  const btn = e.target.closest('button.close');
-  if(!btn) return;
-  const member = btn.dataset.m;
-  const tipInput = btn.parentElement.querySelector('input.tip');
-  const tip = parseInt((tipInput?.value || '0'), 10) || 0;
-
-  const r = await postJSON(closeUrl(member), { tip_cents: tip, reference: 'staff-close' });
-  if(!r.ok){ 
-    return showAlert(r.data?.error || r.data?.detail || 'Close failed');
-  }
-  showAlert('Closed out.', true);
+  const ticketId = btn.dataset.ticket;
+  const tip = parseInt(btn.parentElement.querySelector('input.tip')?.value || '0', 10) || 0;
+  const r = await postJSON(staffCloseUrl, { ticket_id: ticketId, tip_cents: tip, reference: 'staff-close' });
+  if(!r.ok){ return showAlert(r.data?.error || r.data?.detail || 'Close failed'); }
+  showAlert('Closed out & receipt recorded.', true);
   loadBoard();
 });
 
-// (placeholder) split
-document.addEventListener('click', (e)=>{
-  const btn = e.target.closest('button.split');
-  if(!btn) return;
-  showAlert('Split editor coming soon (server assigns items to members).', true);
-});
-
-/* ---------------- create / send links ---------------- */
 function setBusy(on){
   document.getElementById('sendLinksBtn').disabled = on;
   document.getElementById('busy').classList.toggle('hidden', !on);
@@ -232,36 +169,19 @@ document.getElementById('sendLinksBtn').onclick = async ()=>{
   const hint  = document.getElementById('create-hint').value.trim();
   const lname = document.getElementById('create-lastname').value.trim();
   const members = (document.getElementById('create-members').value || '')
-                    .split(',')
-                    .map(s=>s.trim())
-                    .filter(Boolean);
-
-  if(!hint || members.length===0){
-    return showAlert('Enter a check hint and at least one member number.');
-  }
-
+                    .split(',').map(s=>s.trim()).filter(Boolean);
+  if(!hint || members.length===0) return showAlert('Enter a check hint and at least one member number.');
   setBusy(true);
   let failures = [];
   for(const m of members){
-    const r = await postJSON(sendLinkUrl, {
-      member_number: m,
-      last_name: lname,
-      check_hint: hint
-    });
-    if(!r.ok || (r.data?.sent && r.data.sent.ok===false)){
-      failures.push(m);
-    }
+    const r = await postJSON(sendLinkUrl, { member_number: m, last_name: lname, check_hint: hint });
+    if(!r.ok || (r.data?.sent && r.data.sent.ok===false)) failures.push(m);
   }
   setBusy(false);
-
-  if(failures.length){
-    showAlert('Some links failed for: ' + failures.join(', '));
-  }else{
-    showAlert('Verification links sent.', true);
-  }
+  if(failures.length) showAlert('Some links failed for: ' + failures.join(', '));
+  else showAlert('Verification links sent.', true);
   loadBoard();
 };
 </script>
 </body>
 </html>
-

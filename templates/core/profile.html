@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -32,39 +33,31 @@
         <span class="font-semibold tracking-tight">Dine N Dash</span>
       </a>
 
-      <!-- Desktop nav -->
+      <!-- Desktop tabs -->
       <nav class="hidden md:flex items-center gap-1">
+        {% if user.is_authenticated and has_live_order %}
+          <button data-tab="live" class="tab px-4 py-2 rounded-2xl text-sm border">Live Order</button>
+        {% endif %}
+        <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
         {% if user.is_authenticated %}
-          {% if has_live_order %}
-            <button data-tab="live" class="tab relative px-4 py-2 rounded-2xl text-sm border">
-              Live Order
-              <span class="absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"></span>
-            </button>
-          {% endif %}
-          <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
           <button data-tab="txn" class="tab px-4 py-2 rounded-2xl text-sm border">Transactions</button>
           <button data-tab="profile" class="tab px-4 py-2 rounded-2xl text-sm border">Profile</button>
         {% else %}
-          <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
+          <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}"
+             class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Sign in</a>
         {% endif %}
       </nav>
 
-      <!-- Right-side actions -->
+      <!-- Right actions -->
       <div class="flex items-center gap-2">
         <a href="{% url 'core:restaurant_signin' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
           Restaurant sign in
         </a>
-
         {% if user.is_authenticated %}
           <a href="{% url 'core:signout' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
             Sign out
           </a>
-        {% else %}
-          <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
-            Sign in
-          </a>
         {% endif %}
-
         <button id="openMobile" aria-label="Open menu" class="md:hidden inline-flex rounded-xl border p-2">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round">
@@ -99,25 +92,19 @@
       </div>
 
       <div class="p-4 space-y-2">
+        {% if user.is_authenticated and has_live_order %}
+          <button data-tab="live" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Live Order</button>
+        {% endif %}
+        <button data-tab="rec" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Recommendations</button>
         {% if user.is_authenticated %}
-          {% if has_live_order %}
-            <button data-tab="live" class="m-tab relative w-full text-left px-4 py-3 rounded-xl text-base border">
-              Live Order
-              <span class="absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"></span>
-            </button>
-          {% endif %}
-          <button data-tab="rec" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Recommendations</button>
           <button data-tab="txn" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Transactions</button>
           <button data-tab="profile" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Profile</button>
-        {% else %}
-          <button data-tab="rec" class="m-tab w-full text-left px-4 py-3 rounded-xl text-base border">Recommendations</button>
         {% endif %}
 
         <div class="pt-4 space-y-2">
           <a href="{% url 'core:restaurant_signin' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
             Restaurant sign in
           </a>
-
           {% if user.is_authenticated %}
             <a href="{% url 'core:signout' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
               Sign out
@@ -132,8 +119,7 @@
     </aside>
   </div>
 
-  <!-- LIVE ORDER PANEL (only when has_live_order) -->
-  {% if user.is_authenticated and has_live_order %}
+  <!-- LIVE ORDER -->
   <main id="panel-live" class="mx-auto max-w-3xl px-4 py-8 hidden">
     <div class="rounded-3xl border bg-white p-6 shadow-sm">
       <div class="flex items-center justify-between">
@@ -141,10 +127,9 @@
         <span id="liveServer" class="text-sm text-slate-500"></span>
       </div>
 
-      <div id="liveEmpty" class="mt-3 text-slate-600 hidden">No active ticket found.</div>
-
       <div id="liveBody" class="mt-4">
         <div id="liveLoading" class="text-slate-600">Loading your order…</div>
+        <div id="liveEmpty" class="hidden text-slate-600">No active ticket found.</div>
 
         <div id="liveContent" class="hidden">
           <ul id="liveItems" class="divide-y"></ul>
@@ -186,10 +171,9 @@
       </div>
     </div>
   </main>
-  {% endif %}
 
-  <!-- Recommendations -->
-  <main id="panel-rec" class="mx-auto max-w-7xl px-4 py-8 grid lg:grid-cols-12 gap-6">
+  <!-- RECOMMENDATIONS -->
+  <main id="panel-rec" class="mx-auto max-w-7xl px-4 py-8 grid lg:grid-cols-12 gap-6 hidden">
     <section class="lg:col-span-8">
       <div class="flex items-start justify-between">
         <div>
@@ -233,7 +217,7 @@
   </main>
 
   {% if user.is_authenticated %}
-  <!-- Transactions -->
+  <!-- TRANSACTIONS -->
   <main id="panel-txn" class="mx-auto max-w-7xl px-4 py-10 hidden">
     <div class="rounded-3xl border bg-white p-6">
       <div class="flex items-center justify-between flex-wrap gap-3">
@@ -257,8 +241,10 @@
       </div>
     </div>
   </main>
+  {% endif %}
 
-  <!-- Profile -->
+  {% if user.is_authenticated %}
+  <!-- PROFILE -->
   <main id="panel-profile" class="mx-auto max-w-3xl px-4 py-10 grid gap-6 hidden">
     <section class="rounded-3xl border bg-white p-6">
       <h2 class="text-xl font-semibold">Member Info</h2>
@@ -302,7 +288,7 @@
   </footer>
 
   <script>
-    // Minimal demo data for Recommendations / Transactions UI polish
+    // ------- Demo data for Rec/Txn -------
     const demoRestaurants = [
       { name: "Kumo Izakaya", tx: 106, address: "221 Market St, San Francisco, CA", opened: "2024-11-12" },
       { name: "Café Verona", tx: 101, address: "48 Clement Ave, San Francisco, CA", opened: "2023-04-04" },
@@ -315,14 +301,13 @@
       { date: "2025-08-12", restaurant: "Café Verona",  city: "San Francisco", subtotal: 49.9, tipPct: 20 }
     ];
 
-    const member = document.body.dataset.member || "";
-    const hasLive = document.body.dataset.live === "1";
-
-    // Helpers
-    const $ = s => document.querySelector(s);
+    const member   = document.body.dataset.member || "";
+    const hasLive  = document.body.dataset.live === "1";
+    const $  = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
-    const fmtMoney = n => `$${(+n).toFixed(2)}`;
+    const money = c => `$${(Number(c||0)/100).toFixed(2)}`;
 
+    // ----- Toast -----
     function showToast(msg, {title="Notice", tone="info"} = {}) {
       $("#toastTitle").textContent = title;
       $("#toastMsg").textContent = String(msg || "");
@@ -336,15 +321,15 @@
       $("#toastIcon").className = `mt-[2px] h-5 w-5 rounded-full ${iconCls}`;
       $("#toast").classList.remove("hidden");
       $("#toastClose").onclick = () => $("#toast").classList.add("hidden");
-      setTimeout(() => $("#toast").classList.add("hidden"), 6000);
+      setTimeout(() => $("#toast").classList.add("hidden"), 4000);
     }
 
+    // ----- Tabs (desktop & mobile) -----
     function getTabIds(){
       const tabs = new Set([...$$('[data-tab]')].map(b => b.dataset.tab));
       return Array.from(tabs);
     }
-
-    function setTab(next) {
+    function setTab(next){
       const ids = getTabIds();
       if (!ids.includes(next)) next = hasLive ? 'live' : 'rec';
       $$(".tab").forEach(b => {
@@ -360,8 +345,21 @@
         if (panel) panel.classList.toggle("hidden", id !== next);
       });
     }
+    $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+    $$(".m-tab").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); openDrawer(false); }));
 
-    // Recommendations list (simple)
+    // ----- Mobile drawer -----
+    function openDrawer(on) {
+      const wrap = $("#drawerWrap"), drawer = $("#drawer"), backdrop = $("#drawerBackdrop");
+      wrap.classList.toggle("pointer-events-none", !on);
+      drawer.style.transform = on ? "translateX(0)" : "translateX(-100%)";
+      backdrop.style.opacity = on ? "1" : "0";
+    }
+    $("#openMobile")?.addEventListener("click", () => openDrawer(true));
+    $("#closeMobile")?.addEventListener("click", () => openDrawer(false));
+    $("#drawerBackdrop")?.addEventListener("click", () => openDrawer(false));
+
+    // ----- Recommendations (demo) -----
     function renderRec(){
       const ul = $("#rankList"); if (!ul) return;
       ul.innerHTML = "";
@@ -371,7 +369,8 @@
         const li = document.createElement("li");
         li.className = "py-3";
         li.innerHTML = `
-          <div class="rounded-2xl p-3 border bg-white/70 hover:bg-white hover:shadow-sm transition">
+          <button class="w-full text-left rounded-2xl p-3 border bg-white/70 hover:bg-white hover:shadow-sm transition"
+                  data-idx="${i}">
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-3 min-w-0">
                 <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold bg-slate-900 text-white">${i+1}</div>
@@ -385,11 +384,26 @@
             <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
               <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
             </div>
-          </div>`;
+          </button>`;
         ul.appendChild(li);
+      });
+
+      ul.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-idx]");
+        if (!btn) return;
+        const i = +btn.dataset.idx;
+        const r = demoRestaurants[i];
+        $("#detailsEmpty")?.classList.add("hidden");
+        $("#detailsBox")?.classList.remove("hidden");
+        $("#dName").textContent = r.name;
+        $("#dAddr").textContent = r.address;
+        $("#dTx").textContent = r.tx;
+        $("#dOpened").textContent = r.opened;
+        $("#mapsLink").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}`;
       });
     }
 
+    // ----- Transactions (demo) -----
     function renderTxn(){
       const body = $("#txnBody"); const count = $("#txnCount");
       if (!body || !count) return;
@@ -403,63 +417,180 @@
           <td class="py-3 pr-4">${t.date}</td>
           <td class="py-3 pr-4">${t.restaurant}</td>
           <td class="py-3 pr-4">${t.city}</td>
-          <td class="py-3 pr-4 text-right">${fmtMoney(t.subtotal)}</td>
-          <td class="py-3 pr-4 text-right">${t.tipPct}% (${fmtMoney(tip)})</td>
-          <td class="py-3 pr-4 text-right font-semibold">${fmtMoney(total)}</td>`;
+          <td class="py-3 pr-4 text-right">$${t.subtotal.toFixed(2)}</td>
+          <td class="py-3 pr-4 text-right">${t.tipPct}% ($${tip.toFixed(2)})</td>
+          <td class="py-3 pr-4 text-right font-semibold">$${total.toFixed(2)}</td>`;
         body.appendChild(tr);
       });
       count.textContent = `${demoTxns.length} total`;
     }
 
-    // --- LIVE ORDER (client only shell; your API wiring can fill these) ---
-    function tipAmount() {
-      const el = $("#tipPct");
-      if (!el) return 0;
-      const pct = Math.max(0, parseFloat(el.value || "15"));
-      // In a real app you'd compute from live subtotal; here we just show UI.
-      return 0;
+    // ===== Flicker-free Live Order (SWR) =====
+    const POLL_MS_BASE = 8000;
+    let firstPaint = true;
+    let lastFP = null;
+    let timer = null;
+    let ctrl  = null;
+
+    function fingerprint(d){
+      const key = JSON.stringify({
+        i: (d.items||[]).map(i => [i.name, i.qty, i.cents]),
+        s: d.subtotal_cents, t: d.tax_cents, T: d.total_cents, d: d.due_cents
+      });
+      let h=0; for (let i=0;i<key.length;i++) { h = (h*31 + key.charCodeAt(i))|0; }
+      return String(h);
     }
 
-    function openDrawer(on) {
-      const wrap = $("#drawerWrap");
-      const drawer = $("#drawer");
-      const backdrop = $("#drawerBackdrop");
-      wrap.classList.toggle("pointer-events-none", !on);
-      drawer.style.transform = on ? "translateX(0)" : "translateX(-100%)";
-      backdrop.style.opacity = on ? "1" : "0";
+    function renderLive(d){
+      $("#liveServer").textContent   = d.server || "";
+      $("#liveSubtotal").textContent = money(d.subtotal_cents);
+      $("#liveTax").textContent      = money(d.tax_cents);
+
+      const pctEl = $("#tipPct");
+      const pct   = pctEl ? Math.max(0, parseFloat(pctEl.value || "0")) : 0;
+      const tip   = Math.round((d.subtotal_cents||0) * (pct/100));
+      $("#liveTipAmt").textContent = money(tip);
+      $("#liveTotal").textContent  = money((d.total_cents||0) + tip);
+      $("#liveDue").textContent    = money((d.due_cents||0) + tip);
+
+      const ul = $("#liveItems");
+      ul.innerHTML = (d.items||[]).map(i => `
+        <li class="flex items-center justify-between py-2">
+          <span class="truncate">${i.name || ""}</span>
+          <span class="tabular-nums text-slate-700">${i.qty} × ${money(i.cents)}</span>
+        </li>
+      `).join("");
     }
 
+    function showLiveBlocks(state){
+      const loading = $("#liveLoading");
+      const content = $("#liveContent");
+      const empty   = $("#liveEmpty");
+      if (state === "loading-first") {
+        loading?.classList.remove("hidden");
+        content?.classList.add("hidden");
+        empty?.classList.add("hidden");
+      } else if (state === "show-content") {
+        loading?.classList.add("hidden");
+        empty?.classList.add("hidden");
+        content?.classList.remove("hidden");
+      } else if (state === "empty") {
+        loading?.classList.add("hidden");
+        content?.classList.add("hidden");
+        empty?.classList.remove("hidden");
+      }
+    }
+
+    async function fetchReceipt({silent=false} = {}){
+      if (!member) return;
+      if (ctrl) ctrl.abort();
+      ctrl = new AbortController();
+      if (firstPaint && !silent) showLiveBlocks("loading-first");
+
+      try {
+        const r = await fetch(`/api/member/${encodeURIComponent(member)}/receipt`, {
+          signal: ctrl.signal, cache: "no-store", headers: {"Accept":"application/json"}
+        });
+        if (r.status === 404) {
+          showLiveBlocks("empty");
+          scheduleNext(POLL_MS_BASE);
+          return;
+        }
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+        if (firstPaint) showLiveBlocks("show-content");
+
+        const fp = fingerprint(d);
+        if (fp !== lastFP) {
+          lastFP = fp;
+          renderLive(d);
+        }
+        firstPaint = false;
+        scheduleNext(POLL_MS_BASE);
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        scheduleNext(Math.min(POLL_MS_BASE * 2, 30000));
+      }
+    }
+
+    function scheduleNext(ms){
+      clearTimeout(timer);
+      timer = setTimeout(() => fetchReceipt({silent:true}), ms);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        clearTimeout(timer);
+        if (ctrl) ctrl.abort();
+      } else {
+        fetchReceipt({silent:true});
+      }
+    });
+
+    // Tip preview
+    $("#tipPct")?.addEventListener("input", () => {
+      const sub = ($("#liveSubtotal")?.textContent || "$0").replace(/[^0-9.]/g,"");
+      const tax = ($("#liveTax")?.textContent || "$0").replace(/[^0-9.]/g,"");
+      const pct = Math.max(0, parseFloat($("#tipPct").value || "0"));
+      const subCents = Math.round(parseFloat(sub || "0") * 100);
+      const taxCents = Math.round(parseFloat(tax || "0") * 100);
+      const tip = Math.round(subCents * (pct/100));
+      $("#liveTipAmt").textContent = money(tip);
+      $("#liveTotal").textContent  = money(subCents + taxCents + tip);
+      $("#liveDue").textContent    = money((subCents + taxCents) + tip); // UI-only preview
+    });
+
+    // Manual refresh
+    $("#refreshLive")?.addEventListener("click", () => fetchReceipt({silent:true}));
+
+    // Close out
+    function getCSRFCookie(){ const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; }
+    $("#closeTabBtn")?.addEventListener("click", async () => {
+      try {
+        const r = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
+          method:"POST",
+          headers: {"X-CSRFToken": getCSRFCookie()},
+          body: "{}"
+        });
+        if (r.ok) {
+          showToast("Closed out & receipt updated.", {tone:"success"});
+          firstPaint = true; lastFP = null;
+          await fetchReceipt({silent:false});
+        } else {
+          showToast("Close out failed.", {tone:"error"});
+        }
+      } catch {
+        showToast("Network error while closing.", {tone:"error"});
+      }
+    });
+
+    // Info box
+    let openInfo = false;
+    $("#infoBtn")?.addEventListener("click", () => {
+      openInfo = !openInfo;
+      $("#infoBox")?.classList.toggle("hidden", !openInfo);
+    });
+
+    // Copy member number
+    $("#copyBtn")?.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(member || ""); showToast("Copied!", {tone:"success"}); } catch {}
+    });
+
+    // Init
     document.addEventListener("DOMContentLoaded", () => {
       const y = $("#year"); if (y) y.textContent = new Date().getFullYear();
 
-      // Tabs
-      $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
-      $$(".m-tab").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); openDrawer(false); }));
-
-      // Drawer
-      $("#openMobile")?.addEventListener("click", () => openDrawer(true));
-      $("#closeMobile")?.addEventListener("click", () => openDrawer(false));
-      $("#drawerBackdrop")?.addEventListener("click", () => openDrawer(false));
-
-      // Info box
-      let openInfo = false;
-      $("#infoBtn")?.addEventListener("click", () => {
-        openInfo = !openInfo;
-        $("#infoBox")?.classList.toggle("hidden", !openInfo);
-      });
-
-      // Copy member number
-      $("#copyBtn")?.addEventListener("click", async () => {
-        try { await navigator.clipboard.writeText(member || ""); showToast("Copied!", {tone:"success"}); } catch {}
-      });
-
-      // Initial renders
+      // default tab
       setTab(hasLive ? "live" : "rec");
+
+      // render static panels
       renderRec();
       renderTxn();
+
+      // start polling only if live
+      if (hasLive) fetchReceipt({silent:false});
     });
   </script>
 </body>
 </html>
-
-
