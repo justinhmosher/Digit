@@ -25,50 +25,56 @@
     </div>
   </div>
 
-  <!-- Header -->
-  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
-    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-      <a href="/" class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
-        <span class="font-semibold tracking-tight">Dine N Dash</span>
+<!-- Header -->
+<header class="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
+  <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-3">
+      <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
+      <span class="font-semibold tracking-tight">Dine N Dash</span>
+    </a>
+
+    <!-- Desktop tabs (center) -->
+    <nav class="hidden md:flex items-center gap-1">
+      {% if user.is_authenticated and has_live_order %}
+        <button data-tab="live" class="tab px-4 py-2 rounded-2xl text-sm border">Live Order</button>
+      {% endif %}
+      <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
+      {% if user.is_authenticated %}
+        <button data-tab="txn" class="tab px-4 py-2 rounded-2xl text-sm border">Transactions</button>
+        <button data-tab="profile" class="tab px-4 py-2 rounded-2xl text-sm border">Profile</button>
+      {% endif %}
+    </nav>
+
+    <!-- Right actions -->
+    <div class="flex items-center gap-2">
+      <a href="{% url 'core:restaurant_signin' %}"
+         class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+        Restaurant sign in
       </a>
 
-      <!-- Desktop tabs -->
-      <nav class="hidden md:flex items-center gap-1">
-        {% if user.is_authenticated and has_live_order %}
-          <button data-tab="live" class="tab px-4 py-2 rounded-2xl text-sm border">Live Order</button>
-        {% endif %}
-        <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
-        {% if user.is_authenticated %}
-          <button data-tab="txn" class="tab px-4 py-2 rounded-2xl text-sm border">Transactions</button>
-          <button data-tab="profile" class="tab px-4 py-2 rounded-2xl text-sm border">Profile</button>
-        {% else %}
-          <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}"
-             class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Sign in</a>
-        {% endif %}
-      </nav>
-
-      <!-- Right actions -->
-      <div class="flex items-center gap-2">
-        <a href="{% url 'core:restaurant_signin' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
-          Restaurant sign in
+      {% if user.is_authenticated %}
+        <a href="{% url 'core:signout' %}"
+           class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+          Sign out
         </a>
-        {% if user.is_authenticated %}
-          <a href="{% url 'core:signout' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
-            Sign out
-          </a>
-        {% endif %}
-        <button id="openMobile" aria-label="Open menu" class="md:hidden inline-flex rounded-xl border p-2">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-      </div>
+      {% else %}
+        <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}"
+           class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+          Sign in
+        </a>
+      {% endif %}
+
+      <button id="openMobile" aria-label="Open menu" class="md:hidden inline-flex rounded-xl border p-2">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
     </div>
-  </header>
+  </div>
+</header>
 
   <!-- Mobile drawer -->
   <div id="drawerWrap" class="fixed inset-0 z-40 md:hidden pointer-events-none" aria-hidden="true">

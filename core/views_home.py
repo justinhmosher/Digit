@@ -1,4 +1,4 @@
-# core/views.py
+# core/views_home.py
 from __future__ import annotations
 
 from django.contrib.auth import logout
@@ -16,6 +16,7 @@ from .omnivore import (
     get_ticket,
     get_ticket_items,
     create_external_payment,
+    create_payment_with_tender_type,
 )
 
 # Stripe for card brand/last4 on Profile
@@ -303,11 +304,16 @@ def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse
 @require_POST
 def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     """
-    Close the current open TicketLink for this user+member by posting a POS payment.
+    Customer close:
+      - Auth: the URL <member> must belong to the signed-in user
+      - Reads JSON: {"tip_cents": <int>, "reference": "customer-close"}
+      - Posts CASH+TIP via create_payment_with_tender_type
+      - Closes ALL open TicketLink rows for that ticket
     """
     if not request.user.is_authenticated:
         return JsonResponse({"ok": False, "error": "Auth required."}, status=401)
 
+    # Ensure the member belongs to this user
     m = (
         Member.objects
         .filter(number=str(member), customer__user=request.user)
@@ -316,6 +322,7 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     if not m:
         return JsonResponse({"ok": False, "error": "Not authorized for this member."}, status=403)
 
+    # The member must have at least one OPEN link
     tl = (
         TicketLink.objects
         .filter(member=m, status="open")
@@ -326,30 +333,66 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     if not tl:
         return JsonResponse({"ok": False, "error": "No active ticket."}, status=404)
 
+    # POS location from restaurant
     loc_id = (tl.restaurant.omnivore_location_id or "").strip()
     if not loc_id:
         return JsonResponse({"ok": False, "error": "Restaurant not wired to POS."}, status=500)
 
-    # Get fresh amount due from POS
-    t = get_ticket(loc_id, tl.ticket_id)
-    totals = (t or {}).get("totals") or {}
-    amount = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
-    if amount <= 0:
-        return JsonResponse({"ok": False, "error": "Nothing due."}, status=400)
-
+    # Parse body
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
         data = {}
-    reference = (data.get("reference") or f"dnd-{timezone.now().timestamp():.0f}").strip()
+    reference = (data.get("reference") or "customer-close").strip()
+    try:
+        tip_cents = int(data.get("tip_cents") or 0)
+    except Exception:
+        tip_cents = 0
 
-    # Post payment (your adapter handles tender/tip mapping)
-    create_external_payment(loc_id, tl.ticket_id, amount, reference)
+    # Prefer fresh due from POS; fallback to our latest snapshot across links
+    try:
+        t = get_ticket(loc_id, tl.ticket_id)
+        totals = (t or {}).get("totals") or {}
+        amount = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
+    except Exception:
+        amount = 0
 
-    # Mark link closed & store reference
-    tl.status = "closed"
-    tl.pos_ref = reference
-    tl.closed_at = timezone.now()
-    tl.save(update_fields=["status", "pos_ref", "closed_at"])
+    if amount <= 0:
+        # fallback: max of last_total_cents from all open links for this ticket
+        amount = max(
+            [x.last_total_cents or 0 for x in TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open")] or [0]
+        )
 
-    return JsonResponse({"ok": True})
+    if amount <= 0:
+        return JsonResponse({"ok": False, "error": "Nothing due."}, status=400)
+
+    # Post payment to Omnivore (CASH + TIP; adapter ignores tender_type_id and reference)
+    try:
+        create_payment_with_tender_type(
+            location_id=loc_id,
+            ticket_id=tl.ticket_id,
+            amount_cents=amount,
+            tender_type_id=None,   # adapter ignores this
+            reference=reference,   # kept for logging
+            tip_cents=tip_cents,
+        )
+    except Exception as e:
+        return JsonResponse(
+            {"ok": False, "error": "omnivore_payment_failed", "detail": str(e)},
+            status=502,
+        )
+
+    # Close ALL open links for this POS ticket (the POS ticket is now paid)
+    now = timezone.now()
+    open_links = list(
+        TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open")
+    )
+    for link in open_links:
+        link.status = "closed"
+        link.closed_at = now
+        link.tip_cents = tip_cents
+        link.paid_cents = amount
+        link.pos_ref = reference
+        link.save(update_fields=["status", "closed_at", "tip_cents", "paid_cents", "pos_ref"])
+
+    return JsonResponse({"ok": True, "closed": len(open_links)})

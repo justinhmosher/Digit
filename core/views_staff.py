@@ -71,16 +71,25 @@ def staff_console(request):
     return render(request, "core/staff_console.html", {"restaurant": rp})
 
 
-# ---------- APIs ----------
 
-@login_required
+LOCATION_ID = config("OMNIVORE_LOCATION_ID", default="").strip()
+
+
 @ensure_csrf_cookie
 @csrf_protect
 @require_POST
 def api_link_member_to_ticket(request):
     """
-    Staff provides: member_number, optional last_name, and either ticket_id or check_hint.
-    Sends the member a signed verification URL (no TicketLink is created until guest verifies).
+    Staff provides: member_number, last_name (optional), and either ticket_id or check_hint.
+    We resolve ONE open ticket, create/ensure a pending TicketLink row, build a signed token,
+    and send the customer a verification link via SMS (email fallback if you add it).
+
+    Response (success):
+      { ok: True, delivery: "sms", ticket_id: "<id>", member: "<number>" }
+    On multiple matches:
+      { ok: True, multiple: True, candidates: [{ticket_id, ticket_number?, label?}, ...] }
+    On error:
+      4xx/5xx with { ok: False, error, detail? }
     """
     data = json.loads(request.body.decode() or "{}")
     member_number = (data.get("member_number") or "").strip()
@@ -88,31 +97,34 @@ def api_link_member_to_ticket(request):
     check_hint    = (data.get("check_hint") or "").strip()
     ticket_id     = (data.get("ticket_id") or "").strip()
 
-    if not member_number:
-        return JsonResponse({"ok": False, "error": "Member number is required."}, status=400)
+    # 1) validate member
+    m = Member.objects.select_related("customer").filter(number=member_number).first()
+    if not m or (last_name and (m.last_name or "").lower() != last_name.lower()):
+        return JsonResponse({"ok": False, "error": "member_not_found_or_name_mismatch"}, status=404)
 
-    m = Member.objects.filter(number=member_number).select_related("customer").first()
-    if not m or (last_name and m.last_name.lower() != last_name.lower()):
-        return JsonResponse({"ok": False, "error": "Member not found or last name mismatch."}, status=404)
+    # active restaurant for this staff console (single location wiring)
+    rp = RestaurantProfile.objects.filter(omnivore_location_id=LOCATION_ID).first()
+    if not rp:
+        return JsonResponse({"ok": False, "error": "restaurant_not_wired"}, status=500)
 
-    location_id = _staff_location_id(request)
-    if not location_id:
-        return JsonResponse({"ok": False, "error": "No POS location configured for this staff account."}, status=400)
-
-    # Resolve a single open ticket
+    # 2) resolve ticket
+    chosen_id = None
+    chosen_snapshot = {}
     if ticket_id:
         try:
-            t = get_ticket(location_id, ticket_id)
-        except Exception:
-            return JsonResponse({"ok": False, "error": "Ticket not found."}, status=404)
+            t = get_ticket(LOCATION_ID, ticket_id)
+        except Exception as e:
+            return JsonResponse({"ok": False, "error": "ticket_not_found", "detail": str(e)}, status=404)
         if not t.get("open", True):
-            return JsonResponse({"ok": False, "error": "Ticket is not open."}, status=404)
+            return JsonResponse({"ok": False, "error": "ticket_not_open"}, status=400)
         chosen_id = str(t.get("id"))
+        chosen_snapshot = t
     else:
-        cands = list_open_tickets(location_id)
+        # find open by hint
+        cands = list_open_tickets(LOCATION_ID)
         hits = [tt for tt in cands if _match_ticket_hint(tt, check_hint)]
         if not hits:
-            return JsonResponse({"ok": False, "error": "No open check matched that hint."}, status=404)
+            return JsonResponse({"ok": False, "error": "no_open_check_matches"}, status=404)
         if len(hits) > 1:
             return JsonResponse({
                 "ok": True,
@@ -120,31 +132,77 @@ def api_link_member_to_ticket(request):
                 "candidates": [
                     {
                         "ticket_id": tt.get("id"),
-                        "label": str(tt.get("ticket_number") or "") or _emp_name(tt) or tt.get("name") or str(tt.get("id")),
-                    }
-                    for tt in hits
+                        "ticket_number": tt.get("ticket_number"),
+                        "label": tt.get("ticket_number") or _emp_name(tt) or tt.get("name") or str(tt.get("id")),
+                    } for tt in hits
                 ],
             })
         chosen_id = str(hits[0].get("id"))
+        chosen_snapshot = hits[0]
 
-    # Build verification link token (no TicketLink yet)
+    # Always fetch a fresh ticket to enrich pending row (safe if already fetched)
+    try:
+        t = chosen_snapshot or get_ticket(LOCATION_ID, chosen_id)
+    except Exception:
+        t = chosen_snapshot  # fall back to list response if detailed call fails
+
+    # 3) create/ensure a PENDING TicketLink
+    ticket_number = (t or {}).get("ticket_number") or (t or {}).get("number") or ""
+    server_name   = _emp_name(t or {})
+    due_cents     = _due_cents(t or {})
+
+    # If an OPEN already exists for this member+ticket, don't add pending—board will show it under Open.
+    exists_open = TicketLink.objects.filter(
+        member=m, restaurant=rp, ticket_id=chosen_id, status="open"
+    ).exists()
+    if not exists_open:
+        tl, _ = TicketLink.objects.get_or_create(
+            member=m,
+            restaurant=rp,
+            ticket_id=chosen_id,
+            status="pending",
+            defaults={
+                "ticket_number": ticket_number,
+                "server_name": server_name or "",
+                "last_total_cents": int(due_cents or 0),
+                "opened_at": timezone.now(),
+            },
+        )
+        # keep pending row up-to-date if we had it already
+        TicketLink.objects.filter(pk=tl.pk).update(
+            ticket_number=ticket_number,
+            server_name=server_name or "",
+            last_total_cents=int(due_cents or 0),
+        )
+
+    # 4) build verification link
     token = signing.TimestampSigner().sign_object({
         "m": m.number,
-        "loc": location_id,
+        "loc": LOCATION_ID,
         "ticket": chosen_id,
     })
     verify_path = reverse("core:verify_member", args=[m.number])
     verify_url  = request.build_absolute_uri(f"{verify_path}?t={token}")
 
-    # Send SMS to member
+    # 5) send SMS (or email fallback if you add it)
     phone = getattr(getattr(m, "customer", None), "phone", "") or ""
     if not phone:
-        return JsonResponse({"ok": False, "error": "Member has no phone on file."}, status=400)
+        return JsonResponse({"ok": False, "error": "member_has_no_phone"}, status=400)
 
     body = "Dine N Dash: Tap to verify your visit, then enter your 4-digit PIN.\n" + verify_url
-    sent = send_sms(phone, body)
+    sent = send_sms(phone, body)  # expected to return {ok: bool, sid?: str, error?: str}
 
-    return JsonResponse({"ok": True, "sent": sent})
+    if not (sent or {}).get("ok", False):
+        return JsonResponse({"ok": False, "error": "delivery_failed", "detail": (sent or {}).get("error", "")}, status=502)
+
+    return JsonResponse({
+        "ok": True,
+        "delivery": "sms",
+        "ticket_id": chosen_id,
+        "member": m.number,
+    })
+
+
 
 
 # in core/views_staff.py

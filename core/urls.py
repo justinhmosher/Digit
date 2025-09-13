@@ -72,5 +72,5 @@ urlpatterns = [
     path("staff/accept/verify", views_add_staff.staff_accept_verify, name="staff_accept_verify"),
     path("staff/google-start",views_add_staff.staff_google_start, name="staff_google_start"),
     path("staff/api/close", views_staff.api_staff_close_ticket, name="staff_close_ticket"),
-    path("api/member/<str:member_number>/close", views_home.api_close_tab,name="customer_close_tab"),
+    path("api/member/<str:member>/close", views_home.api_close_tab, name="member_close_tab"),
 ]
