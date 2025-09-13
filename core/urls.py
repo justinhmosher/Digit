@@ -73,4 +73,6 @@ urlpatterns = [
     path("staff/google-start",views_add_staff.staff_google_start, name="staff_google_start"),
     path("staff/api/close", views_staff.api_staff_close_ticket, name="staff_close_ticket"),
     path("api/member/<str:member>/close", views_home.api_close_tab, name="member_close_tab"),
+    path("staff/api/resend", views_staff.api_staff_resend_link, name="staff_resend_link"),
+    path("staff/api/cancel", views_staff.api_staff_cancel_link, name="staff_cancel_link"),
 ]

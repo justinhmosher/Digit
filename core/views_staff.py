@@ -1,4 +1,4 @@
-# c# core/views_staff.py
+# core/views_staff.py
 from __future__ import annotations
 
 import json
@@ -7,7 +7,7 @@ from datetime import timedelta
 from decouple import config
 from django.contrib.auth.decorators import login_required
 from django.core import signing
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpRequest
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
@@ -15,7 +15,7 @@ from django.utils.timesince import timesince
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from .models import Member, TicketLink, StaffProfile, RestaurantProfile
+from .models import Member, TicketLink, RestaurantProfile
 from .omnivore import (
     list_open_tickets,
     get_ticket,
@@ -24,188 +24,369 @@ from .omnivore import (
 )
 from .utils import send_sms
 
+# ---------- Config ----------
+LOCATION_ID = config("OMNIVORE_LOCATION_ID", default="").strip()
+AUTO_TIP_PCT = float(config("AUTO_TIP_PCT", default="18"))  # staff close uses this, e.g. 18 for 18%
 
-# ---------- helpers ----------
-
-def _staff_restaurant(request) -> RestaurantProfile | None:
-    sp = getattr(request.user, "staffprofile", None)
-    return getattr(sp, "restaurant", None)
-
-def _staff_location_id(request) -> str:
-    rp = _staff_restaurant(request)
-    if rp and getattr(rp, "omnivore_location_id", ""):
-        return rp.omnivore_location_id.strip()
-    # Dev fallback so you can still test before linking a restaurant
-    return config("OMNIVORE_LOCATION_ID", default="").strip()
-
+# ---------- Helpers ----------
 def _emp_name(ticket: dict) -> str:
     emp = ((ticket or {}).get("_embedded") or {}).get("employee") or {}
-    return emp.get("check_name") or (" ".join([emp.get("first_name", ""), emp.get("last_name", "")]).strip())
+    return emp.get("check_name") or (" ".join([emp.get("first_name",""), emp.get("last_name","")]).strip())
 
 def _due_cents(ticket: dict) -> int:
     totals = (ticket or {}).get("totals") or {}
     return int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
 
-def _match_ticket_hint(t: dict, hint: str) -> bool:
-    if not hint:
-        return True
-    hint = str(hint).lower()
-    if hint == str(t.get("id")).lower():
-        return True
-    if hint == str(t.get("ticket_number")).lower():
-        return True
-    if hint in (t.get("match_text") or ""):
-        return True
-    txt = " ".join(str(t.get(k, "")).lower() for k in ("name", "table", "guest_name"))
-    return hint in txt
+def _rp_for_location(loc_id: str) -> RestaurantProfile | None:
+    rp = RestaurantProfile.objects.filter(omnivore_location_id=loc_id).first()
+    if not rp:
+        # fallback: single restaurant installs often have one row
+        rp = RestaurantProfile.objects.first()
+    return rp
 
+def _create_pending_row(member: Member, loc_id: str, ticket_id: str) -> TicketLink:
+    """
+    Ensure there's a PENDING TicketLink visible on the board as soon as an invite is sent.
+    Idempotent per (member, restaurant, ticket, status='pending').
+    """
+    rp = _rp_for_location(loc_id)
+    try:
+        t = get_ticket(loc_id, ticket_id)
+    except Exception:
+        t = {}
+
+    server = _emp_name(t)
+    ticket_no = t.get("ticket_number") or t.get("number") or ""
+    due = _due_cents(t)
+
+    tl, _ = TicketLink.objects.get_or_create(
+        member=member,
+        restaurant=rp,
+        ticket_id=str(ticket_id),
+        status="pending",
+        defaults={
+            "server_name": server or "",
+            "last_total_cents": int(due or 0),
+            "ticket_number": ticket_no or "",
+        },
+    )
+    return tl
 
 # ---------- UI ----------
+@ensure_csrf_cookie
+@login_required
+@require_http_methods(["GET"])
+def staff_console(request: HttpRequest):
+    return render(request, "core/staff_console.html", {"auto_tip_pct": int(AUTO_TIP_PCT)})
+
+# ---------- APIs ----------
+
+@login_required
+@require_GET
+def api_staff_board_state(request: HttpRequest):
+    """
+    Returns board state:
+      - pending: one entry per pending TicketLink
+      - open:    grouped by ticket_id; shows members and last due
+      - closed:  last 12h, one entry per TicketLink
+    """
+    now = timezone.now()
+    cutoff = now - timedelta(hours=12)
+
+    # PENDING
+    pending_qs = (
+        TicketLink.objects
+        .select_related("member", "restaurant")
+        .filter(status="pending")
+        .order_by("-opened_at")[:200]
+    )
+    pending = []
+    for tl in pending_qs:
+        pending.append({
+            "ticket_link_id": tl.id,
+            "ticket_id": tl.ticket_id,
+            "ticket_number": tl.ticket_number or "",
+            "table": tl.table or "",
+            "server": tl.server_name or "",
+            "member": tl.member.number,
+            "member_last": tl.member.last_name,
+            "opened_ago": timesince(tl.opened_at) + " ago",
+        })
+
+    # OPEN (grouped)
+    open_qs = (
+        TicketLink.objects
+        .select_related("member", "restaurant")
+        .filter(status="open")
+        .order_by("-opened_at")[:200]
+    )
+    open_map: dict[str, dict] = {}
+    for tl in open_qs:
+        bucket = open_map.setdefault(tl.ticket_id, {
+            "ticket_id": tl.ticket_id,
+            "ticket_number": tl.ticket_number or "",
+            "table": tl.table or "",
+            "server": tl.server_name or "",
+            "members": [],
+            "due_cents": int(tl.last_total_cents or 0),
+        })
+        bucket["members"].append(tl.member.number)
+        # keep the largest last_total snapshot
+        bucket["due_cents"] = max(bucket["due_cents"], int(tl.last_total_cents or 0))
+    open_list = list(open_map.values())
+
+    # CLOSED (last 12h)
+    closed_qs = (
+        TicketLink.objects
+        .select_related("member", "restaurant")
+        .filter(status="closed", closed_at__gte=cutoff)
+        .order_by("-closed_at")[:200]
+    )
+    closed = []
+    for tl in closed_qs:
+        closed.append({
+            "ticket_id": tl.ticket_id,
+            "ticket_number": tl.ticket_number or "",
+            "member": tl.member.number,
+            "member_last": tl.member.last_name,
+            "server": tl.server_name or "",
+            "closed_ago": timesince(tl.closed_at) + " ago" if tl.closed_at else "",
+        })
+
+    return JsonResponse({"ok": True, "pending": pending, "open": open_list, "closed": closed})
+
 
 @login_required
 @ensure_csrf_cookie
-@require_http_methods(["GET"])
-def staff_console(request):
-    """Light wrapper to render the staff console UI."""
-    rp = _staff_restaurant(request)
-    return render(request, "core/staff_console.html", {"restaurant": rp})
-
-
-
-LOCATION_ID = config("OMNIVORE_LOCATION_ID", default="").strip()
-
-
-@ensure_csrf_cookie
 @csrf_protect
 @require_POST
-def api_link_member_to_ticket(request):
+def api_link_member_to_ticket(request: HttpRequest):
     """
-    Staff provides: member_number, last_name (optional), and either ticket_id or check_hint.
-    We resolve ONE open ticket, create/ensure a pending TicketLink row, build a signed token,
-    and send the customer a verification link via SMS (email fallback if you add it).
+    Body: { member_number, last_name?, check_hint? OR ticket_id? }
+    SMS the verification link AND create a PENDING TicketLink immediately so it
+    appears on the board. If multiple open tickets match, return a selector.
+    """
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
 
-    Response (success):
-      { ok: True, delivery: "sms", ticket_id: "<id>", member: "<number>" }
-    On multiple matches:
-      { ok: True, multiple: True, candidates: [{ticket_id, ticket_number?, label?}, ...] }
-    On error:
-      4xx/5xx with { ok: False, error, detail? }
-    """
-    data = json.loads(request.body.decode() or "{}")
     member_number = (data.get("member_number") or "").strip()
     last_name     = (data.get("last_name") or "").strip()
     check_hint    = (data.get("check_hint") or "").strip()
     ticket_id     = (data.get("ticket_id") or "").strip()
 
-    # 1) validate member
-    m = Member.objects.select_related("customer").filter(number=member_number).first()
-    if not m or (last_name and (m.last_name or "").lower() != last_name.lower()):
-        return JsonResponse({"ok": False, "error": "member_not_found_or_name_mismatch"}, status=404)
+    # 1) member
+    m = Member.objects.filter(number=member_number).select_related("customer").first()
+    if not m or (last_name and m.last_name.lower() != last_name.lower()):
+        return JsonResponse({"ok": False, "error": "member_not_found_or_last_name_mismatch"}, status=404)
 
-    # active restaurant for this staff console (single location wiring)
-    rp = RestaurantProfile.objects.filter(omnivore_location_id=LOCATION_ID).first()
-    if not rp:
-        return JsonResponse({"ok": False, "error": "restaurant_not_wired"}, status=500)
+    # 2) ticket
+    def _match_ticket_hint(t: dict, hint: str) -> bool:
+        if not hint:
+            return True
+        h = str(hint).lower()
+        if h == str(t.get("id")).lower():
+            return True
+        if h == str(t.get("ticket_number")).lower():
+            return True
+        # human fields
+        txt = " ".join(str(t.get(k, "")).lower() for k in ("name", "table"))
+        emp = ((t.get("_embedded") or {}).get("employee") or {})
+        txt += " " + " ".join(str(emp.get(k,"")).lower() for k in ("check_name","first_name","last_name"))
+        return h in txt
 
-    # 2) resolve ticket
-    chosen_id = None
-    chosen_snapshot = {}
+    chosen_id = ""
     if ticket_id:
         try:
             t = get_ticket(LOCATION_ID, ticket_id)
-        except Exception as e:
-            return JsonResponse({"ok": False, "error": "ticket_not_found", "detail": str(e)}, status=404)
+        except Exception:
+            return JsonResponse({"ok": False, "error": "ticket_not_found"}, status=404)
         if not t.get("open", True):
             return JsonResponse({"ok": False, "error": "ticket_not_open"}, status=400)
         chosen_id = str(t.get("id"))
-        chosen_snapshot = t
     else:
-        # find open by hint
         cands = list_open_tickets(LOCATION_ID)
         hits = [tt for tt in cands if _match_ticket_hint(tt, check_hint)]
         if not hits:
-            return JsonResponse({"ok": False, "error": "no_open_check_matches"}, status=404)
+            return JsonResponse({"ok": False, "error": "no_open_ticket_match"}, status=404)
         if len(hits) > 1:
             return JsonResponse({
-                "ok": True,
-                "multiple": True,
+                "ok": True, "multiple": True,
                 "candidates": [
                     {
                         "ticket_id": tt.get("id"),
-                        "ticket_number": tt.get("ticket_number"),
-                        "label": tt.get("ticket_number") or _emp_name(tt) or tt.get("name") or str(tt.get("id")),
+                        "label": (
+                            str(tt.get("ticket_number") or "") or
+                            _emp_name(tt) or
+                            str(tt.get("id"))
+                        ),
                     } for tt in hits
                 ],
             })
         chosen_id = str(hits[0].get("id"))
-        chosen_snapshot = hits[0]
 
-    # Always fetch a fresh ticket to enrich pending row (safe if already fetched)
-    try:
-        t = chosen_snapshot or get_ticket(LOCATION_ID, chosen_id)
-    except Exception:
-        t = chosen_snapshot  # fall back to list response if detailed call fails
-
-    # 3) create/ensure a PENDING TicketLink
-    ticket_number = (t or {}).get("ticket_number") or (t or {}).get("number") or ""
-    server_name   = _emp_name(t or {})
-    due_cents     = _due_cents(t or {})
-
-    # If an OPEN already exists for this member+ticket, don't add pending—board will show it under Open.
-    exists_open = TicketLink.objects.filter(
-        member=m, restaurant=rp, ticket_id=chosen_id, status="open"
-    ).exists()
-    if not exists_open:
-        tl, _ = TicketLink.objects.get_or_create(
-            member=m,
-            restaurant=rp,
-            ticket_id=chosen_id,
-            status="pending",
-            defaults={
-                "ticket_number": ticket_number,
-                "server_name": server_name or "",
-                "last_total_cents": int(due_cents or 0),
-                "opened_at": timezone.now(),
-            },
-        )
-        # keep pending row up-to-date if we had it already
-        TicketLink.objects.filter(pk=tl.pk).update(
-            ticket_number=ticket_number,
-            server_name=server_name or "",
-            last_total_cents=int(due_cents or 0),
-        )
-
-    # 4) build verification link
-    token = signing.TimestampSigner().sign_object({
-        "m": m.number,
-        "loc": LOCATION_ID,
-        "ticket": chosen_id,
-    })
+    # 3) signed verify link
+    token = signing.TimestampSigner().sign_object({"m": m.number, "loc": LOCATION_ID, "ticket": chosen_id})
     verify_path = reverse("core:verify_member", args=[m.number])
     verify_url  = request.build_absolute_uri(f"{verify_path}?t={token}")
 
-    # 5) send SMS (or email fallback if you add it)
+    # 4) send SMS
     phone = getattr(getattr(m, "customer", None), "phone", "") or ""
     if not phone:
         return JsonResponse({"ok": False, "error": "member_has_no_phone"}, status=400)
-
     body = "Dine N Dash: Tap to verify your visit, then enter your 4-digit PIN.\n" + verify_url
-    sent = send_sms(phone, body)  # expected to return {ok: bool, sid?: str, error?: str}
+    sent = send_sms(phone, body)
 
-    if not (sent or {}).get("ok", False):
-        return JsonResponse({"ok": False, "error": "delivery_failed", "detail": (sent or {}).get("error", "")}, status=502)
+    # 5) create / ensure PENDING row appears
+    tl = _create_pending_row(m, LOCATION_ID, chosen_id)
 
-    return JsonResponse({
-        "ok": True,
-        "delivery": "sms",
-        "ticket_id": chosen_id,
-        "member": m.number,
-    })
+    return JsonResponse({"ok": True, "sent": sent, "ticket_link_id": tl.id})
 
 
+@login_required
+@ensure_csrf_cookie
+@csrf_protect
+@require_POST
+def api_staff_resend_link(request: HttpRequest):
+    """
+    Body: { ticket_link_id }
+    Resend verification SMS for a PENDING TicketLink.
+    """
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
+
+    tl_id = data.get("ticket_link_id")
+    tl = TicketLink.objects.select_related("member", "member__customer", "restaurant").filter(id=tl_id, status="pending").first()
+    if not tl:
+        return JsonResponse({"ok": False, "error": "pending_link_not_found"}, status=404)
+
+    token = signing.TimestampSigner().sign_object({"m": tl.member.number, "loc": tl.restaurant.omnivore_location_id or LOCATION_ID, "ticket": tl.ticket_id})
+    verify_url  = request.build_absolute_uri(f"{reverse('core:verify_member', args=[tl.member.number])}?t={token}")
+
+    phone = getattr(getattr(tl.member, "customer", None), "phone", "") or ""
+    if not phone:
+        return JsonResponse({"ok": False, "error": "member_has_no_phone"}, status=400)
+    body = "Dine N Dash: Tap to verify your visit, then enter your 4-digit PIN.\n" + verify_url
+    sent = send_sms(phone, body)
+    return JsonResponse({"ok": True, "sent": sent})
 
 
-# in core/views_staff.py
+@login_required
+@ensure_csrf_cookie
+@csrf_protect
+@require_POST
+def api_staff_cancel_link(request: HttpRequest):
+    """
+    Body: { ticket_link_id }
+    Cancel a PENDING invite (delete the row to avoid unique constraint collisions).
+    """
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
+
+    tl_id = data.get("ticket_link_id")
+    tl = TicketLink.objects.filter(id=tl_id, status="pending").first()
+    if not tl:
+        return JsonResponse({"ok": False, "error": "pending_link_not_found"}, status=404)
+
+    tl.delete()
+    return JsonResponse({"ok": True})
+
+
+@ensure_csrf_cookie
+@csrf_protect
+@require_POST
+@login_required
+def api_staff_close_ticket(request: HttpRequest):
+    """
+    Body: { ticket_id, reference? }
+    Close the POS ticket and mark ALL open TicketLink rows for the ticket as closed.
+    Automatically applies AUTO_TIP_PCT (default 18%).
+    Snapshots:
+      - total_cents  = base ticket amount (no tip)
+      - tip_cents    = applied tip
+      - paid_cents   = total_cents + tip_cents  (what the card was charged)
+    """
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
+
+    ticket_id = str(data.get("ticket_id") or "").strip()
+    reference = (data.get("reference") or "staff-close").strip()
+    if not ticket_id:
+        return JsonResponse({"ok": False, "error": "missing_ticket_id"}, status=400)
+
+    links = list(
+        TicketLink.objects
+        .select_related("restaurant")
+        .filter(ticket_id=ticket_id, status="open")
+        .order_by("opened_at")
+    )
+    if not links:
+        return JsonResponse({"ok": False, "error": "no_open_links_for_ticket"}, status=404)
+
+    rp = links[0].restaurant
+    location_id = (rp.omnivore_location_id or LOCATION_ID).strip()
+    if not location_id:
+        return JsonResponse({"ok": False, "error": "restaurant_missing_location_id"}, status=500)
+
+    # Fresh ticket totals
+    try:
+        t = get_ticket(location_id, ticket_id)
+    except Exception as e:
+        t = {}
+
+    totals    = (t or {}).get("totals") or {}
+    subtotal  = int(totals.get("sub_total") or 0)
+    tax       = int(totals.get("tax") or 0)
+    base_amt  = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
+    if base_amt <= 0:
+        # Fallback to largest snapshot we've seen locally
+        base_amt = max([int(l.last_total_cents or 0) for l in links] or [0])
+    if base_amt <= 0:
+        return JsonResponse({"ok": False, "error": "nothing_due"}, status=400)
+
+    # Auto tip off the base amount we're paying now
+    tip_cents = int(round((AUTO_TIP_PCT / 100.0) * base_amt))
+    paid_gross = base_amt + tip_cents
+
+    # Post to POS: amount (base) + tip as a separate field
+    try:
+        create_payment_with_tender_type(
+            location_id=location_id,
+            ticket_id=ticket_id,
+            amount_cents=base_amt,
+            tender_type_id=None,   # adapter ignores
+            reference=reference,   # not sent in adapter body; we keep for logs
+            tip_cents=tip_cents,
+        )
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": "omnivore_payment_failed", "detail": str(e)}, status=502)
+
+    # Mark all links closed & snapshot
+    now = timezone.now()
+    for tl in links:
+        tl.status = "closed"
+        tl.closed_at = now
+        tl.subtotal_cents = subtotal
+        tl.tax_cents = tax
+        tl.total_cents = base_amt              # base (no tip)
+        tl.tip_cents = tip_cents               # tip
+        tl.paid_cents = paid_gross             # base + tip = what card saw
+        tl.pos_ref = reference
+        tl.save(update_fields=[
+            "status","closed_at",
+            "subtotal_cents","tax_cents","total_cents",
+            "tip_cents","paid_cents","pos_ref"
+        ])
+
+    return JsonResponse({"ok": True, "paid_cents": paid_gross, "auto_tip_cents": tip_cents})
+
 
 @require_GET
 def api_ticket_receipt(request, member):
@@ -255,155 +436,3 @@ def api_ticket_receipt(request, member):
         "total_cents": total,
         "due_cents": due,
     })
-
-
-
-# in core/views_staff.py
-
-def _due_cents(ticket: dict) -> int:
-    totals = (ticket or {}).get("totals") or {}
-    return int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
-
-@ensure_csrf_cookie
-@csrf_protect
-@require_POST
-def api_staff_close_ticket(request):
-    """
-    Body: { "ticket_id": "...", "tip_cents": <int>, "reference": "staff-close" }
-    Closes the POS ticket and marks all open TicketLink rows for that ticket as closed.
-    """
-    try:
-        data = json.loads(request.body.decode() or "{}")
-    except Exception:
-        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
-
-    ticket_id = str(data.get("ticket_id") or "").strip()
-    tip_cents = int(data.get("tip_cents") or 0)
-    reference = (data.get("reference") or "staff-close").strip()
-
-    if not ticket_id:
-        return JsonResponse({"ok": False, "error": "missing_ticket_id"}, status=400)
-
-    # Find all open links for this ticket
-    links = list(
-        TicketLink.objects
-        .select_related("restaurant")
-        .filter(ticket_id=ticket_id, status="open")
-        .order_by("opened_at")
-    )
-    if not links:
-        return JsonResponse({"ok": False, "error": "no_open_links_for_ticket"}, status=404)
-
-    # All links must point to the same restaurant (single-location ticket)
-    rp = links[0].restaurant
-    location_id = (rp.omnivore_location_id or "").strip()
-    if not location_id:
-        return JsonResponse({"ok": False, "error": "restaurant_missing_location_id"}, status=500)
-
-    # Get current due from POS; fall back to largest last_total_cents we have locally
-    try:
-        t = get_ticket(location_id, ticket_id)
-        amount = _due_cents(t)
-    except Exception:
-        amount = max([l.last_total_cents or 0 for l in links] or [0])
-
-    if amount <= 0:
-        return JsonResponse({"ok": False, "error": "nothing_due"}, status=400)
-
-    # Post the payment to Omnivore (your adapter posts CASH + TIP only)
-    try:
-        create_payment_with_tender_type(
-            location_id=location_id,
-            ticket_id=ticket_id,
-            amount_cents=amount,
-            tender_type_id=None,        # adapter ignores this
-            reference=reference,        # not sent in adapter body, but we keep it for logging
-            tip_cents=tip_cents,
-        )
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": "omnivore_payment_failed", "detail": str(e)}, status=502)
-
-    # Mark all links as closed and snapshot simple totals
-    now = timezone.now()
-    for tl in links:
-        tl.status = "closed"
-        tl.closed_at = now
-        # snapshot outcome
-        tl.tip_cents = tip_cents
-        tl.paid_cents = amount
-        tl.pos_ref = reference
-        tl.save(update_fields=["status", "closed_at", "tip_cents", "paid_cents", "pos_ref"])
-
-    return JsonResponse({"ok": True})
-
-
-
-@login_required
-@require_GET
-def api_staff_board_state(request):
-    """
-    Returns three lists:
-      pending: TicketLink.status == 'pending'
-      open:    TicketLink.status == 'open' (grouped by ticket)
-      closed:  TicketLink.status == 'closed' AND closed_at within last 12h
-    """
-    now = timezone.now()
-    cutoff = now - timedelta(hours=12)
-
-    # PENDING
-    pending_qs = (
-        TicketLink.objects
-        .select_related("member")
-        .filter(status="pending")
-        .order_by("-opened_at")[:100]
-    )
-    pending = []
-    for tl in pending_qs:
-        pending.append({
-            "ticket_id": tl.ticket_id,
-            "ticket_number": None,
-            "table": None,
-            "member": tl.member.number,
-            "member_last": tl.member.last_name,
-            "opened_ago": timesince(tl.opened_at) + " ago",
-        })
-
-    # OPEN (group by ticket)
-    open_qs = (
-        TicketLink.objects
-        .select_related("member")
-        .filter(status="open")
-        .order_by("-opened_at")[:100]
-    )
-    open_map: dict[str, dict] = {}
-    for tl in open_qs:
-        open_map.setdefault(tl.ticket_id, {
-            "ticket_id": tl.ticket_id,
-            "ticket_number": None,
-            "table": None,
-            "server": tl.server_name or "",
-            "members": [],
-            "due_cents": getattr(tl, "last_total_cents", 0),
-        })
-        open_map[tl.ticket_id]["members"].append(tl.member.number)
-    open_list = list(open_map.values())
-
-    # CLOSED (last 12h)
-    closed_qs = (
-        TicketLink.objects
-        .select_related("member")
-        .filter(status="closed", closed_at__gte=cutoff)
-        .order_by("-closed_at")[:100]
-    )
-    closed = []
-    for tl in closed_qs:
-        closed.append({
-            "ticket_id": tl.ticket_id,
-            "ticket_number": None,
-            "member": tl.member.number,
-            "member_last": tl.member.last_name,
-            "server": tl.server_name or "",
-            "closed_ago": timesince(tl.closed_at) + " ago" if tl.closed_at else "",
-        })
-
-    return JsonResponse({"ok": True, "pending": pending, "open": open_list, "closed": closed})

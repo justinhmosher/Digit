@@ -1,311 +1,360 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
-  <title>Staff Console — Dine N Dash</title>
+  <title>Staff Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
   <meta name="csrf-token" content="{{ csrf_token }}">
 </head>
+<body class="bg-slate-50 min-h-screen">
+  <!-- Top bar -->
+  <header class="sticky top-0 z-20 bg-white/80 backdrop-blur border-b">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
+        <div>
+          <div class="font-semibold tracking-tight">Server Console</div>
+          <div class="text-xs text-slate-500">Auto tip on staff close: <span id="autoTip">{{ auto_tip_pct }}</span>%</div>
+        </div>
+      </div>
 
-<body class="bg-slate-50 min-h-screen p-6 text-slate-900">
-  <div class="mx-auto max-w-7xl">
-    <header class="mb-6 flex items-center justify-between">
-      <h1 class="text-2xl font-bold tracking-tight">Server Console</h1>
-      <button id="refreshBtn" class="text-sm text-slate-600 hover:underline">Refresh</button>
-    </header>
+      <div class="flex items-center gap-2">
+        <div class="hidden md:flex items-center gap-2">
+          <input id="search" placeholder="Search ticket / table / member…" class="h-10 w-64 rounded-xl border px-3 text-sm">
+          <button id="refreshBtn" class="h-10 px-4 rounded-xl border text-sm hover:bg-slate-50">Refresh</button>
+        </div>
+        <button id="openLinkDrawer" class="h-10 px-4 rounded-xl bg-slate-900 text-white text-sm">+ Link customer</button>
+      </div>
+    </div>
+  </header>
 
-    <!-- Alert -->
-    <div id="alert" class="hidden rounded-xl px-3 py-2 text-sm mb-4"></div>
+  <!-- Alerts -->
+  <div id="toast" class="fixed top-3 inset-x-0 z-30 hidden">
+    <div id="toastBox" class="mx-auto max-w-xl rounded-2xl border px-4 py-3 bg-white shadow"></div>
+  </div>
 
-    <!-- Board: Pending / Open / Closed -->
+  <!-- Board -->
+  <main class="mx-auto max-w-7xl px-4 py-6">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Pending -->
       <section>
         <div class="flex items-center justify-between mb-2">
           <h2 class="font-semibold">Pending verification</h2>
+          <span id="pendingCount" class="text-xs text-slate-500"></span>
         </div>
-        <div id="col-pending" class="space-y-3"></div>
+        <div id="col-pending" class="space-y-3">
+          <div class="text-sm text-slate-500">Nothing pending.</div>
+        </div>
       </section>
 
+      <!-- Open -->
       <section>
         <h2 class="font-semibold mb-2">Open tabs</h2>
-        <div id="col-open" class="space-y-3"></div>
+        <div id="col-open" class="space-y-3">
+          <div class="text-sm text-slate-500">No open tabs.</div>
+        </div>
       </section>
 
+      <!-- Closed -->
       <section>
         <h2 class="font-semibold mb-2">Closed (last 12h)</h2>
-        <div id="col-closed" class="space-y-3"></div>
+        <div id="col-closed" class="space-y-3">
+          <div class="text-sm text-slate-500">Nothing closed in last 12h.</div>
+        </div>
       </section>
     </div>
 
-    <!-- Link / Assign members -->
-    <div class="mt-10 bg-white rounded-2xl border shadow p-6">
-      <h3 class="font-semibold text-lg">Create / Assign Guests</h3>
-      <p class="text-sm text-slate-600 mb-4">
-        Enter an open check hint (ticket #, table, or server). Add one or more member numbers (comma-separated).
-        We’ll text each guest a verification link (email fallback).
-      </p>
-
-      <div class="grid gap-3 md:grid-cols-2">
-        <input id="create-hint" class="h-12 rounded-xl border px-4" placeholder="Check # / table / server" />
-        <input id="create-lastname" class="h-12 rounded-xl border px-4" placeholder="(Optional) Last name confirmation" />
-        <input id="create-members" class="h-12 rounded-xl border px-4 md:col-span-2" placeholder="Member numbers (e.g. MOSH6155, ABC1234)" />
-      </div>
-
-      <div class="mt-4 flex items-center gap-3">
-        <button id="sendLinksBtn" class="h-12 px-5 rounded-xl bg-slate-900 text-white disabled:opacity-50">
-          Send Verification Links
-        </button>
-        <span id="busy" class="hidden text-sm text-slate-500 self-center">Working…</span>
-      </div>
-
-      <!-- Per-attempt log -->
-      <div class="mt-4">
-        <div class="text-xs font-semibold text-slate-600 uppercase mb-1">Result Log</div>
-        <div id="sendLog" class="rounded-xl border bg-slate-50 p-3 text-sm max-h-56 overflow-auto"></div>
-      </div>
+    <!-- Activity Log -->
+    <div class="mt-8 rounded-2xl border bg-white p-4">
+      <h3 class="font-semibold mb-2">Activity</h3>
+      <ul id="activity" class="space-y-1 text-sm text-slate-700"></ul>
     </div>
-  </div>
+  </main>
 
-  <!-- Candidate picker modal (shown when multiple tickets match a hint) -->
-  <div id="candWrap" class="fixed inset-0 z-50 hidden">
-    <div class="absolute inset-0 bg-black/30"></div>
-    <div class="absolute inset-x-0 top-20 mx-auto w-[92%] max-w-lg rounded-2xl bg-white shadow-xl border">
-      <div class="p-4 border-b flex items-center justify-between">
-        <div class="font-semibold">Multiple matching checks</div>
-        <button id="candClose" class="rounded-lg border px-2 py-1 text-xs hover:bg-slate-50">Close</button>
+  <!-- Drawer: Link customer -->
+  <div id="drawerWrap" class="fixed inset-0 z-40 hidden">
+    <div id="drawerBg" class="absolute inset-0 bg-black/30 opacity-0 transition-opacity"></div>
+    <aside id="drawer" class="absolute right-0 top-0 h-full w-[560px] max-w-full bg-white shadow-2xl translate-x-full transition-transform">
+      <div class="p-5 border-b flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Link customer</h3>
+        <button id="closeDrawer" class="rounded-xl border px-3 py-1 text-sm hover:bg-slate-50">Close</button>
       </div>
-      <div id="candBody" class="p-4 space-y-2 text-sm"></div>
-    </div>
+
+      <div class="p-5 space-y-4">
+        <p class="text-sm text-slate-600">
+          Enter a ticket hint (ticket #, table, or server). Add one or more member numbers; click “Add member” to include more guests.
+          We’ll text each guest a verification link.
+        </p>
+
+        <div class="grid gap-3">
+          <input id="hint" class="h-12 rounded-xl border px-4" placeholder="Ticket # / table / server" />
+          <input id="lname" class="h-12 rounded-xl border px-4" placeholder="(Optional) last name" />
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-medium">Members</div>
+            <button id="addMember" class="text-sm rounded-xl border px-3 py-1 hover:bg-slate-50">Add member</button>
+          </div>
+          <div id="memberList" class="mt-2 space-y-2">
+            <!-- inputs injected here -->
+          </div>
+        </div>
+
+        <div class="pt-2">
+          <button id="sendLinks" class="h-12 w-full rounded-xl bg-slate-900 text-white disabled:opacity-50">Send verification links</button>
+          <div id="drawerBusy" class="text-xs text-slate-500 mt-2 hidden">Sending…</div>
+        </div>
+
+        <div class="pt-4">
+          <div class="text-xs font-medium text-slate-500">Result log</div>
+          <ul id="drawerLog" class="mt-2 space-y-1 text-sm"></ul>
+        </div>
+      </div>
+    </aside>
   </div>
 
   <script>
-    // ------- Config: URLs -------
-    const boardUrl      = "{% url 'core:staff_board_state' %}";
-    const sendLinkUrl   = "{% url 'core:link_member' %}";
-    const staffCloseUrl = "{% url 'core:staff_close_ticket' %}";
-
-    // ------- Helpers -------
-    function showAlert(msg, ok=false){
-      const el = document.getElementById('alert');
-      el.className = 'rounded-xl px-3 py-2 text-sm mb-4 ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
-      el.innerHTML = msg || '';
-      el.classList.remove('hidden');
-    }
-    function clearAlert(){
-      const el = document.getElementById('alert');
-      el.classList.add('hidden'); el.innerHTML='';
-    }
-    function getCSRFCookie(){
-      const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-      return m ? decodeURIComponent(m[1]) : null;
-    }
-    function getCSRFToken(){
-      return getCSRFCookie() || (document.querySelector('meta[name="csrf-token"]')?.content || '');
+    // --- helpers ---
+    const $ = s => document.querySelector(s);
+    const $$ = s => Array.from(document.querySelectorAll(s));
+    function cents(n){ return (n/100).toFixed(2); }
+    function csrf(){ const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || ''); }
+    function toast(msg, tone='info'){
+      const box = $("#toastBox");
+      const styles = tone==='error' ? 'border-red-200 bg-red-50 text-red-900' :
+                      tone==='success' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' :
+                      'border-slate-200 bg-white text-slate-900';
+      box.className = "mx-auto max-w-xl rounded-2xl border px-4 py-3 shadow " + styles;
+      box.textContent = msg;
+      $("#toast").classList.remove("hidden");
+      setTimeout(()=>$("#toast").classList.add("hidden"), 3000);
     }
     async function getJSON(url){
       const r = await fetch(url, {credentials:'same-origin'});
-      let d={}; try{ d=await r.json(); } catch {}
+      let d={}; try{ d = await r.json() }catch{}
       return {ok:r.ok, data:d};
     }
     async function postJSON(url, body){
       const r = await fetch(url, {
         method: 'POST',
-        headers: {'Content-Type':'application/json','X-CSRFToken':getCSRFToken()},
+        headers: {'Content-Type':'application/json','X-CSRFToken':csrf()},
         credentials:'same-origin',
         body: JSON.stringify(body||{})
       });
-      let d={}; try{ d=await r.json(); } catch {}
+      let d={}; try{ d = await r.json() }catch{}
       return {ok:r.ok, data:d};
     }
-    function cents(n){ return (n/100).toFixed(2); }
-    function cardBase(inner, extra=''){ return `<div class="rounded-xl border shadow-sm ${extra}">${inner}</div>`; }
+    function addActivity(line){
+      const li = document.createElement('li');
+      li.textContent = line;
+      $("#activity").prepend(li);
+      // keep last ~40
+      const kids = $$("#activity > li");
+      if (kids.length > 40) kids.slice(40).forEach(el=>el.remove());
+    }
 
-    // ------- Board renderers -------
+    // --- endpoints ---
+    const boardUrl     = "{% url 'core:staff_board_state' %}";
+    const linkUrl      = "{% url 'core:link_member' %}";
+    const closeUrl     = "{% url 'core:staff_close_ticket' %}";
+    const resendUrl    = "{% url 'core:staff_resend_link' %}";
+    const cancelUrl    = "{% url 'core:staff_cancel_link' %}";
+
+    // --- rendering ---
+    function card(html, tone){ return `<div class="rounded-xl border shadow-sm ${tone}">${html}</div>`; }
+
     function renderPending(list){
-      const col = document.getElementById('col-pending');
-      col.innerHTML = list.map(x=>{
-        const body = `
+      const q = ($("#search").value || "").toLowerCase();
+      const el = $("#col-pending");
+      const rows = (list||[]).filter(x=>{
+        const hay = (x.ticket_number || x.ticket_id || '') + ' ' + (x.member||'') + ' ' + (x.server||'') + ' ' + (x.member_last||'');
+        return hay.toLowerCase().includes(q);
+      }).map(x=>{
+        return card(`
           <div class="p-4">
             <div class="flex items-center justify-between">
-              <div class="font-medium">Table: ${x.table || '-'}</div>
-              <div class="text-xs text-slate-500">#${x.ticket_number || x.ticket_id}</div>
+              <div class="font-medium">Ticket ${x.ticket_number || x.ticket_id}</div>
+              <div class="text-xs text-slate-500">${x.opened_ago}</div>
             </div>
             <div class="mt-1 text-sm text-slate-700">
-              Member: <span class="font-mono">${x.member}</span> • ${x.member_last}
+              ${x.server ? ('Server: ' + x.server + ' • ') : ''}Member: <span class="font-mono">${x.member}</span> ${x.member_last ? '• ' + x.member_last : ''}
             </div>
-            <div class="mt-1 text-xs text-slate-500">${x.opened_ago || ''}</div>
-          </div>`;
-        return cardBase(body, 'bg-amber-50');
-      }).join('') || `<div class="text-sm text-slate-500">Nothing pending.</div>`;
+            <div class="mt-3 flex items-center gap-2">
+              <button class="btn-resend rounded-lg border px-3 py-1 text-sm hover:bg-slate-50" data-id="${x.ticket_link_id}">Resend</button>
+              <button class="btn-cancel rounded-lg border px-3 py-1 text-sm hover:bg-slate-50" data-id="${x.ticket_link_id}">Cancel</button>
+            </div>
+          </div>
+        `,'bg-amber-50');
+      });
+      el.innerHTML = rows.join('') || `<div class="text-sm text-slate-500">Nothing pending.</div>`;
+      $("#pendingCount").textContent = rows.length ? `${rows.length}` : '';
     }
 
     function renderOpen(list){
-      const col = document.getElementById('col-open');
-      col.innerHTML = list.map(x=>{
-        const body = `
+      const q = ($("#search").value || "").toLowerCase();
+      const el = $("#col-open");
+      const rows = (list||[]).filter(x=>{
+        const hay = (x.ticket_number || x.ticket_id || '') + ' ' + (x.server||'') + ' ' + (x.members||[]).join(' ');
+        return hay.toLowerCase().includes(q);
+      }).map(x=>{
+        return card(`
           <div class="p-4">
             <div class="flex items-center justify-between">
-              <div class="font-medium">Table: ${x.table || '-'}</div>
-              <div class="text-xs text-slate-500">#${x.ticket_number || x.ticket_id}</div>
+              <div class="font-medium">Ticket ${x.ticket_number || x.ticket_id}</div>
+              <div class="text-xs text-slate-500">Due $${cents(x.due_cents)}</div>
             </div>
             <div class="mt-1 text-sm text-slate-700">
-              ${x.server ? 'Server: '+x.server+' • ' : ''}Due: $${cents(x.due_cents||0)}
+              ${x.server ? 'Server: ' + x.server + ' • ' : ''}Members: ${x.members.join(', ')}
             </div>
-            <div class="mt-2 text-xs text-slate-600">Members: ${Array.isArray(x.members)?x.members.join(', '):'-'}</div>
-            <div class="mt-3 flex items-center gap-2">
-              <input class="tip border rounded-lg h-9 px-2 w-24" placeholder="Tip (¢)" data-ticket="${x.ticket_id}">
-              <button class="close-ticket px-3 py-1 rounded-lg bg-emerald-700 text-white" data-ticket="${x.ticket_id}">
-                Close Ticket
+            <div class="mt-3">
+              <button class="btn-close rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 text-sm" data-ticket="${x.ticket_id}">
+                Close now (auto ${document.getElementById('autoTip').textContent}%)
               </button>
             </div>
-          </div>`;
-        return cardBase(body, 'bg-emerald-50');
-      }).join('') || `<div class="text-sm text-slate-500">No open tabs.</div>`;
+          </div>
+        `,'bg-emerald-50');
+      });
+      el.innerHTML = rows.join('') || `<div class="text-sm text-slate-500">No open tabs.</div>`;
     }
 
     function renderClosed(list){
-      const col = document.getElementById('col-closed');
-      col.innerHTML = list.map(x=>{
-        const body = `
+      const q = ($("#search").value || "").toLowerCase();
+      const el = $("#col-closed");
+      const rows = (list||[]).filter(x=>{
+        const hay = (x.ticket_number || x.ticket_id || '') + ' ' + (x.member||'') + ' ' + (x.server||'') + ' ' + (x.member_last||'');
+        return hay.toLowerCase().includes(q);
+      }).map(x=>{
+        return card(`
           <div class="p-4">
             <div class="flex items-center justify-between">
-              <div class="font-medium">Ticket #${x.ticket_number || x.ticket_id}</div>
-              <div class="text-xs text-slate-500">${x.closed_ago || ''}</div>
+              <div class="font-medium">Ticket ${x.ticket_number || x.ticket_id}</div>
+              <div class="text-xs text-slate-500">${x.closed_ago}</div>
             </div>
             <div class="mt-1 text-sm text-slate-700">
-              Member: <span class="font-mono">${x.member}</span> • ${x.member_last}
+              ${x.server ? 'Server: ' + x.server + ' • ' : ''}Member: <span class="font-mono">${x.member}</span> ${x.member_last ? '• ' + x.member_last : ''}
             </div>
-            <div class="text-xs text-slate-500 mt-1">Server: ${x.server || '-'}</div>
-          </div>`;
-        return cardBase(body,'bg-slate-50');
-      }).join('') || `<div class="text-sm text-slate-500">Nothing closed in last 12h.</div>`;
+          </div>
+        `,'bg-slate-50');
+      });
+      el.innerHTML = rows.join('') || `<div class="text-sm text-slate-500">Nothing closed in last 12h.</div>`;
     }
+
+    // --- board load/patch ---
+    let lastSnapshot = {pending:[], open:[], closed:[]};
 
     async function loadBoard(){
       const res = await getJSON(boardUrl);
-      if(!res.ok){ return showAlert(res.data?.error || 'Failed to load board.'); }
-      clearAlert();
+      if(!res.ok || !res.data?.ok){
+        toast(res.data?.error || 'Failed to load board', 'error');
+        return;
+      }
+      lastSnapshot = res.data;
       renderPending(res.data.pending||[]);
       renderOpen(res.data.open||[]);
       renderClosed(res.data.closed||[]);
     }
 
-    // ------- Close ticket (staff) -------
+    // --- actions: pending ---
     document.addEventListener('click', async (e)=>{
-      const btn = e.target.closest('button.close-ticket');
-      if(!btn) return;
-      const ticketId = btn.dataset.ticket;
-      const tip = parseInt(btn.parentElement.querySelector('input.tip')?.value || '0', 10) || 0;
-      const r = await postJSON(staffCloseUrl, { ticket_id: ticketId, tip_cents: tip, reference: 'staff-close' });
-      if(!r.ok){ return showAlert(r.data?.error || r.data?.detail || 'Close failed'); }
-      showAlert('Closed out & receipt snapshotted.', true);
-      loadBoard();
-    });
-
-    // ------- Linking: log + multiple candidates picker -------
-    const logBox = document.getElementById('sendLog');
-    function logLine(html){
-      const line = document.createElement('div');
-      line.className = "py-1 border-b last:border-b-0 border-slate-200/60";
-      line.innerHTML = html;
-      logBox.prepend(line);
-    }
-    function setBusy(on){
-      document.getElementById('sendLinksBtn').disabled = on;
-      document.getElementById('busy').classList.toggle('hidden', !on);
-    }
-
-    // modal helpers
-    const candWrap = document.getElementById('candWrap');
-    const candBody = document.getElementById('candBody');
-    const candClose = document.getElementById('candClose');
-    function openCand(){ candWrap.classList.remove('hidden'); }
-    function closeCand(){ candWrap.classList.add('hidden'); candBody.innerHTML=''; }
-    candClose.addEventListener('click', closeCand);
-    candWrap.addEventListener('click', (e)=>{ if(e.target === candWrap) closeCand(); });
-
-    document.getElementById('sendLinksBtn').onclick = async ()=>{
-      clearAlert();
-      logBox.innerHTML = "";
-
-      const hint  = document.getElementById('create-hint').value.trim();
-      const lname = document.getElementById('create-lastname').value.trim();
-      const members = (document.getElementById('create-members').value || '')
-                        .split(',').map(s=>s.trim()).filter(Boolean);
-
-      if(!hint || members.length===0){
-        showAlert('Enter a check hint and at least one member number.');
+      const resend = e.target.closest('.btn-resend');
+      if(resend){
+        const id = resend.dataset.id;
+        const r = await postJSON(resendUrl, {ticket_link_id: id});
+        if(!r.ok || !r.data?.ok){ toast(r.data?.error || 'Resend failed','error'); return; }
+        toast('Verification link resent.', 'success');
+        addActivity('Resent verification for pending link #' + id);
         return;
       }
+      const cancel = e.target.closest('.btn-cancel');
+      if(cancel){
+        const id = cancel.dataset.id;
+        const r = await postJSON(cancelUrl, {ticket_link_id: id});
+        if(!r.ok || !r.data?.ok){ toast(r.data?.error || 'Cancel failed','error'); return; }
+        toast('Pending invite canceled.', 'success');
+        addActivity('Canceled pending link #' + id);
+        loadBoard();
+        return;
+      }
+      const close = e.target.closest('.btn-close');
+      if(close){
+        const ticketId = close.dataset.ticket;
+        const r = await postJSON(closeUrl, {ticket_id: ticketId, reference: 'staff-close'});
+        if(!r.ok || !r.data?.ok){
+          toast(r.data?.error || r.data?.detail || 'Close failed','error'); return;
+        }
+        toast('Closed with auto tip.', 'success');
+        addActivity(`Closed ticket ${ticketId} (paid $${cents(r.data.paid_cents || 0)} + tip $${cents(r.data.auto_tip_cents || 0)})`);
+        loadBoard();
+      }
+    });
 
-      setBusy(true);
-      let failures = [];
+    // --- drawer ---
+    function openDrawer(on){
+      const wrap = $("#drawerWrap"), d=$("#drawer"), bg=$("#drawerBg");
+      wrap.classList.toggle('hidden', !on);
+      requestAnimationFrame(()=>{ // animate
+        d.style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+        bg.style.opacity = on ? '1' : '0';
+      });
+    }
+    $("#openLinkDrawer").onclick = ()=>openDrawer(true);
+    $("#closeDrawer").onclick = ()=>openDrawer(false);
+    $("#drawerBg").onclick = ()=>openDrawer(false);
 
-      for(const mem of members){
-        // First try by hint
-        let r = await postJSON(sendLinkUrl, { member_number: mem, last_name: lname, check_hint: hint });
+    function memberInput(value=''){
+      const row = document.createElement('div');
+      row.className = "flex items-center gap-2";
+      row.innerHTML = `
+        <input class="mem h-12 rounded-xl border px-4 flex-1" placeholder="Member number" value="${value}">
+        <button class="removeMem rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Remove</button>
+      `;
+      row.querySelector('.removeMem').onclick = ()=>row.remove();
+      return row;
+    }
+    // initial one
+    $("#memberList").appendChild(memberInput());
+    $("#addMember").onclick = ()=>$("#memberList").appendChild(memberInput());
 
+    $("#sendLinks").onclick = async ()=>{
+      const hint = $("#hint").value.trim();
+      const lname = $("#lname").value.trim();
+      const members = $$("#memberList .mem").map(i=>i.value.trim()).filter(Boolean);
+      if(!hint || members.length===0){ toast('Enter hint and at least one member','error'); return; }
+
+      $("#sendLinks").disabled = true; $("#drawerBusy").classList.remove('hidden');
+      $("#drawerLog").innerHTML = "";
+
+      for(const m of members){
+        const r = await postJSON(linkUrl, {member_number: m, last_name: lname, check_hint: hint});
+        const li = document.createElement('li');
         if(r.ok && r.data?.ok){
-          logLine(`✅ <b>${mem}</b> — ${r.data.delivery} sent <span class="text-slate-500">(ticket ${r.data.ticket_id})</span>`);
-          continue;
+          li.className = "text-emerald-700"; li.textContent = `${m} — link sent`;
+          addActivity(`Sent verification to ${m} (hint "${hint}")`);
+        }else if (r.ok && r.data?.multiple){
+          li.className = "text-amber-700"; li.textContent = `${m} — multiple tickets; refine hint`;
+        }else{
+          li.className = "text-red-700"; li.textContent = `${m} — ${r.data?.error || 'failed'}`;
         }
-
-        if(r.ok && r.data?.multiple){
-          // Offer a quick picker
-          const cands = r.data.candidates || [];
-          const list = cands.map(c => `
-            <button class="candPick w-full text-left px-3 py-2 rounded-lg border hover:bg-slate-50"
-                    data-member="${mem}" data-lname="${lname}" data-ticket="${c.ticket_id}">
-              Ticket <b>${c.ticket_number || c.label || c.ticket_id}</b> (id: ${c.ticket_id})
-            </button>
-          `).join('');
-          candBody.innerHTML = `
-            <div class="text-slate-700 mb-2">Select the correct ticket for <b>${mem}</b>:</div>
-            <div class="space-y-2">${list}</div>
-          `;
-          openCand();
-          // wait for a pick (turn into a small promise)
-          await new Promise(resolve => {
-            const onPick = async (ev)=>{
-              const btn = ev.target.closest('.candPick');
-              if(!btn) return;
-              document.removeEventListener('click', onPick);
-              closeCand();
-              const mem2 = btn.dataset.member;
-              const ln2  = btn.dataset.lname;
-              const tid  = btn.dataset.ticket;
-              const r2 = await postJSON(sendLinkUrl, { member_number: mem2, last_name: ln2, ticket_id: tid });
-              if(r2.ok && r2.data?.ok){
-                logLine(`✅ <b>${mem2}</b> — ${r2.data.delivery} sent <span class="text-slate-500">(ticket ${r2.data.ticket_id})</span>`);
-              }else{
-                logLine(`❌ <b>${mem2}</b> — ${r2.data?.error || 'failed'} <span class="text-slate-500">${r2.data?.detail||''}</span>`);
-                failures.push(mem2);
-              }
-              resolve();
-            };
-            document.addEventListener('click', onPick);
-          });
-          continue;
-        }
-
-        // Hard failure
-        logLine(`❌ <b>${mem}</b> — ${r.data?.error || 'failed'} <span class="text-slate-500">${r.data?.detail||''}</span>`);
-        failures.push(mem);
+        $("#drawerLog").appendChild(li);
       }
 
-      setBusy(false);
-      if(failures.length) showAlert('Some links failed for: ' + failures.join(', '));
-      else showAlert('Verification links sent.', true);
-
+      $("#sendLinks").disabled = false; $("#drawerBusy").classList.add('hidden');
+      // refresh board to show pending
       loadBoard();
     };
 
-    // ------- Boot -------
-    document.getElementById('refreshBtn').onclick = loadBoard;
+    // --- search/poll ---
+    $("#search").addEventListener('input', ()=>{
+      renderPending(lastSnapshot.pending||[]);
+      renderOpen(lastSnapshot.open||[]);
+      renderClosed(lastSnapshot.closed||[]);
+    });
+    $("#refreshBtn").onclick = loadBoard;
+
     loadBoard();
-    // light polling (8s) to keep board fresh
-    setInterval(loadBoard, 8000);
+    setInterval(loadBoard, 6000); // light polling without flashes
   </script>
 </body>
 </html>
