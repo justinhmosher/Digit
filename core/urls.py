@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager
+from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager, views_owner
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -28,9 +28,23 @@ urlpatterns = [
     path("owner/email/verify", views.owner_verify_email_api, name="owner_verify_email_api"),
     #path("owner/restaurant", views.owner_restaurant_page, name="owner_restaurant_page"),  # renders form
     path("owner/restaurant/save", views.owner_restaurant_save_api, name="owner_restaurant_save_api"),
-    path("owner/dashboard/", views.owner_dashboard, name="owner_dashboard"),
-    path("owner/signup/existing", views.owner_begin_existing_api, name = "owner_begin_existing_api"),
-    path("owner/existing/phone/verify", views.owner_existing_verify_phone_api, name = "owner_existing_verify_phone_api"),
+    path("owner/", views_owner.owner_dashboard, name="owner_dashboard"),
+
+    path("owner/api/state", views_owner.owner_api_state, name="owner_api_state"),
+    path("owner/api/set-restaurant", views_owner.owner_api_set_restaurant, name="owner_api_set_restaurant"),
+    path("owner/api/add-restaurant", views_owner.owner_api_add_restaurant, name="owner_api_add_restaurant"),
+    path("owner/api/remove-restaurant", views_owner.owner_api_remove_restaurant, name="owner_api_remove_restaurant"),
+
+    path("owner/api/remove-manager", views_owner.owner_api_remove_manager, name="owner_api_remove_manager"),
+    path("owner/api/add-owner", views_owner.owner_api_add_owner, name="owner_api_add_owner"),
+    path("owner/api/remove-owner", views_owner.owner_api_remove_owner, name="owner_api_remove_owner"),
+
+    path("owner/api/ticket/<str:ticket_id>", views_owner.owner_api_ticket_detail, name="owner_api_ticket_detail"),
+    path("owner/invite-manager", views_owner.owner_invite_manager, name="owner_invite_manager"),
+    path("owner/export", views_owner.owner_export, name="owner_export"),
+    path("owner/api/remove-staff", views_owner.owner_api_remove_staff, name="owner_api_remove_staff"),
+    path("owner/invite-staff",     views_owner.owner_invite_staff,     name="owner_invite_staff"),
+
     # Google path A — phone page & JSON endpoints
     path("oauth/phone", views.oauth_phone_page, name="oauth_phone_page"),
     path("oauth/phone/init", views.oauth_phone_init, name="oauth_phone_init"),        # POST phone → send OTP
@@ -38,7 +52,6 @@ urlpatterns = [
     path("oauth/verify/existing",views.oauth_verify_existing, name = "oauth_verify_existing"),
     path("post-login-owner/", views.post_login_owner, name="post_login_owner"),
     path('owner/precheck/', views.owner_precheck_api, name = "owner_precheck_api"),
-    path("owner/invite-manager/", views.owner_invite_manager, name="owner_invite_manager"),
     path("owner/google-start/", views.owner_google_start, name="owner_google_start"),
     path("manager/google-start", views.manager_google_start, name = "manager_google_start"),
     path("owner/oauth/phone", views.oauth_owner_phone_page, name="oauth_owner_phone_page"),
@@ -79,4 +92,6 @@ urlpatterns = [
     path("api/member/<str:member>/close", views_home.api_close_tab, name="member_close_tab"),
     path("staff/api/resend", views_staff.api_staff_resend_link, name="staff_resend_link"),
     path("staff/api/cancel", views_staff.api_staff_cancel_link, name="staff_cancel_link"),
+    path("owner/OTP/verify",views_owner.owner_accept_verify, name = "owner_accept_verify"),
+    path("owner/accept", views_owner.owner_accept, name="owner_accept"),
 ]

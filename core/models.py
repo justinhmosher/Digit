@@ -101,6 +101,17 @@ class ManagerInvite(models.Model):
     def is_valid(self):
         return self.accepted_at is None and self.expires_at > timezone.now()
 
+class OwnerInvite(models.Model):
+    restaurant  = models.ForeignKey(RestaurantProfile, on_delete=models.CASCADE, related_name="owner_invites")
+    email       = models.EmailField()
+    token       = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    expires_at  = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def is_valid(self):
+        return self.accepted_at is None and self.expires_at > timezone.now()
+
 # ---------- Staff ----------
 class StaffProfile(models.Model):
     user = models.OneToOneField(

@@ -1520,77 +1520,6 @@ def _current_restaurant(request):
             return rp
     return None
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def owner_invite_manager(request):
-    """Owner sends an invite for the *current* restaurant."""
-    rp = _current_restaurant(request)
-    if request.method == "GET":
-        # If you prefer to block here, you can render a page explaining they must onboard first.
-        if not rp:
-            return JsonResponse({"ok": False, "error": "Create your restaurant profile first."}, status=400)
-        return render(request, "core/owner_invite_manager.html", {"restaurant": rp})
-
-    # POST (JSON or form)
-    if not rp:
-        return JsonResponse({"ok": False, "error": "Create your restaurant profile first."}, status=400)
-
-    email = ""
-    expires_minutes = 120
-
-    # JSON body first
-    try:
-        payload = json.loads((request.body or b"").decode() or "{}")
-        email = (payload.get("email") or "").strip().lower()
-        if payload.get("expires_minutes") is not None:
-            expires_minutes = int(payload["expires_minutes"])
-    except Exception:
-        pass
-
-    # Fallback to form POST
-    if not email:
-        email = (request.POST.get("email") or "").strip().lower()
-    if request.POST.get("expires_minutes"):
-        try:
-            expires_minutes = int(request.POST.get("expires_minutes"))
-        except ValueError:
-            pass
-
-    if not email:
-        return JsonResponse({"ok": False, "error": "Please provide an email."}, status=400)
-
-    invite = ManagerInvite.objects.create(
-        restaurant=rp,
-        email=email,
-        expires_at=timezone.now() + timedelta(minutes=expires_minutes),
-    )
-
-    link = f"{request.scheme}://{request.get_host()}/manager/accept?token={invite.token}"
-    rest_name = rp.dba_name or rp.legal_name or "your restaurant"
-
-    try:
-        send_manager_invite_email(
-            to_email=email,
-            invite_link=link,
-            restaurant_name=rest_name,
-            expires_at=invite.expires_at,
-        )
-        email_ok = True
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": f"Email send failed: {e}"}, status=500)
-
-    return JsonResponse({
-        "ok": True,
-        "message": f"Invite sent to {email}.",
-        "invite": {
-            "email": email,
-            "token": str(invite.token),
-            "expires_at": invite.expires_at.isoformat(),
-            "link": link,
-            "email_sent": email_ok,
-        },
-    })
-
 
 
 def _invite_is_valid(invite) -> bool:
@@ -1911,28 +1840,6 @@ def set_current_restaurant(request, rid: int):
 
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
-
-@login_required
-def owner_dashboard(request):
-    op = getattr(request.user, "owner_profile", None)
-    if not op:
-        return redirect("/owner/signup")
-
-    restaurants = RestaurantProfile.objects.filter(
-        owners=op,               # ✅ changed
-        ownerships__isnull=False # optional: avoids dupes if you add extra filters later
-    ).order_by("created_at")
-
-    current = get_current_restaurant(request) or restaurants.first()
-    if current and not request.session.get("current_restaurant_id"):
-        set_current_restaurant(request, current.id)
-
-    return render(request, "core/owner_dashboard.html", {
-        "restaurants": restaurants,
-        "current": current,
-        "profile": op,
-    })
-
 
 
 

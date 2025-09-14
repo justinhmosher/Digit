@@ -1,12 +1,750 @@
-<!DOCTYPE html>
+{% load static %}
+<!doctype html>
 <html>
-<hr>
-<h3>Invite a Manager</h3>
-<form method="post" action="{% url 'core:owner_invite_manager' %}">
-  {% csrf_token %}
-  <label>Email</label><br>
-  <input type="email" name="email" required style="width:300px;padding:8px;">
-  <input type="hidden" name="expires_minutes" value="120">
-  <button type="submit" style="padding:8px 12px;">Send Invite</button>
-</form>
+<head>
+  <meta charset="utf-8">
+  <title>Owner Dashboard — Dine N Dash</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
+        <h1 class="font-semibold">Owner Dashboard</h1>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- SETTINGS DROPDOWN -->
+        <div id="settingsMenuWrap" class="relative">
+          <button id="settingsBtn" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm flex items-center gap-1">
+            Settings
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.085l3.71-3.855a.75.75 0 111.08 1.04l-4.24 4.4a.75.75 0 01-1.08 0l-4.24-4.4a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+            </svg>
+          </button>
+          <div id="settingsMenu" class="hidden absolute right-0 mt-2 w-56 rounded-xl border bg-white shadow-lg overflow-hidden z-50">
+            <button id="menuProfiles" class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50">Profiles</button>
+            <button id="menuRestaurants" class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50">Restaurants</button>
+          </div>
+        </div>
+
+        <a href="{% url 'core:signout' %}" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">Sign out</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+    <!-- Welcome / Restaurant Switcher -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-semibold mb-2">Welcome</h2>
+          <p class="text-slate-600">
+            Signed in as <span class="font-medium">{{ request.user.email }}</span>.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="text-sm text-slate-600">Restaurant</label>
+          <select id="restaurantSelect" class="h-10 rounded-xl border px-3 text-sm min-w-[240px]"></select>
+          <button id="removeRestaurant" class="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50">Remove</button>
+        </div>
+      </div>
+      <p id="restaurantMeta" class="text-slate-600 text-sm mt-3"></p>
+      <div id="noRestaurants" class="mt-3 text-amber-700 hidden">No restaurants yet. Open <span class="font-medium">Settings → Restaurants</span> to add one.</div>
+    </section>
+
+    <!-- Open Tickets -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-6">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Open tickets</h3>
+        <button id="openRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+      </div>
+      <div id="openEmpty" class="text-slate-600 text-sm mt-2 hidden">No open tickets.</div>
+      <ul id="openList" class="mt-3 grid gap-2"></ul>
+    </section>
+
+    <!-- Recent Orders -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-6">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h3 class="text-lg font-semibold">Recent orders</h3>
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-slate-600">From</label>
+          <input id="startDate" type="date" class="h-10 rounded-xl border px-3 text-sm" />
+          <label class="text-sm text-slate-600">To</label>
+          <input id="endDate" type="date" class="h-10 rounded-xl border px-3 text-sm" />
+          <input id="ordersQ" class="h-10 rounded-xl border px-3 text-sm" placeholder="Search ticket/member…" />
+          <button id="ordersRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+          <button id="exportBtn" class="rounded-xl bg-slate-900 text-white px-3 py-2 text-sm">Export to Excel</button>
+        </div>
+      </div>
+      <div id="ordersEmpty" class="text-slate-600 text-sm mt-2 hidden">Nothing closed recently.</div>
+      <div class="mt-3 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-left text-slate-500">
+            <tr>
+              <th class="py-2 pr-4">Closed</th>
+              <th class="py-2 pr-4">Ticket</th>
+              <th class="py-2 pr-4">Member</th>
+              <th class="py-2 pr-4">Server</th>
+              <th class="py-2 pr-4 text-right">Total</th>
+              <th class="py-2 pr-0 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody" class="divide-y"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Receipt Drawer -->
+  <div id="drawerWrap" class="fixed inset-0 z-40 hidden">
+    <div id="drawerBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="drawer" class="absolute right-0 top-0 h-full w-[560px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Ticket <span id="dTicketNo">—</span></div>
+        <button id="drawerClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5">
+        <div id="dMeta" class="text-sm text-slate-600"></div>
+        <ul id="dItems" class="mt-3 divide-y"></ul>
+        <div class="mt-4 grid gap-2 text-sm">
+          <div class="flex items-center justify-between"><span class="text-slate-500">Subtotal</span><span id="dSub">$0.00</span></div>
+          <div class="flex items-center justify-between"><span class="text-slate-500">Tax</span><span id="dTax">$0.00</span></div>
+          <div class="flex items-center justify-between"><span class="text-slate-500">Tip</span><span id="dTip">$0.00</span></div>
+          <div class="flex items-center justify-between border-t pt-2"><span class="text-slate-700 font-semibold">Total</span><span id="dTotal" class="font-semibold">$0.00</span></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- PROFILES DRAWER (Settings → Profiles) -->
+  <div id="profilesWrap" class="fixed inset-0 z-50 hidden">
+    <div id="profilesBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="profilesDrawer" class="absolute right-0 top-0 h-full w-[560px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Profiles</div>
+        <button id="profilesClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="px-5 pt-4">
+        <div class="inline-flex rounded-xl border p-1 text-sm" role="tablist" aria-label="Profiles tabs">
+          <button id="tabOwners"   class="px-3 py-1.5 rounded-lg bg-slate-900 text-white" data-pane="owners">Owners</button>
+          <button id="tabManagers" class="px-3 py-1.5 rounded-lg hover:bg-slate-50"       data-pane="managers">Managers</button>
+          <button id="tabStaff"    class="px-3 py-1.5 rounded-lg hover:bg-slate-50"       data-pane="staff">Staff</button>
+        </div>
+      </div>
+
+      <!-- Owners Pane -->
+      <div id="paneOwners" class="p-5 space-y-3" role="tabpanel" aria-labelledby="tabOwners">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Owners</div>
+          <div class="flex items-center gap-2">
+            <button id="openAddOwnerFromProfiles" class="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50">Add owner</button>
+            <button id="ownersRefresh" class="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50">Refresh</button>
+          </div>
+        </div>
+        <div class="rounded-xl border overflow-hidden">
+          <table class="min-w-full text-sm">
+            <thead class="text-left text-slate-500">
+              <tr>
+                <th class="py-2 px-3">Email</th>
+                <th class="py-2 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ownersBody" class="divide-y"></tbody>
+          </table>
+        </div>
+        <div id="ownersEmpty" class="text-slate-600 text-sm hidden">No additional owners.</div>
+        <p class="text-xs text-slate-500">You can’t remove the last remaining owner.</p>
+      </div>
+
+      <!-- Managers Pane -->
+      <div id="paneManagers" class="p-5 space-y-3 hidden" role="tabpanel" aria-labelledby="tabManagers">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Managers</div>
+          <div class="flex items-center gap-2">
+            <button id="openInviteManagerFromProfiles" class="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50">Invite manager</button>
+            <button id="managersRefresh" class="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50">Refresh</button>
+          </div>
+        </div>
+        <div class="rounded-xl border overflow-hidden">
+          <table class="min-w-full text-sm">
+            <thead class="text-left text-slate-500">
+              <tr>
+                <th class="py-2 px-3">Name</th>
+                <th class="py-2 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="managersBody" class="divide-y"></tbody>
+          </table>
+        </div>
+        <div id="managersEmpty" class="text-slate-600 text-sm hidden">No managers yet.</div>
+      </div>
+
+      <!-- Staff Pane -->
+      <div id="paneStaff" class="p-5 space-y-3 hidden" role="tabpanel" aria-labelledby="tabStaff">
+        <div class="flex items-center justify-between">
+          <div class="font-medium">Staff</div>
+          <div class="flex items-center gap-2">
+            <button id="openInviteStaffFromProfiles" class="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50">Invite staff</button>
+            <button id="staffRefresh" class="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50">Refresh</button>
+          </div>
+        </div>
+        <div class="rounded-xl border overflow-hidden">
+          <table class="min-w-full text-sm">
+            <thead class="text-left text-slate-500">
+              <tr>
+                <th class="py-2 px-3">Name</th>
+                <th class="py-2 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="staffBody" class="divide-y"></tbody>
+          </table>
+        </div>
+        <div id="staffEmpty" class="text-slate-600 text-sm hidden">No active staff yet.</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Add Restaurant Drawer -->
+  <div id="addRestaurantWrap" class="fixed inset-0 z-40 hidden">
+    <div id="addRestaurantBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="addRestaurantDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Add restaurant</div>
+        <button id="addRestaurantClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <input id="restLegal" class="h-11 w-full rounded-xl border px-3" placeholder="Legal name (required)" />
+        <input id="restDBA" class="h-11 w-full rounded-xl border px-3" placeholder="DBA (optional)" />
+        <input id="restEmail" type="email" class="h-11 w-full rounded-xl border px-3" placeholder="Email (required)" />
+        <input id="restPhone" class="h-11 w-full rounded-xl border px-3" placeholder="Phone (optional)" />
+        <button id="addRestaurantSave" class="h-11 w-full rounded-xl bg-slate-900 text-white">Create</button>
+        <div id="addRestaurantAlert" class="hidden rounded-lg px-3 py-2 text-sm"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Invite Manager Drawer -->
+  <div id="inviteWrap" class="fixed inset-0 z-40 hidden">
+    <div id="inviteBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="inviteDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Invite manager</div>
+        <button id="inviteClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <p class="text-sm text-slate-600">Sends an email invite for the selected restaurant.</p>
+        <input id="inviteEmail" type="email" class="h-11 w-full rounded-xl border px-3" placeholder="manager@example.com" />
+        <input id="inviteMins" type="number" min="30" step="30" value="10080" class="h-11 w-full rounded-xl border px-3" placeholder="Expires (minutes, default 7 days)" />
+        <button id="inviteSend" class="h-11 w-full rounded-xl bg-slate-900 text-white">Send invite</button>
+        <div id="inviteAlert" class="hidden rounded-lg px-3 py-2 text-sm"></div>
+        <div id="inviteLinkWrap" class="hidden mt-2 text-sm">
+          <div class="rounded-xl border p-3 bg-slate-50">
+            <div class="font-medium mb-1">Invite link</div>
+            <div class="flex items-center gap-2 break-all">
+              <a id="inviteLink" href="#" class="text-blue-700 underline" target="_blank" rel="noopener">—</a>
+              <button id="inviteCopy" class="px-2 py-1 rounded border">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Invite Staff Drawer -->
+  <div id="inviteStaffWrap" class="fixed inset-0 z-40 hidden">
+    <div id="inviteStaffBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="inviteStaffDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Invite staff</div>
+        <button id="inviteStaffClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <p class="text-sm text-slate-600">Sends an invite to the staff console for the selected restaurant.</p>
+        <input id="inviteStaffEmail" type="email" class="h-11 w-full rounded-xl border px-3" placeholder="staff@example.com" />
+        <input id="inviteStaffMins" type="number" min="30" step="30" value="10080" class="h-11 w-full rounded-xl border px-3" placeholder="Expires (minutes, default 7 days)" />
+        <button id="inviteStaffSend" class="h-11 w-full rounded-xl bg-slate-900 text-white">Send invite</button>
+        <div id="inviteStaffAlert" class="hidden rounded-lg px-3 py-2 text-sm"></div>
+        <div id="inviteStaffLinkWrap" class="hidden mt-2 text-sm">
+          <div class="rounded-xl border p-3 bg-slate-50">
+            <div class="font-medium mb-1">Invite link</div>
+            <div class="flex items-center gap-2 break-all">
+              <a id="inviteStaffLink" href="#" class="text-blue-700 underline" target="_blank" rel="noopener">—</a>
+              <button id="inviteStaffCopy" class="px-2 py-1 rounded border">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Add Owner Drawer -->
+  <div id="addOwnerWrap" class="fixed inset-0 z-40 hidden">
+    <div id="addOwnerBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="addOwnerDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Add owner</div>
+        <button id="addOwnerClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <p class="text-sm text-slate-600">Links an existing Owner account (email must already have an OwnerProfile).</p>
+        <input id="ownerEmail" type="email" class="h-11 w-full rounded-xl border px-3" placeholder="owner2@example.com" />
+        <button id="addOwnerSave" class="h-11 w-full rounded-xl bg-slate-900 text-white">Add</button>
+        <div id="addOwnerAlert" class="hidden rounded-lg px-3 py-2 text-sm"></div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+  // ========== helpers ==========
+  const $  = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const money = c => `$${(c/100).toFixed(2)}`;
+
+  function getCSRFCookie() {
+    const m = document.cookie.match(/(?:^|\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || '');
+  }
+
+  function toast(msg, ok=true) {
+    const el = document.createElement('div');
+    el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-xl shadow border ' +
+      (ok ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), 3000);
+  }
+
+  const postJSON = async (url, body) => {
+    const resp = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+      credentials:'same-origin',
+      body: JSON.stringify(body || {})
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok || !data.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  };
+
+  function drawer(on, wrap, panel){
+    $(wrap).classList.toggle('hidden', !on);
+    $(panel).style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+  }
+
+  // ========== SETTINGS dropdown ==========
+  $('#settingsBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#settingsMenu')?.classList.toggle('hidden');
+  });
+  document.addEventListener('click', (e) => {
+    if (!$('#settingsMenuWrap')?.contains(e.target)) {
+      $('#settingsMenu')?.classList.add('hidden');
+    }
+  });
+  $('#menuProfiles')?.addEventListener('click', () => {
+    $('#settingsMenu')?.classList.add('hidden');
+    openProfiles('owners');
+  });
+  $('#menuRestaurants')?.addEventListener('click', () => {
+    $('#settingsMenu')?.classList.add('hidden');
+    // ensure Profiles isn’t covering it
+    drawer(false, '#profilesWrap', '#profilesDrawer');
+    drawer(true,  '#addRestaurantWrap', '#addRestaurantDrawer');
+  });
+
+  // ========== PROFILES drawer + tabs ==========
+  function openProfiles(which='owners'){
+    drawer(true, '#profilesWrap', '#profilesDrawer');
+    activatePane(which);
+  }
+  function activatePane(which){
+    const panes = ['owners', 'managers', 'staff'];
+    panes.forEach(p => {
+      const PaneId = '#pane' + p.charAt(0).toUpperCase()+p.slice(1);
+      const TabId  = '#tab'  + p.charAt(0).toUpperCase()+p.slice(1);
+      $(PaneId)?.classList.toggle('hidden', p!==which);
+      $(TabId)?.classList.toggle('bg-slate-900', p===which);
+      $(TabId)?.classList.toggle('text-white', p===which);
+      $(TabId)?.classList.toggle('hover:bg-slate-50', p!==which);
+    });
+  }
+  $('#tabOwners')?.addEventListener('click', () => activatePane('owners'));
+  $('#tabManagers')?.addEventListener('click', () => activatePane('managers'));
+  $('#tabStaff')?.addEventListener('click', () => activatePane('staff'));
+
+  $('#profilesClose')?.addEventListener('click', ()=> drawer(false, '#profilesWrap', '#profilesDrawer'));
+  $('#profilesBackdrop')?.addEventListener('click', ()=> drawer(false, '#profilesWrap', '#profilesDrawer'));
+
+  // Launch secondary drawers from Profiles
+  $('#openAddOwnerFromProfiles')?.addEventListener('click', ()=> drawer(true, '#addOwnerWrap', '#addOwnerDrawer'));
+  $('#openInviteManagerFromProfiles')?.addEventListener('click', ()=> drawer(true, '#inviteWrap', '#inviteDrawer'));
+  $('#openInviteStaffFromProfiles')?.addEventListener('click', ()=> drawer(true, '#inviteStaffWrap', '#inviteStaffDrawer'));
+
+  // ========== ADD RESTAURANT drawer (FIX: working close/backdrop) ==========
+  const closeAddRestaurant = () => drawer(false, '#addRestaurantWrap', '#addRestaurantDrawer');
+  $('#addRestaurantClose')?.addEventListener('click', closeAddRestaurant);
+  $('#addRestaurantBackdrop')?.addEventListener('click', closeAddRestaurant);
+
+  // ========== INVITE MANAGER drawer close ==========
+  $('#inviteClose')?.addEventListener('click', ()=> drawer(false, '#inviteWrap', '#inviteDrawer'));
+  $('#inviteBackdrop')?.addEventListener('click', ()=> drawer(false, '#inviteWrap', '#inviteDrawer'));
+
+  // ========== INVITE STAFF drawer close ==========
+  $('#inviteStaffClose')?.addEventListener('click', ()=> drawer(false, '#inviteStaffWrap', '#inviteStaffDrawer'));
+  $('#inviteStaffBackdrop')?.addEventListener('click', ()=> drawer(false, '#inviteStaffWrap', '#inviteStaffDrawer'));
+
+  // ========== ADD OWNER drawer close ==========
+  $('#addOwnerClose')?.addEventListener('click', ()=> drawer(false, '#addOwnerWrap', '#addOwnerDrawer'));
+  $('#addOwnerBackdrop')?.addEventListener('click', ()=> drawer(false, '#addOwnerWrap', '#addOwnerDrawer'));
+
+  // ========== RECEIPT drawer ==========
+  function toggleReceipt(on){
+    $('#drawerWrap').classList.toggle('hidden', !on);
+    $('#drawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+  }
+  $('#drawerClose')?.addEventListener('click', ()=> toggleReceipt(false));
+  $('#drawerBackdrop')?.addEventListener('click', ()=> toggleReceipt(false));
+
+  // ========== State + fetch ==========
+  let STATE = { restaurants: [], current_restaurant_id: null };
+
+  async function loadState(q='', start='', end=''){
+    const url = new URL("{% url 'core:owner_api_state' %}", window.location.origin);
+    if (q) url.searchParams.set('q', q);
+    if (start) url.searchParams.set('start', start);
+    if (end) url.searchParams.set('end', end);
+    const resp = await fetch(url, {credentials:'same-origin'});
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok || !data.ok) throw new Error(data.error || 'Failed to load');
+    return data;
+  }
+
+  function renderRestaurants(list, currentId){
+    const sel = $('#restaurantSelect'); sel.innerHTML = '';
+    list.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.name || ('Restaurant #' + r.id);
+      if (String(r.id) === String(currentId)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    $('#noRestaurants')?.classList.toggle('hidden', list.length !== 0);
+    $('#removeRestaurant').disabled = !currentId;
+    const active = list.find(r => String(r.id) === String(currentId));
+    $('#restaurantMeta').textContent = active ? (`Phone: ${active.phone || '—'} · Email: ${active.email || '—'}`) : '';
+  }
+
+  function renderOwners(list){
+    const tb = $('#ownersBody'); if (!tb) return;
+    tb.innerHTML = '';
+    $('#ownersEmpty')?.classList.toggle('hidden', list.length !== 0);
+    list.forEach(o => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2 px-3">${o.email || '—'}</td>
+        <td class="py-2 px-3 text-right">
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-owner="${o.id}">Remove</button>
+        </td>`;
+      tb.appendChild(tr);
+    });
+    $$('#ownersBody [data-owner]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if(!confirm('Remove this owner from the restaurant?')) return;
+        try {
+          await postJSON("{% url 'core:owner_api_remove_owner' %}", { owner_id: btn.dataset.owner, restaurant_id: STATE.current_restaurant_id });
+          toast('Owner removed');
+          refreshAll();
+        } catch(e){ toast(e.message, false); }
+      });
+    });
+  }
+
+  function renderManagers(list){
+    const tb = $('#managersBody'); if (!tb) return;
+    tb.innerHTML = '';
+    $('#managersEmpty')?.classList.toggle('hidden', list.length !== 0);
+    list.forEach(m => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2 px-3">${m.name || '—'}</td>
+        <td class="py-2 px-3 text-right">
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-id="${m.id}">Remove</button>
+        </td>`;
+      tb.appendChild(tr);
+    });
+    $$('#managersBody [data-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if(!confirm('Remove this manager from the restaurant?')) return;
+        try{
+          await postJSON("{% url 'core:owner_api_remove_manager' %}", { manager_id: btn.dataset.id, restaurant_id: STATE.current_restaurant_id });
+          toast('Manager removed');
+          refreshAll();
+        }catch(e){ toast(e.message, false); }
+      });
+    });
+  }
+
+  function renderStaff(list){
+    const tb = $('#staffBody'); if (!tb) return;
+    tb.innerHTML = '';
+    $('#staffEmpty')?.classList.toggle('hidden', list.length !== 0);
+    list.forEach(s => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2 px-3">${s.name || '—'}</td>
+        <td class="py-2 px-3 text-right">
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-staff="${s.id}">Remove</button>
+        </td>`;
+      tb.appendChild(tr);
+    });
+    $$('#staffBody [data-staff]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if(!confirm('Remove this staff member from the restaurant?')) return;
+        try{
+          await postJSON("{% url 'core:owner_api_remove_staff' %}", { staff_id: btn.dataset.staff, restaurant_id: STATE.current_restaurant_id });
+          toast('Staff removed');
+          refreshAll();
+        }catch(e){ toast(e.message, false); }
+      });
+    });
+  }
+
+  function renderOpen(list){
+    const ul = $('#openList'); ul.innerHTML = '';
+    $('#openEmpty')?.classList.toggle('hidden', list.length !== 0);
+    list.forEach(o => {
+      const li = document.createElement('li');
+      li.className = 'rounded-xl border p-3 flex items-center justify-between';
+      const members = (o.members || []).join(', ');
+      li.innerHTML = `
+        <div class="min-w-0">
+          <div class="font-medium">Ticket ${o.ticket_number || o.ticket_id}</div>
+          <div class="text-sm text-slate-600">Server: ${o.server || '—'} · Members: ${members || '—'}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="text-sm font-semibold">${money(o.due_cents || 0)}</div>
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">View</button>
+        </div>`;
+      ul.appendChild(li);
+    });
+    $$('#openList [data-ticket]').forEach(btn => {
+      btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
+    });
+  }
+
+  function renderOrders(list){
+    const tb = $('#ordersBody'); tb.innerHTML = '';
+    $('#ordersEmpty')?.classList.toggle('hidden', list.length !== 0);
+    list.forEach(o => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2 pr-4">${o.closed_at || '—'}</td>
+        <td class="py-2 pr-4">${o.ticket_number || o.ticket_id}</td>
+        <td class="py-2 pr-4">${o.member || '—'}</td>
+        <td class="py-2 pr-4">${o.server || '—'}</td>
+        <td class="py-2 pr-4 text-right font-semibold">${money(o.total_cents || 0)}</td>
+        <td class="py-2 pr-0 text-right">
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">Receipt</button>
+        </td>`;
+      tb.appendChild(tr);
+    });
+    $$('#ordersBody [data-ticket]').forEach(btn => {
+      btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
+    });
+  }
+
+  async function refreshAll(){
+    try{
+      const q = ($('#ordersQ').value || '').trim();
+      const start = $('#startDate').value || '';
+      const end = $('#endDate').value || '';
+      const data = await loadState(q, start, end);
+      STATE.restaurants = data.restaurants || [];
+      STATE.current_restaurant_id = data.current_restaurant_id || null;
+      renderRestaurants(STATE.restaurants, STATE.current_restaurant_id);
+      renderOwners(data.owners || []);
+      renderManagers(data.managers || []);
+      renderStaff(data.staff || []);
+      renderOpen(data.open || []);
+      renderOrders(data.recent || []);
+    }catch(e){ toast(e.message || 'Failed to load', false); }
+  }
+
+  // ========== restaurant switching / remove ==========
+  $('#restaurantSelect')?.addEventListener('change', async (e) => {
+    try{
+      await postJSON("{% url 'core:owner_api_set_restaurant' %}", { restaurant_id: e.target.value });
+      refreshAll();
+    }catch(err){ toast(err.message, false); }
+  });
+
+  $('#removeRestaurant')?.addEventListener('click', async () => {
+    if(!STATE.current_restaurant_id) return;
+    if(!confirm('Remove (deactivate) this restaurant?')) return;
+    try{
+      await postJSON("{% url 'core:owner_api_remove_restaurant' %}", { restaurant_id: STATE.current_restaurant_id });
+      toast('Restaurant removed');
+      refreshAll();
+    }catch(e){ toast(e.message, false); }
+  });
+
+  // ========== add restaurant ==========
+  function alertIn(elId, msg, ok=false){
+    const el = $(elId);
+    el.className = 'rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+  $('#addRestaurantSave')?.addEventListener('click', async () => {
+    const legal = ($('#restLegal').value || '').trim();
+    const dba   = ($('#restDBA').value || '').trim();
+    const email = ($('#restEmail').value || '').trim();
+    const phone = ($('#restPhone').value || '').trim();
+    if(!legal || !email) return alertIn('#addRestaurantAlert', 'Legal name and Email are required.');
+    try{
+      await postJSON("{% url 'core:owner_api_add_restaurant' %}", { legal_name: legal, dba_name: dba, email, phone });
+      alertIn('#addRestaurantAlert', 'Restaurant created.', true);
+      $('#restLegal').value=''; $('#restDBA').value=''; $('#restEmail').value=''; $('#restPhone').value='';
+      drawer(false, '#addRestaurantWrap', '#addRestaurantDrawer');
+      refreshAll();
+    }catch(e){ alertIn('#addRestaurantAlert', e.message || 'Failed to create.'); }
+  });
+
+  // ========== invite manager ==========
+  function showInviteAlert(msg, ok=false){
+    const el = $('#inviteAlert');
+    el.className = 'rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+  $('#inviteSend')?.addEventListener('click', async () => {
+    const email = ($('#inviteEmail').value || '').trim();
+    const mins  = parseInt($('#inviteMins').value || '10080', 10);
+    if (!email) return showInviteAlert('Please enter an email.');
+    try{
+      const resp = await fetch("{% url 'core:owner_invite_manager' %}", {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+        credentials:'same-origin',
+        body: JSON.stringify({ email, expires_minutes: mins })
+      });
+      const data = await resp.json().catch(()=>({}));
+      if(!resp.ok || !data.ok) return showInviteAlert(data.error || 'Invite failed.');
+      showInviteAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
+      if (data.invite?.link) {
+        $('#inviteLinkWrap').classList.remove('hidden');
+        $('#inviteLink').href = data.invite.link;
+        $('#inviteLink').textContent = data.invite.link;
+        $('#inviteCopy').onclick = async ()=> {
+          try { await navigator.clipboard.writeText(data.invite.link); showInviteAlert('Link copied.', true); }
+          catch { showInviteAlert('Could not copy link, copy it manually.'); }
+        };
+      }
+      $('#inviteEmail').value = '';
+    }catch { showInviteAlert('Network error sending invite.'); }
+  });
+
+  // ========== invite staff ==========
+  function showInviteStaffAlert(msg, ok=false){
+    const el = $('#inviteStaffAlert');
+    el.className = 'rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+  $('#inviteStaffSend')?.addEventListener('click', async () => {
+    const email = ($('#inviteStaffEmail').value || '').trim();
+    const mins  = parseInt($('#inviteStaffMins').value || '10080', 10);
+    if (!email) return showInviteStaffAlert('Please enter an email.');
+    try{
+      const resp = await fetch("{% url 'core:owner_invite_staff' %}", {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+        credentials:'same-origin',
+        body: JSON.stringify({ email, expires_minutes: mins })
+      });
+      const data = await resp.json().catch(()=>({}));
+      if(!resp.ok || !data.ok) return showInviteStaffAlert(data.error || 'Invite failed.');
+      showInviteStaffAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
+      if (data.invite?.link) {
+        $('#inviteStaffLinkWrap').classList.remove('hidden');
+        $('#inviteStaffLink').href = data.invite.link;
+        $('#inviteStaffLink').textContent = data.invite.link;
+        $('#inviteStaffCopy').onclick = async ()=> {
+          try { await navigator.clipboard.writeText(data.invite.link); showInviteStaffAlert('Link copied.', true); }
+          catch { showInviteStaffAlert('Could not copy link, copy it manually.'); }
+        };
+      }
+      $('#inviteStaffEmail').value = '';
+    }catch { showInviteStaffAlert('Network error sending invite.'); }
+  });
+
+  // ========== add owner ==========
+  $('#addOwnerSave')?.addEventListener('click', async () => {
+    const email = ($('#ownerEmail').value || '').trim();
+    if(!email) return alertIn('#addOwnerAlert', 'Enter an owner email.');
+    try{
+      await postJSON("{% url 'core:owner_api_add_owner' %}", { email, restaurant_id: STATE.current_restaurant_id });
+      alertIn('#addOwnerAlert', 'Owner added.', true);
+      $('#ownerEmail').value = '';
+      drawer(false, '#addOwnerWrap', '#addOwnerDrawer');
+      refreshAll();
+    }catch(e){ alertIn('#addOwnerAlert', e.message || 'Failed to add.'); }
+  });
+
+  // ========== orders search / export ==========
+  $('#ordersRefresh')?.addEventListener('click', refreshAll);
+  $('#openRefresh')?.addEventListener('click', refreshAll);
+  $('#ownersRefresh')?.addEventListener('click', refreshAll);
+  $('#managersRefresh')?.addEventListener('click', refreshAll);
+  $('#staffRefresh')?.addEventListener('click', refreshAll);
+
+  $('#ordersQ')?.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); refreshAll(); }});
+
+  $('#exportBtn')?.addEventListener('click', () => {
+    const url = new URL("{% url 'core:owner_export' %}", window.location.origin);
+    const q = ($('#ordersQ').value || '').trim();
+    const start = $('#startDate').value || '';
+    const end = $('#endDate').value || '';
+    if (q) url.searchParams.set('q', q);
+    if (start) url.searchParams.set('start', start);
+    if (end) url.searchParams.set('end', end);
+    window.location = url.toString();
+  });
+
+  // ========== receipt loader ==========
+  async function openReceipt(ticketId){
+    const url = "{% url 'core:owner_api_ticket_detail' 'TKT' %}".replace('TKT', encodeURIComponent(ticketId));
+    const resp = await fetch(url, {credentials:'same-origin'});
+    const data = await resp.json().catch(()=>({}));
+    if (!resp.ok || !data.ok) return toast(data.error || 'Failed to load receipt', false);
+
+    $('#dTicketNo').textContent = data.ticket_number || ticketId;
+    $('#dMeta').textContent = (data.server ? `Server: ${data.server}` : '') + (data.member ? ` · Member: ${data.member}` : '');
+    const ul = $('#dItems'); ul.innerHTML = '';
+    (data.items || []).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'py-2 flex items-center justify-between';
+      li.innerHTML = `<div class="truncate">${r.qty}× ${r.name}</div><div class="ml-3">${money((r.cents||0) * (r.qty||1))}</div>`;
+      ul.appendChild(li);
+    });
+    $('#dSub').textContent   = money(data.subtotal_cents || 0);
+    $('#dTax').textContent   = money(data.tax_cents || 0);
+    $('#dTip').textContent   = money(data.tip_cents || 0);
+    $('#dTotal').textContent = money(data.total_cents || 0);
+
+    toggleReceipt(true);
+  }
+
+  // ========== initial ==========
+  refreshAll();
+</script>
+
+</body>
 </html>
