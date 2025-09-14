@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff
+from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -46,7 +46,11 @@ urlpatterns = [
     path("owner/oauth/phone/verify", views.oauth_owner_phone_verify, name="oauth_owner_phone_verify"),
     path("manager/OTP/verify",views.manager_accept_verify, name = "manager_accept_verify"),
     path("manager/accept", views.manager_accept, name="manager_accept"),
-    path("manager/dashboard/", views.manager_dashboard, name="manager_dashboard"),
+    path("manager/dashboard/", views_manager.manager_dashboard, name="manager_dashboard"),
+    path("manager/api/state", views_manager.manager_api_state, name="manager_api_state"),
+    path("manager/api/staff/remove", views_manager.manager_api_remove_staff, name="manager_api_remove_staff"),
+    path("manager/api/ticket/<str:ticket_id>", views_manager.manager_api_ticket_detail, name="manager_api_ticket_detail"),
+    path("manager/export", views_manager.manager_export, name="manager_export"),
     # existing classic path B endpoints you already have
     path("auth/verify-otp", views.verify_otp, name="verify_otp"),
     # core/views.py

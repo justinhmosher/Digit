@@ -1780,38 +1780,6 @@ def manager_accept_verify(request):
     return JsonResponse({"ok": True, "redirect": reverse("core:manager_dashboard")})
 
 
-@login_required
-def manager_dashboard(request):
-    """
-    Manager dashboard. Requires a ManagerProfile.
-    Puts `mp` (manager profile) and `restaurant` in the template context.
-    """
-    # correct related_name is "manager_profile"
-    mp = getattr(request.user, "manager_profile", None)
-    if mp is None:
-        mp = (
-            ManagerProfile.objects
-            .select_related("restaurant")
-            .filter(user=request.user)
-            .first()
-        )
-
-    if not mp:
-        # user isn't a manager -> bounce to manager sign-in tab
-        return redirect("/restaurant/signin?tab=manager")
-
-    restaurant = getattr(mp, "restaurant", None)
-
-    # cache selection for other pages, if helpful
-    if restaurant and request.session.get("current_restaurant_id") != restaurant.id:
-        request.session["current_restaurant_id"] = restaurant.id
-        request.session.modified = True
-
-    return render(
-        request,
-        "core/manager_dashboard.html",
-        {"mp": mp, "restaurant": restaurant},
-    )
 # -------------------------
 # PAGES
 # -------------------------

@@ -9,20 +9,21 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-900">
+  <!-- Header -->
   <header class="bg-white border-b border-slate-200">
-    <div class="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
       <div class="flex items-center gap-3">
         <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
         <h1 class="font-semibold">Manager Dashboard</h1>
       </div>
-      <a href="{% url 'core:signout' %}"
-         class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">
-        Sign out
-      </a>
+      <div class="flex items-center gap-2">
+        <button id="openInvite" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm">Invite staff</button>
+        <a href="{% url 'core:signout' %}" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">Sign out</a>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-5xl mx-auto px-4 py-8 space-y-6">
+  <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
     <!-- Welcome -->
     <section class="bg-white border border-slate-200 rounded-2xl p-6">
       <h2 class="text-xl font-semibold mb-2">Welcome</h2>
@@ -33,7 +34,7 @@
         <p class="mt-2">
           Managing: <span class="font-medium">{{ restaurant.dba_name|default:restaurant.legal_name }}</span>
         </p>
-        <p class="text-slate-600 text-sm mt-1">Phone on file: {{ mp.phone|default:"—" }}</p>
+        <p class="text-slate-600 text-sm mt-1">Phone on file: {{ restaurant.phone|default:"—" }}</p>
       {% else %}
         <p class="mt-2 text-amber-700">
           Your account isn’t linked to a restaurant yet. Please contact the owner to resend your invite.
@@ -41,119 +42,336 @@
       {% endif %}
     </section>
 
-    <!-- Invite Staff -->
+    <!-- Staff Access (name only) -->
     <section class="bg-white border border-slate-200 rounded-2xl p-6">
       <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold">Invite staff</h3>
-        {% if not restaurant %}
-          <span class="text-xs text-amber-700">Link this account to a restaurant to invite staff.</span>
-        {% endif %}
+        <h3 class="text-lg font-semibold">Staff access</h3>
+        <button id="staffRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
       </div>
-
-      <p class="text-slate-600 text-sm mt-1">
-        Send an email invite to join
-        <span class="font-medium">{{ restaurant.dba_name|default:restaurant.legal_name|default:"your restaurant" }}</span>.
-        The invite link takes them through phone/PIN and lands on the staff console.
-      </p>
-
-      <div id="invite-alert" class="hidden mt-3 rounded-lg px-3 py-2 text-sm"></div>
-
-      <form id="invite-form" class="mt-4 grid gap-3 md:grid-cols-3" {% if not restaurant %}aria-disabled="true"{% endif %}>
-        <input id="invite-email" type="email" required
-               class="h-11 rounded-xl border px-3 md:col-span-2"
-               placeholder="staff@example.com" {% if not restaurant %}disabled{% endif %} />
-        <input id="invite-exp" type="number" min="5" step="5" value="120"
-               class="h-11 rounded-xl border px-3"
-               title="Expiration in minutes" {% if not restaurant %}disabled{% endif %} />
-        <div class="md:col-span-3">
-          <button id="invite-send" type="submit"
-                  class="h-11 px-4 rounded-xl bg-slate-900 text-white disabled:opacity-50"
-                  {% if not restaurant %}disabled{% endif %}>Send invite</button>
-          <span id="invite-busy" class="hidden text-sm text-slate-500 ml-2">Sending…</span>
-        </div>
-      </form>
-
-      <div id="invite-link-wrap" class="hidden mt-3 text-sm">
-        <div class="rounded-xl border p-3 bg-slate-50">
-          <div class="font-medium mb-1">Invite link</div>
-          <div class="flex items-center gap-2 break-all">
-            <a id="invite-link" href="#" class="text-blue-700 underline" target="_blank" rel="noopener">—</a>
-            <button id="invite-copy" class="px-2 py-1 rounded border">Copy</button>
-          </div>
-        </div>
+      <div class="mt-3 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-left text-slate-500">
+            <tr>
+              <th class="py-2 pr-4">Name</th>
+              <th class="py-2 pr-0 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="staffBody" class="divide-y"></tbody>
+        </table>
       </div>
+      <div id="staffEmpty" class="text-slate-600 text-sm mt-2 hidden">No active staff yet.</div>
     </section>
 
-    <!-- Next steps -->
+    <!-- Open Tickets -->
     <section class="bg-white border border-slate-200 rounded-2xl p-6">
-      <h3 class="text-lg font-semibold mb-2">Next steps</h3>
-      <ul class="list-disc ml-5 text-slate-700">
-        <li>Open tickets will appear here.</li>
-        <li>Payment approvals and history will appear here.</li>
-      </ul>
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Open tickets</h3>
+        <button id="openRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+      </div>
+      <div id="openEmpty" class="text-slate-600 text-sm mt-2 hidden">No open tickets.</div>
+      <ul id="openList" class="mt-3 grid gap-2"></ul>
+    </section>
+
+    <!-- Recent Orders -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-6">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h3 class="text-lg font-semibold">Recent orders</h3>
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-slate-600">From</label>
+          <input id="startDate" type="date" class="h-10 rounded-xl border px-3 text-sm" />
+          <label class="text-sm text-slate-600">To</label>
+          <input id="endDate" type="date" class="h-10 rounded-xl border px-3 text-sm" />
+          <input id="ordersQ" class="h-10 rounded-xl border px-3 text-sm" placeholder="Search ticket/member…" />
+          <button id="ordersRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+          <button id="exportBtn" class="rounded-xl bg-slate-900 text-white px-3 py-2 text-sm">Export to Excel</button>
+        </div>
+      </div>
+      <div id="ordersEmpty" class="text-slate-600 text-sm mt-2 hidden">Nothing closed recently.</div>
+      <div class="mt-3 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-left text-slate-500">
+            <tr>
+              <th class="py-2 pr-4">Closed</th>
+              <th class="py-2 pr-4">Ticket</th>
+              <th class="py-2 pr-4">Member</th>
+              <th class="py-2 pr-4">Server</th>
+              <th class="py-2 pr-4 text-right">Total</th>
+              <th class="py-2 pr-0 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody" class="divide-y"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 
+  <!-- Receipt Drawer -->
+  <div id="drawerWrap" class="fixed inset-0 z-40 hidden">
+    <div id="drawerBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="drawer" class="absolute right-0 top-0 h-full w-[560px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Ticket <span id="dTicketNo">—</span></div>
+        <button id="drawerClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5">
+        <div id="dMeta" class="text-sm text-slate-600"></div>
+        <ul id="dItems" class="mt-3 divide-y"></ul>
+        <div class="mt-4 grid gap-2 text-sm">
+          <div class="flex items-center justify-between"><span class="text-slate-500">Subtotal</span><span id="dSub">$0.00</span></div>
+          <div class="flex items-center justify-between"><span class="text-slate-500">Tax</span><span id="dTax">$0.00</span></div>
+          <div class="flex items-center justify-between"><span class="text-slate-500">Tip</span><span id="dTip">$0.00</span></div>
+          <div class="flex items-center justify-between border-t pt-2"><span class="text-slate-700 font-semibold">Total</span><span id="dTotal" class="font-semibold">$0.00</span></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Invite Drawer -->
+  <div id="inviteWrap" class="fixed inset-0 z-40 hidden">
+    <div id="inviteBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="inviteDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Invite staff</div>
+        <button id="inviteClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <p class="text-sm text-slate-600">
+          Send an email invite to join <span class="font-medium">{{ restaurant.dba_name|default:restaurant.legal_name }}</span>.
+          The invite link takes them through phone/PIN and lands on the staff console.
+        </p>
+        <input id="inviteEmail" type="email" class="h-11 w-full rounded-xl border px-3" placeholder="staff@example.com" />
+        <p class="text-xs text-slate-500">Invites expire automatically in <span class="font-medium">7 days</span>.</p>
+        <div class="pt-2">
+          <button id="inviteSend" class="h-11 w-full rounded-xl bg-slate-900 text-white">Send invite</button>
+        </div>
+        <div id="inviteAlert" class="hidden rounded-lg px-3 py-2 text-sm"></div>
+        <div id="inviteLinkWrap" class="hidden mt-2 text-sm">
+          <div class="rounded-xl border p-3 bg-slate-50">
+            <div class="font-medium mb-1">Invite link</div>
+            <div class="flex items-center gap-2 break-all">
+              <a id="inviteLink" href="#" class="text-blue-700 underline" target="_blank" rel="noopener">—</a>
+              <button id="inviteCopy" class="px-2 py-1 rounded border">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
   <script>
+    // helpers
+    const $ = s => document.querySelector(s);
+    const $$ = s => Array.from(document.querySelectorAll(s));
+    const money = c => `$${(c/100).toFixed(2)}`;
     function getCSRFCookie() {
       const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
       return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || '');
     }
+    function toast(msg, ok=true) {
+      const el = document.createElement('div');
+      el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-xl shadow border ' +
+        (ok ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900');
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(()=>el.remove(), 3000);
+    }
+
+    // data
+    async function loadState(q='', start='', end='') {
+      const url = new URL("{% url 'core:manager_api_state' %}", window.location.origin);
+      if (q) url.searchParams.set('q', q);
+      if (start) url.searchParams.set('start', start);
+      if (end) url.searchParams.set('end', end);
+      const resp = await fetch(url, {credentials:'same-origin'});
+      const data = await resp.json().catch(()=>({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to load');
+      return data;
+    }
+
+    function renderStaff(list){
+      const tb = $('#staffBody'); tb.innerHTML = '';
+      $('#staffEmpty').classList.toggle('hidden', list.length !== 0);
+      list.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="py-2 pr-4">${s.name || '—'}</td>
+          <td class="py-2 pr-0 text-right">
+            <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-id="${s.id}">Remove</button>
+          </td>`;
+        tb.appendChild(tr);
+      });
+      $$('#staffBody [data-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remove this staff member from the restaurant?')) return;
+          const resp = await fetch("{% url 'core:manager_api_remove_staff' %}", {
+            method:'POST',
+            headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+            credentials:'same-origin',
+            body: JSON.stringify({staff_id: btn.dataset.id})
+          });
+          const data = await resp.json().catch(()=>({}));
+          if (!resp.ok || !data.ok) return toast(data.error || 'Failed to remove', false);
+          toast('Removed', true);
+          refreshAll();
+        });
+      });
+    }
+
+    function renderOpen(list){
+      const ul = $('#openList'); ul.innerHTML = '';
+      $('#openEmpty').classList.toggle('hidden', list.length !== 0);
+      list.forEach(o => {
+        const li = document.createElement('li');
+        li.className = 'rounded-xl border p-3 flex items-center justify-between';
+        const members = (o.members || []).join(', ');
+        li.innerHTML = `
+          <div class="min-w-0">
+            <div class="font-medium">Ticket ${o.ticket_number || o.ticket_id}</div>
+            <div class="text-sm text-slate-600">Server: ${o.server || '—'} · Members: ${members || '—'}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="text-sm font-semibold">${money(o.due_cents || 0)}</div>
+            <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">View</button>
+          </div>`;
+        ul.appendChild(li);
+      });
+      $$('#openList [data-ticket]').forEach(btn => {
+        btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
+      });
+    }
+
+    function renderOrders(list){
+      const tb = $('#ordersBody'); tb.innerHTML = '';
+      $('#ordersEmpty').classList.toggle('hidden', list.length !== 0);
+      list.forEach(o => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="py-2 pr-4">${o.closed_at || '—'}</td>
+          <td class="py-2 pr-4">${o.ticket_number || o.ticket_id}</td>
+          <td class="py-2 pr-4">${o.member || '—'}</td>
+          <td class="py-2 pr-4">${o.server || '—'}</td>
+          <td class="py-2 pr-4 text-right font-semibold">${money(o.total_cents || 0)}</td>
+          <td class="py-2 pr-0 text-right">
+            <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">Receipt</button>
+          </td>`;
+        tb.appendChild(tr);
+      });
+      $$('#ordersBody [data-ticket]').forEach(btn => {
+        btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
+      });
+    }
+
+    async function refreshAll(){
+      try {
+        const q = ($('#ordersQ').value || '').trim();
+        const start = $('#startDate').value || '';
+        const end = $('#endDate').value || '';
+        const data = await loadState(q, start, end);
+        renderStaff(data.staff || []);
+        renderOpen(data.open || []);
+        renderOrders(data.recent || []);
+      } catch (e) {
+        toast(e.message || 'Failed to load', false);
+      }
+    }
+
+    // Receipt drawer
+    function toggleDrawer(on){
+      $('#drawerWrap').classList.toggle('hidden', !on);
+      $('#drawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+    }
+    $('#drawerClose').addEventListener('click', () => toggleDrawer(false));
+    $('#drawerBackdrop').addEventListener('click', () => toggleDrawer(false));
+
+    async function openReceipt(ticketId){
+      const url = "{% url 'core:manager_api_ticket_detail' 'TKT' %}".replace('TKT', encodeURIComponent(ticketId));
+      const resp = await fetch(url, {credentials:'same-origin'});
+      const data = await resp.json().catch(()=>({}));
+      if (!resp.ok || !data.ok) return toast(data.error || 'Failed to load receipt', false);
+
+      $('#dTicketNo').textContent = data.ticket_number || ticketId;
+      $('#dMeta').textContent = (data.server ? `Server: ${data.server}` : '') + (data.member ? ` · Member: ${data.member}` : '');
+      const ul = $('#dItems'); ul.innerHTML = '';
+      (data.items || []).forEach(r => {
+        const li = document.createElement('li');
+        li.className = 'py-2 flex items-center justify-between';
+        li.innerHTML = `<div class="truncate">${r.qty}× ${r.name}</div><div class="ml-3">${money((r.cents||0) * (r.qty||1))}</div>`;
+        ul.appendChild(li);
+      });
+      // <- Use fields exactly as delivered by API (no recompute here)
+      $('#dSub').textContent   = money(data.subtotal_cents || 0);
+      $('#dTax').textContent   = money(data.tax_cents || 0);
+      $('#dTip').textContent   = money(data.tip_cents || 0);
+      $('#dTotal').textContent = money(data.total_cents || 0);
+
+      toggleDrawer(true);
+    }
+
+    // date filter + export + refresh
+    $('#ordersRefresh')?.addEventListener('click', refreshAll);
+    $('#openRefresh')?.addEventListener('click', refreshAll);
+    $('#staffRefresh')?.addEventListener('click', refreshAll);
+    $('#ordersQ')?.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); refreshAll(); }});
+    $('#exportBtn')?.addEventListener('click', () => {
+      const url = new URL("{% url 'core:manager_export' %}", window.location.origin);
+      const q = ($('#ordersQ').value || '').trim();
+      const start = $('#startDate').value || '';
+      const end = $('#endDate').value || '';
+      if (q) url.searchParams.set('q', q);
+      if (start) url.searchParams.set('start', start);
+      if (end) url.searchParams.set('end', end);
+      window.location = url.toString();
+    });
+
+    // Invite drawer (7-day expiry baked in)
+    function toggleInvite(on){
+      $('#inviteWrap').classList.toggle('hidden', !on);
+      $('#inviteDrawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+    }
+    $('#openInvite').addEventListener('click', ()=> toggleInvite(true));
+    $('#inviteClose').addEventListener('click', ()=> toggleInvite(false));
+    $('#inviteBackdrop').addEventListener('click', ()=> toggleInvite(false));
+
     function showInviteAlert(msg, ok=false){
-      const el = document.getElementById('invite-alert');
-      el.className = 'mt-3 rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+      const el = $('#inviteAlert');
+      el.className = 'rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
       el.textContent = msg;
       el.classList.remove('hidden');
     }
-    function setBusy(on){
-      document.getElementById('invite-send').disabled = on;
-      document.getElementById('invite-busy').classList.toggle('hidden', !on);
-    }
 
-    const form = document.getElementById('invite-form');
-    if (form) {
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('invite-email').value.trim();
-        const exp   = parseInt(document.getElementById('invite-exp').value || '120', 10) || 120;
-        if (!email) return showInviteAlert('Please enter an email.');
+    $('#inviteSend').addEventListener('click', async () => {
+      const email = ($('#inviteEmail').value || '').trim();
+      if (!email) return showInviteAlert('Please enter an email.');
+      let resp, data={};
+      try{
+        resp = await fetch("{% url 'core:manager_invite_staff' %}", {
+          method:'POST',
+          headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+          credentials:'same-origin',
+          body: JSON.stringify({ email, expires_minutes: 7*24*60 }) // 7 days
+        });
+        data = await resp.json().catch(()=>({}));
+      }catch{
+        return showInviteAlert('Network error sending invite.');
+      }
+      if(!resp.ok || !data.ok){
+        return showInviteAlert(data.error || 'Invite failed.');
+      }
+      showInviteAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
+      if (data.invite?.link) {
+        $('#inviteLinkWrap').classList.remove('hidden');
+        $('#inviteLink').href = data.invite.link;
+        $('#inviteLink').textContent = data.invite.link;
+        $('#inviteCopy').onclick = async ()=> {
+          try { await navigator.clipboard.writeText(data.invite.link); showInviteAlert('Link copied.', true); }
+          catch { showInviteAlert('Could not copy link, copy it manually.'); }
+        };
+      }
+      $('#inviteEmail').value = '';
+    });
 
-        setBusy(true);
-        let resp, data={};
-        try {
-          resp = await fetch("{% url 'core:manager_invite_staff' %}", {
-            method:'POST',
-            headers:{ 'Content-Type':'application/json', 'X-CSRFToken': getCSRFCookie() },
-            credentials:'same-origin',
-            body: JSON.stringify({ email: email, expires_minutes: exp })
-          });
-          try { data = await resp.json(); } catch(_){}
-        } catch (err) {
-          setBusy(false);
-          return showInviteAlert('Network error sending invite.');
-        }
-        setBusy(false);
-
-        if (!resp.ok || !data.ok) {
-          return showInviteAlert(data.error || 'Invite failed.');
-        }
-
-        showInviteAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
-        if (data.invite?.link) {
-          const wrap = document.getElementById('invite-link-wrap');
-          const a = document.getElementById('invite-link');
-          a.href = data.invite.link;
-          a.textContent = data.invite.link;
-          wrap.classList.remove('hidden');
-          document.getElementById('invite-copy').onclick = async () => {
-            try { await navigator.clipboard.writeText(data.invite.link); showInviteAlert('Link copied.', true); }
-            catch { showInviteAlert('Could not copy link, copy it manually.'); }
-          };
-        }
-        // reset email field
-        document.getElementById('invite-email').value = '';
-      });
-    }
+    // Initial load
+    refreshAll();
   </script>
 </body>
 </html>

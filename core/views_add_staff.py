@@ -80,7 +80,7 @@ def manager_invite_staff(request):
     invite = StaffInvite.objects.create(
         restaurant=rp,
         email=email,
-        expires_at=timezone.now() + timedelta(minutes=expires_minutes),
+        expires_at = 10000,
     )
 
     # Build accept link with next=/staff/
@@ -95,7 +95,7 @@ def manager_invite_staff(request):
             to_email=email,
             invite_link=link,
             restaurant_name=rest_name,
-            expires_at=invite.expires_at,
+            expires_minutes = 10000,
         )
         email_ok = True
     except Exception as e:
