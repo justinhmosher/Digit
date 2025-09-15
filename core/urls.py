@@ -20,8 +20,9 @@ urlpatterns = [
     path("auth/verify-otp", views.verify_otp, name="verify_otp"),
     path("auth/verify-email",views.verify_email_otp, name = "verify_email_otp"),
     path('restaurant/signin',views.restaurant_signin, name = 'restaurant_signin'),
-    path("restaurants/add-card", views_restaurants.restaurant_add_card_start, name="restaurant_add_card_start"),
-    path("restaurants/set-card", views_restaurants.restaurant_set_card, name="restaurant_set_card"),
+    path("restaurants/connect/start",  views_restaurants.connect_onboard_start,  name="connect_onboard_start"),
+    path("restaurants/connect/return", views_restaurants.connect_onboard_return, name="connect_onboard_return"),
+    path("restaurants/connect/dashboard", views_restaurants.connect_dashboard_login, name="connect_dashboard_login"),
     # dashboards
     # OWNER (standard, JSON-only)
     path("owner/signup", views.owner_signup, name="owner_signup"),        # renders HTML shell
@@ -69,7 +70,6 @@ urlpatterns = [
     # existing classic path B endpoints you already have
     path("auth/verify-otp", views.verify_otp, name="verify_otp"),
     # core/views.py
-    path("restaurant/onboard",views_restaurants.restaurant_onboard,name = "restaurant_onboard"),
     path("debug/session", views.debug_session),
     path("api/precheck-user", views.precheck_user_api, name="precheck_user_api"),
     path("api/link-member", views_staff.api_link_member_to_ticket, name="link_member"),
@@ -96,4 +96,5 @@ urlpatterns = [
     path("staff/api/cancel", views_staff.api_staff_cancel_link, name="staff_cancel_link"),
     path("owner/OTP/verify",views_owner.owner_accept_verify, name = "owner_accept_verify"),
     path("owner/accept", views_owner.owner_accept, name="owner_accept"),
+    path("stripe/webhook/owner/", views_restaurants.stripe_owner_webhook, name="stripe_owner_webhook"),
 ]

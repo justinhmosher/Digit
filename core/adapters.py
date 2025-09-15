@@ -120,7 +120,7 @@ class GoogleGateAdapter(DefaultSocialAccountAdapter):
             if has_restaurant:
                 raise ImmediateHttpResponse(redirect("core:post_login_owner"))
             else:
-                raise ImmediateHttpResponse(redirect("core:restaurant_onboard"))
+                raise ImmediateHttpResponse(redirect("core:connect_onboard_start"))
 
         if user and not sociallogin.is_existing:
                 if user.has_usable_password() and not SocialAccount.objects.filter(

@@ -24,6 +24,8 @@ from .omnivore import (
 )
 from .utils import send_sms
 
+from .views_processing import charge_customer_off_session, refund_payment_intent, PaymentError, build_idem_key
+
 # ---------- Config ----------
 LOCATION_ID = config("OMNIVORE_LOCATION_ID", default="").strip()
 AUTO_TIP_PCT = float(config("AUTO_TIP_PCT", default="18"))  # staff close uses this, e.g. 18 for 18%
@@ -304,41 +306,43 @@ def api_staff_cancel_link(request: HttpRequest):
 def api_staff_close_ticket(request: HttpRequest):
     """
     Body: { ticket_id, reference? }
-    Close the POS ticket and mark ALL open TicketLink rows for the ticket as closed.
-    Automatically applies AUTO_TIP_PCT (default 18%).
-    Snapshots:
-      - total_cents  = base ticket amount (no tip)
-      - tip_cents    = applied tip
-      - paid_cents   = total_cents + tip_cents  (what the card was charged)
+
+    Flow:
+      1) Compute base and tip from current POS totals (fallback to snapshots).
+      2) Identify the customer (via TicketLink.member.customer).
+      3) Charge via Stripe off-session using saved PM (idempotent).
+      4) Post payment to POS (Omnivore). If that fails, auto-refund Stripe.
+      5) Close local TicketLinks and snapshot amounts.
     """
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
         return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
 
-    ticket_id = str(data.get("ticket_id") or "").strip()
+    ticket_id = (data.get("ticket_id") or "").strip()
     reference = (data.get("reference") or "staff-close").strip()
     if not ticket_id:
         return JsonResponse({"ok": False, "error": "missing_ticket_id"}, status=400)
 
+    # 0) Gather TicketLinks for this ticket
     links = list(
         TicketLink.objects
-        .select_related("restaurant")
+        .select_related("restaurant", "member", "member__customer")
         .filter(ticket_id=ticket_id, status="open")
         .order_by("opened_at")
     )
     if not links:
         return JsonResponse({"ok": False, "error": "no_open_links_for_ticket"}, status=404)
 
-    rp = links[0].restaurant
-    location_id = (rp.omnivore_location_id or LOCATION_ID).strip()
+    rp: RestaurantProfile = links[0].restaurant
+    location_id = (rp.omnivore_location_id or LOCATION_ID or "").strip()
     if not location_id:
         return JsonResponse({"ok": False, "error": "restaurant_missing_location_id"}, status=500)
 
-    # Fresh ticket totals
+    # 1) Fresh totals from POS
     try:
         t = get_ticket(location_id, ticket_id)
-    except Exception as e:
+    except Exception:
         t = {}
 
     totals    = (t or {}).get("totals") or {}
@@ -346,47 +350,118 @@ def api_staff_close_ticket(request: HttpRequest):
     tax       = int(totals.get("tax") or 0)
     base_amt  = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
     if base_amt <= 0:
-        # Fallback to largest snapshot we've seen locally
         base_amt = max([int(l.last_total_cents or 0) for l in links] or [0])
     if base_amt <= 0:
         return JsonResponse({"ok": False, "error": "nothing_due"}, status=400)
 
-    # Auto tip off the base amount we're paying now
-    tip_cents = int(round((AUTO_TIP_PCT / 100.0) * base_amt))
+    # 2) Compute tip + gross
+    tip_cents  = int(round((AUTO_TIP_PCT / 100.0) * base_amt))
     paid_gross = base_amt + tip_cents
 
-    # Post to POS: amount (base) + tip as a separate field
+    # Find a billable customer from any link
+    member = next((lk.member for lk in links if getattr(lk, "member", None)), None)
+    customer_profile: CustomerProfile | None = getattr(member, "customer", None) if member else None
+    if not customer_profile:
+        return JsonResponse({"ok": False, "error": "no_customer_for_ticket"}, status=400)
+
+    if not customer_profile.stripe_customer_id or not customer_profile.default_payment_method:
+        return JsonResponse({"ok": False, "error": "customer_missing_payment_method"}, status=400)
+
+    # Build exact Stripe payload (for deterministic idempotency)
+    stripe_payload = {
+        "amount": int(paid_gross),
+        "currency": "usd",
+        "customer": customer_profile.stripe_customer_id,
+        "payment_method": customer_profile.default_payment_method,
+        "payment_method_types": ["card"],
+        "confirm": True,
+        "off_session": True,
+        "description": f"Dine N Dash — Ticket {ticket_id} ({rp.display_name()})",
+        "metadata": {
+            "ticket_id": ticket_id,
+            "restaurant_id": str(rp.id),
+            "customer_profile_id": str(customer_profile.id),
+        },
+    }
+    idem_key = build_idem_key("close", stripe_payload)
+
+    # 3) CHARGE (Stripe)
+    try:
+        intent = charge_customer_off_session(
+            customer_id=customer_profile.stripe_customer_id,
+            payment_method_id=customer_profile.default_payment_method,
+            amount_cents=paid_gross,
+            currency="usd",
+            description=stripe_payload["description"],
+            idempotency_key=idem_key,
+            metadata=stripe_payload["metadata"],
+        )
+    except PaymentError as e:
+        # Log & bubble rich info; UI can inspect JSON
+        print("[Stripe FAIL]", e, "code=", e.code, "decline=", e.decline_code, "pi=", e.payment_intent_id)
+        return JsonResponse({
+            "ok": False,
+            "error": "stripe_charge_failed",
+            "detail": str(e),
+            "code": e.code,
+            "decline_code": e.decline_code,
+            "payment_intent": e.payment_intent_id,
+        }, status=402)
+
+    # 4) POST TO POS; refund if it fails
     try:
         create_payment_with_tender_type(
             location_id=location_id,
             ticket_id=ticket_id,
             amount_cents=base_amt,
-            tender_type_id=None,   # adapter ignores
-            reference=reference,   # not sent in adapter body; we keep for logs
+            tender_type_id=None,     # adapter ignores
+            reference=reference,     # adapter ignores; kept for logs
             tip_cents=tip_cents,
         )
     except Exception as e:
-        return JsonResponse({"ok": False, "error": "omnivore_payment_failed", "detail": str(e)}, status=502)
+        # Refund to avoid guest being charged without POS close
+        try:
+            if getattr(intent, "id", None):
+                refund_payment_intent(intent.id, reason="requested_by_customer")
+        except PaymentError as re:
+            return JsonResponse({
+                "ok": False,
+                "error": "pos_post_failed_and_refund_failed",
+                "pos_detail": str(e),
+                "refund_detail": str(re),
+                "payment_intent": getattr(intent, "id", None),
+            }, status=502)
 
-    # Mark all links closed & snapshot
+        return JsonResponse({
+            "ok": False,
+            "error": "omnivore_payment_failed_refunded",
+            "detail": str(e),
+            "payment_intent": getattr(intent, "id", None),
+        }, status=502)
+
+    # 5) CLOSE LOCALLY & snapshot
     now = timezone.now()
     for tl in links:
         tl.status = "closed"
         tl.closed_at = now
         tl.subtotal_cents = subtotal
         tl.tax_cents = tax
-        tl.total_cents = base_amt              # base (no tip)
-        tl.tip_cents = tip_cents               # tip
-        tl.paid_cents = paid_gross             # base + tip = what card saw
+        tl.total_cents = base_amt
+        tl.tip_cents = tip_cents
+        tl.paid_cents = paid_gross
         tl.pos_ref = reference
         tl.save(update_fields=[
             "status","closed_at",
             "subtotal_cents","tax_cents","total_cents",
-            "tip_cents","paid_cents","pos_ref"
+            "tip_cents","paid_cents","pos_ref",
         ])
 
-    return JsonResponse({"ok": True, "paid_cents": paid_gross, "auto_tip_cents": tip_cents})
-
+    return JsonResponse({
+        "ok": True,
+        "paid_cents": paid_gross,
+        "auto_tip_cents": tip_cents,
+        "payment_intent": getattr(intent, "id", None),
+    })
 
 @require_GET
 def api_ticket_receipt(request, member):

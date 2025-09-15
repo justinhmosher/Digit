@@ -1463,7 +1463,7 @@ def oauth_owner_phone_verify(request):
             del sess[k]
     sess.modified = True
 
-    return JsonResponse({"ok": True, "redirect": "/restaurant/onboard"})
+    return JsonResponse({"ok": True, "redirect": "/restaurants/connect/start"})
 
 
 
@@ -1775,7 +1775,7 @@ def restaurant_signin(request):
         }, status=403)
 
     has_any = RestaurantProfile.objects.filter(owners=owner).exists()
-    dest = reverse("core:owner_dashboard") if has_any else reverse("core:restaurant_onboard")
+    dest = reverse("core:owner_dashboard") if has_any else reverse("core:connect_onboard_start")
     return JsonResponse({"ok": True, "redirect": dest})
 
 
@@ -1882,7 +1882,7 @@ def post_login_owner(request):
 
     has_any = RestaurantProfile.objects.filter(owners=owner).exists()
     if not has_any:
-        return redirect(reverse("core:restaurant_onboard"))
+        return redirect(reverse("core:connect_onboard_start"))
 
     return redirect(reverse("core:owner_dashboard"))
 
@@ -1955,73 +1955,6 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.urls import reverse
 import json
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def restaurant_onboard(request):
-    # Ensure there is an OwnerProfile for the current user
-    owner, _ = OwnerProfile.objects.get_or_create(user=request.user)
-
-    if request.method == "GET":
-        # Prefill the form: try legacy single-restaurant record if present
-        legacy_profile = getattr(request.user, "restaurant_profile", None)
-        #…or, if you're already on multi-restaurant, you can choose the “current” one from session
-        current_id = request.session.get("current_restaurant_id")
-        current_profile = None
-        if current_id:
-            current_profile = RestaurantProfile.objects.filter(id=current_id).first()
-
-        profile = current_profile or legacy_profile
-        return render(request, "core/restaurant_onboard.html", {"owner": owner, "profile": profile})
-
-    # ----- POST JSON -----
-    try:
-        data = json.loads(request.body.decode() or "{}")
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Invalid JSON."}, status=400)
-
-    legal_name = (data.get("legal_name") or "").strip()
-    email      = (data.get("email") or "").strip().lower()
-    dba_name   = (data.get("dba_name") or "").strip()
-    phone      = (data.get("phone") or "").strip()
-    address    = (data.get("address") or "").strip()
-
-    if not legal_name or not email:
-        return JsonResponse({"ok": False, "error": "Legal name and email are required."}, status=400)
-
-    # If you still have legacy 1:1 `RestaurantProfile.user`, keep using get_or_create(user=…)
-    if hasattr(RestaurantProfile, "user"):
-        rp, _ = RestaurantProfile.objects.get_or_create(user=request.user)
-        rp.legal_name = legal_name
-        rp.email      = email
-        rp.dba_name   = dba_name
-        rp.phone      = phone
-        rp.address    = address
-        rp.is_active  = True
-        rp.save()
-    else:
-        # Pure multi-restaurant: always create a new restaurant record
-        rp = RestaurantProfile.objects.create(
-            legal_name=legal_name,
-            dba_name=dba_name,
-            email=email,
-            phone=phone,
-            address=address,
-            is_active=True,
-        )
-
-    # Link ownership (works whether you have M2M through or FK)
-    try:
-        attach_owner_to_restaurant(rp, owner)
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": f"Ownership link failed: {e}"}, status=500)
-
-    # remember selection
-    request.session["current_restaurant_id"] = rp.id
-    request.session.modified = True
-
-    return JsonResponse({"ok": True, "redirect": reverse("core:owner_dashboard")})
-
 
 
 def signin(request):

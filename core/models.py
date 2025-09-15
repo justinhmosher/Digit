@@ -29,37 +29,41 @@ class CustomerProfile(models.Model):
         return force_str(getattr(self, "label", None) or f"CustomerProfile {self.pk}")
 
 
-# ---------- Restaurants & Ownership ----------
 class RestaurantProfile(models.Model):
-    legal_name = models.CharField(max_length=255)
+    # Keep your existing fields if you want (they’ll become “non-authoritative”)
+    legal_name = models.CharField(max_length=255, blank=True)
     dba_name   = models.CharField(max_length=255, blank=True)
-    email      = models.EmailField()
+    email      = models.EmailField(blank=True)
     phone      = models.CharField(max_length=30, blank=True)
 
-    # better to keep structured address for receipts
+    # (Old address fields can remain; we won’t rely on them)
     addr_line1 = models.CharField(max_length=160, blank=True)
     addr_line2 = models.CharField(max_length=160, blank=True)
     city       = models.CharField(max_length=80,  blank=True)
     state      = models.CharField(max_length=32,  blank=True)
     postal     = models.CharField(max_length=32,  blank=True)
 
-    # Omnivore wiring (if you have multiple locations later, make this a child model)
     omnivore_location_id = models.CharField(max_length=64, blank=True)
+
+    # ✅ New: the only Stripe id you truly need for restaurants
+    stripe_account_id = models.CharField(max_length=64, blank=True)   # acct_*
+
+    # Optional cache of Stripe account details (so UI can render fast)
+    stripe_cached = models.JSONField(default=dict, blank=True)
 
     is_active  = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    stripe_customer_id       = models.CharField(max_length=64, blank=True)  # cus_*
-    stripe_default_pm_id     = models.CharField(max_length=64, blank=True) 
 
     owners = models.ManyToManyField('OwnerProfile', through='Ownership', related_name='restaurants')
 
     def display_name(self):
-        return self.dba_name or self.legal_name
+        # Prefer Stripe business_profile.name (DBA) if cached
+        dba = (self.stripe_cached or {}).get("business_profile", {}).get("name") or ""
+        return dba or self.dba_name or self.legal_name or f"Restaurant {self.pk}"
 
     def __str__(self):
         return self.display_name()
-
 
 
 class Ownership(models.Model):
