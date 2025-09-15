@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager, views_owner
+from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager, views_owner, views_restaurants
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -20,6 +20,8 @@ urlpatterns = [
     path("auth/verify-otp", views.verify_otp, name="verify_otp"),
     path("auth/verify-email",views.verify_email_otp, name = "verify_email_otp"),
     path('restaurant/signin',views.restaurant_signin, name = 'restaurant_signin'),
+    path("restaurants/add-card", views_restaurants.restaurant_add_card_start, name="restaurant_add_card_start"),
+    path("restaurants/set-card", views_restaurants.restaurant_set_card, name="restaurant_set_card"),
     # dashboards
     # OWNER (standard, JSON-only)
     path("owner/signup", views.owner_signup, name="owner_signup"),        # renders HTML shell
@@ -67,7 +69,7 @@ urlpatterns = [
     # existing classic path B endpoints you already have
     path("auth/verify-otp", views.verify_otp, name="verify_otp"),
     # core/views.py
-    path("restaurant/onboard",views.restaurant_onboard,name = "restaurant_onboard"),
+    path("restaurant/onboard",views_restaurants.restaurant_onboard,name = "restaurant_onboard"),
     path("debug/session", views.debug_session),
     path("api/precheck-user", views.precheck_user_api, name="precheck_user_api"),
     path("api/link-member", views_staff.api_link_member_to_ticket, name="link_member"),

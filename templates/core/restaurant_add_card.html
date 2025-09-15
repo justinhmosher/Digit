@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Add Restaurant Card</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    :root{ --bg:#f8fafc; --card:#fff; --ink:#111827; --muted:#6b7280; --border:#e5e7eb; --shadow:0 10px 25px rgba(15,23,42,.06); --radius:16px; }
+    html,body{height:100%}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans";color:var(--ink);background:linear-gradient(to bottom,#fff,var(--bg))}
+    .wrap{min-height:100%;display:flex;flex-direction:column}
+    main{flex:1 0 auto;display:grid;place-items:center;padding:clamp(16px,3vw,32px)}
+    .box{width:100%;max-width:460px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:clamp(16px,4vw,28px)}
+    h2{margin:0 0 .75rem;text-align:center;font-size:clamp(20px,2.2vw,24px);font-weight:700;letter-spacing:-.01em}
+    .sub{margin:0 0 1rem;text-align:center;color:var(--muted);font-size:.95rem}
+    .field{display:grid;gap:8px}
+    label{font-size:.875rem;font-weight:600}
+    #card{padding:12px 14px;background:#f9fafb;border:1px solid var(--border);border-radius:12px}
+    .btn{width:100%;margin-top:12px;padding:12px 16px;border:0;border-radius:12px;background:var(--ink);color:#fff;font-weight:600;font-size:1rem;line-height:1;cursor:pointer;transition:transform .06s ease,opacity .2s ease}
+    .btn:active{transform:translateY(1px)}
+    #m{margin-top:8px;text-align:center;font-size:.9rem}
+    .secure{margin-top:14px;text-align:center;color:var(--muted);font-size:.8rem;display:flex;align-items:center;justify-content:center;gap:6px}
+    .secure svg{width:14px;height:14px}
+    footer{flex:0 0 auto;padding:16px;text-align:center;color:#9ca3af;font-size:.85rem}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <main>
+      <div class="box">
+        <h2>Add a card for {{ restaurant.display_name }}</h2>
+        <p class="sub">This stores a card on file for billing. You won't be charged right now.</p>
+
+        <form id="f" novalidate>
+          {% csrf_token %}
+          <div class="field">
+            <label for="card">Card details</label>
+            <div id="card"></div>
+          </div>
+
+          <button type="submit" class="btn">Save card</button>
+          <div id="m" role="status" aria-live="polite"></div>
+
+          <div class="secure" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M7 10V7a5 5 0 0110 0v3"/>
+              <rect x="5" y="10" width="14" height="10" rx="2" ry="2"/>
+            </svg>
+            <span>Securely saved by Stripe.</span>
+          </div>
+        </form>
+      </div>
+    </main>
+    <footer>&copy; <script>document.write(new Date().getFullYear())</script></footer>
+  </div>
+
+<script>
+(function(){
+  const stripe   = Stripe("{{ pk|escapejs }}");
+  const elements = stripe.elements();
+  const card     = elements.create("card");
+  card.mount("#card");
+
+  const form = document.getElementById("f");
+  const msg  = document.getElementById("m");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.style.color = "#374151";
+    msg.textContent = "Saving card…";
+
+    const { error, setupIntent } = await stripe.confirmCardSetup(
+      "{{ client_secret|escapejs }}",
+      { payment_method: { card } }
+    );
+
+    if (error) {
+      msg.style.color = "red";
+      msg.textContent = error.message || "Could not save card.";
+      return;
+    }
+    if (!setupIntent || setupIntent.status !== "succeeded") {
+      msg.style.color = "red";
+      msg.textContent = "Card was not confirmed. Please try again.";
+      return;
+    }
+
+    // Redirect to finalize on server: store PM id & set default
+    const next = "{{ next|escapejs }}";
+    const url  = "{% url 'core:restaurant_set_card' %}?si="
+                 + encodeURIComponent(setupIntent.id)
+                 + "&next=" + encodeURIComponent(next);
+    window.location.href = url;
+  });
+})();
+</script>
+</body>
+</html>

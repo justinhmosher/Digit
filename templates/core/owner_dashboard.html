@@ -230,8 +230,8 @@
     </aside>
   </div>
 
-  <!-- Invite Manager Drawer -->
-  <div id="inviteWrap" class="fixed inset-0 z-40 hidden">
+  <!-- Invite Manager Drawer (z-index raised) -->
+  <div id="inviteWrap" class="fixed inset-0 z-[60] hidden">
     <div id="inviteBackdrop" class="absolute inset-0 bg-black/30"></div>
     <aside id="inviteDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
       <div class="flex items-center justify-between px-5 py-4 border-b">
@@ -257,8 +257,8 @@
     </aside>
   </div>
 
-  <!-- Invite Staff Drawer -->
-  <div id="inviteStaffWrap" class="fixed inset-0 z-40 hidden">
+  <!-- Invite Staff Drawer (z-index raised) -->
+  <div id="inviteStaffWrap" class="fixed inset-0 z-[60] hidden">
     <div id="inviteStaffBackdrop" class="absolute inset-0 bg-black/30"></div>
     <aside id="inviteStaffDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
       <div class="flex items-center justify-between px-5 py-4 border-b">
@@ -284,8 +284,8 @@
     </aside>
   </div>
 
-  <!-- Add Owner Drawer -->
-  <div id="addOwnerWrap" class="fixed inset-0 z-40 hidden">
+  <!-- Add Owner Drawer (z-index raised) -->
+  <div id="addOwnerWrap" class="fixed inset-0 z-[60] hidden">
     <div id="addOwnerBackdrop" class="absolute inset-0 bg-black/30"></div>
     <aside id="addOwnerDrawer" class="absolute right-0 top-0 h-full w-[420px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
       <div class="flex items-center justify-between px-5 py-4 border-b">
@@ -324,7 +324,7 @@
   const postJSON = async (url, body) => {
     const resp = await fetch(url, {
       method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+      headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie() },
       credentials:'same-origin',
       body: JSON.stringify(body || {})
     });
@@ -354,7 +354,6 @@
   });
   $('#menuRestaurants')?.addEventListener('click', () => {
     $('#settingsMenu')?.classList.add('hidden');
-    // ensure Profiles isn’t covering it
     drawer(false, '#profilesWrap', '#profilesDrawer');
     drawer(true,  '#addRestaurantWrap', '#addRestaurantDrawer');
   });
@@ -387,7 +386,7 @@
   $('#openInviteManagerFromProfiles')?.addEventListener('click', ()=> drawer(true, '#inviteWrap', '#inviteDrawer'));
   $('#openInviteStaffFromProfiles')?.addEventListener('click', ()=> drawer(true, '#inviteStaffWrap', '#inviteStaffDrawer'));
 
-  // ========== ADD RESTAURANT drawer (FIX: working close/backdrop) ==========
+  // ========== ADD RESTAURANT drawer ==========
   const closeAddRestaurant = () => drawer(false, '#addRestaurantWrap', '#addRestaurantDrawer');
   $('#addRestaurantClose')?.addEventListener('click', closeAddRestaurant);
   $('#addRestaurantBackdrop')?.addEventListener('click', closeAddRestaurant);

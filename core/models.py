@@ -49,6 +49,8 @@ class RestaurantProfile(models.Model):
     is_active  = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    stripe_customer_id       = models.CharField(max_length=64, blank=True)  # cus_*
+    stripe_default_pm_id     = models.CharField(max_length=64, blank=True) 
 
     owners = models.ManyToManyField('OwnerProfile', through='Ownership', related_name='restaurants')
 

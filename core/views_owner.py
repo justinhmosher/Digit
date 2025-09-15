@@ -301,6 +301,34 @@ def _set_current_restaurant(request: HttpRequest, rp: Optional[RestaurantProfile
     request.session.modified = True
 
 # ----------------- page -----------------
+def _current_restaurant(request):
+    """Resolve the restaurant for the signed-in owner."""
+    # 1) session selection
+    rid = request.session.get("current_restaurant_id")
+    if rid:
+        rp = RestaurantProfile.objects.filter(id=rid).first()
+        if rp:
+            return rp
+
+    # 2) first active restaurant this owner owns
+    op = OwnerProfile.objects.filter(user=request.user).first()
+    if not op:
+        return None
+
+    # Use through model; respect is_active if present
+    ow_qs = Ownership.objects.filter(owner=op)
+    if any(f.name == "is_active" for f in Ownership._meta.fields):
+        ow_qs = ow_qs.filter(is_active=True)
+
+    rid = ow_qs.values_list("restaurant_id", flat=True).first()
+    if rid:
+        rp = RestaurantProfile.objects.filter(id=rid).first()
+        if rp:
+            # remember it in session for next time
+            request.session["current_restaurant_id"] = rp.id
+            request.session.modified = True
+            return rp
+    return None
 
 @login_required
 def owner_dashboard(request: HttpRequest) -> HttpResponse:

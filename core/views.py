@@ -1949,50 +1949,6 @@ def attach_owner_to_restaurant(owner: OwnerProfile, rp: RestaurantProfile):
         "Add a ManyToManyField (owners) or a FK on OwnerProfile."
     )
 
-def attach_owner_to_restaurant(rp, owner):
-    """
-    Link OwnerProfile <owner> to RestaurantProfile <rp> regardless of how the
-    relation is modeled. Handles:
-      A) rp.owners = ManyToManyField(OwnerProfile, through='Ownership')
-      B) Ownership(owner=OwnerProfile, restaurant=RestaurantProfile) explicit
-      C) rp has FK like rp.owner / rp.owner_profile
-    """
-    # A/B: many-to-many via through=Ownership
-    if hasattr(rp.__class__, "owners"):
-        through = rp.__class__.owners.through  # Ownership model
-        # Its FK field names vary; detect them
-        fks = {f.name: f for f in through._meta.fields if f.is_relation}
-        # Find the FK names pointing to OwnerProfile and RestaurantProfile
-        owner_fk = None
-        rest_fk  = None
-        for name, f in fks.items():
-            if getattr(f.related_model, "__name__", "") == "OwnerProfile":
-                owner_fk = name
-            if getattr(f.related_model, "__name__", "") == "RestaurantProfile":
-                rest_fk = name
-        if not owner_fk or not rest_fk:
-            raise RuntimeError("Ownership through model doesn't point to OwnerProfile/RestaurantProfile.")
-
-        # Create-if-missing
-        defaults = {}
-        filter_kwargs = {owner_fk: owner, rest_fk: rp}
-        through.objects.get_or_create(**filter_kwargs, defaults=defaults)
-        return
-
-    # C: simple FK on RestaurantProfile (e.g., rp.owner or rp.owner_profile)
-    if hasattr(rp, "owner"):
-        rp.owner = owner
-        rp.save(update_fields=["owner"])
-        return
-    if hasattr(rp, "owner_profile"):
-        rp.owner_profile = owner
-        rp.save(update_fields=["owner_profile"])
-        return
-
-    # If none matched, we can't link
-    raise RuntimeError("Could not find a way to link OwnerProfile to RestaurantProfile. "
-                       "Add a ManyToManyField (owners) or a FK on OwnerProfile/RestaurantProfile.")
-
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
