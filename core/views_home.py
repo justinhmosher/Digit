@@ -34,6 +34,12 @@ from .models import CustomerProfile, Member, TicketLink
 import stripe
 from decouple import config
 stripe.api_key = config("STRIPE_SK")
+from core.views_processing import (
+    charge_customer_off_session,
+    refund_payment_intent,
+    PaymentError,
+    build_idem_key,
+)
 
 
 def _member_for_user(user) -> Member | None:
@@ -304,39 +310,43 @@ def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse
 @require_POST
 def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     """
-    Customer close:
-      - Auth: the URL <member> must belong to the signed-in user
-      - Reads JSON: {"tip_cents": <int>, "reference": "customer-close"}
-      - Posts CASH+TIP via create_payment_with_tender_type
-      - Closes ALL open TicketLink rows for that ticket
+    Customer close (Stripe Connect version):
+      - Auth: <member> must belong to signed-in user
+      - Body: {"tip_cents": <int>, "reference": "customer-close"}
+      - Compute amount due from POS; gross = amount + tip
+      - Charge saved card (customer.default_payment_method) off-session
+        * destination = restaurant.stripe_account_id (if present)
+      - Post to POS; if POS post fails, refund Stripe
+      - Close all open TicketLinks for that ticket with snapshots
     """
     if not request.user.is_authenticated:
-        return JsonResponse({"ok": False, "error": "Auth required."}, status=401)
+        return JsonResponse({"ok": False, "error": "auth_required"}, status=401)
 
-    # Ensure the member belongs to this user
+    # 0) Ensure the member belongs to this user
     m = (
         Member.objects
+        .select_related("customer")
         .filter(number=str(member), customer__user=request.user)
         .first()
     )
     if not m:
-        return JsonResponse({"ok": False, "error": "Not authorized for this member."}, status=403)
+        return JsonResponse({"ok": False, "error": "not_authorized_for_member"}, status=403)
 
-    # The member must have at least one OPEN link
+    # Must have at least one open link to find the ticket + restaurant
     tl = (
         TicketLink.objects
-        .filter(member=m, status="open")
         .select_related("restaurant")
+        .filter(member=m, status="open")
         .order_by("-opened_at")
         .first()
     )
     if not tl:
-        return JsonResponse({"ok": False, "error": "No active ticket."}, status=404)
+        return JsonResponse({"ok": False, "error": "no_active_ticket"}, status=404)
 
-    # POS location from restaurant
-    loc_id = (tl.restaurant.omnivore_location_id or "").strip()
+    rp: RestaurantProfile = tl.restaurant
+    loc_id = (rp.omnivore_location_id or LOCATION_ID or "").strip()
     if not loc_id:
-        return JsonResponse({"ok": False, "error": "Restaurant not wired to POS."}, status=500)
+        return JsonResponse({"ok": False, "error": "restaurant_missing_location_id"}, status=500)
 
     # Parse body
     try:
@@ -345,54 +355,128 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         data = {}
     reference = (data.get("reference") or "customer-close").strip()
     try:
-        tip_cents = int(data.get("tip_cents") or 0)
+        tip_cents = max(0, int(data.get("tip_cents") or 0))
     except Exception:
         tip_cents = 0
 
-    # Prefer fresh due from POS; fallback to our latest snapshot across links
+    # 1) Fresh due from POS (fallback to snapshots)
     try:
         t = get_ticket(loc_id, tl.ticket_id)
         totals = (t or {}).get("totals") or {}
-        amount = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
+        base_due = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
     except Exception:
-        amount = 0
+        base_due = 0
 
-    if amount <= 0:
-        # fallback: max of last_total_cents from all open links for this ticket
-        amount = max(
-            [x.last_total_cents or 0 for x in TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open")] or [0]
+    if base_due <= 0:
+        base_due = max(
+            [int(x.last_total_cents or 0) for x in TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open")] or [0]
         )
+    if base_due <= 0:
+        return JsonResponse({"ok": False, "error": "nothing_due"}, status=400)
 
-    if amount <= 0:
-        return JsonResponse({"ok": False, "error": "Nothing due."}, status=400)
+    gross_cents = base_due + tip_cents
 
-    # Post payment to Omnivore (CASH + TIP; adapter ignores tender_type_id and reference)
+    # 2) Identify billable customer + payment method
+    cp: CustomerProfile | None = getattr(m, "customer", None)
+    if not cp or not cp.stripe_customer_id or not cp.default_payment_method:
+        return JsonResponse({"ok": False, "error": "customer_missing_payment_method"}, status=400)
+
+    # 3) Charge via Stripe (off-session), routing funds to the restaurant’s connected acct if present
+    #    Build deterministic idempotency key so accidental double-taps don’t double-charge.
+    stripe_meta = {
+        "ticket_id": tl.ticket_id,
+        "restaurant_id": str(rp.id),
+        "member_number": m.number,
+        "customer_profile_id": str(cp.id),
+        "source": "customer_close",
+    }
+    description = f"Dine N Dash — Ticket {tl.ticket_id} ({rp.display_name()})"
+    idem_key = build_idem_key("cust_close", {
+        "amount": gross_cents,
+        "customer": cp.stripe_customer_id,
+        "pm": cp.default_payment_method,
+        "restaurant": rp.stripe_account_id or "",
+        "ticket": tl.ticket_id,
+        "tip": tip_cents,
+    })
+
+    try:
+        # charge_customer_off_session already supports Connect routing (destination)
+        intent = charge_customer_off_session(
+            customer_id=cp.stripe_customer_id,
+            payment_method_id=cp.default_payment_method,
+            amount_cents=gross_cents,
+            currency="usd",
+            description=description,
+            idempotency_key=idem_key,
+            metadata=stripe_meta,
+            # Optional platform fee:
+            # application_fee_amount=your_platform_fee_cents_or_None,
+            destination_account_id=(rp.stripe_account_id or None),
+            on_behalf_of=(rp.stripe_account_id or None),
+        )
+    except PaymentError as e:
+        # Bubble rich info for UI/observability
+        return JsonResponse({
+            "ok": False,
+            "error": "stripe_charge_failed",
+            "detail": str(e),
+            "code": e.code,
+            "decline_code": e.decline_code,
+            "payment_intent": e.payment_intent_id,
+        }, status=402)
+
+    # 4) Post to POS. If POS fails, refund the Stripe charge to avoid charging without closing POS.
     try:
         create_payment_with_tender_type(
             location_id=loc_id,
             ticket_id=tl.ticket_id,
-            amount_cents=amount,
-            tender_type_id=None,   # adapter ignores this
-            reference=reference,   # kept for logging
+            amount_cents=base_due,
+            tender_type_id=None,   # adapter ignores
+            reference=reference,   # kept for logs
             tip_cents=tip_cents,
         )
-    except Exception as e:
-        return JsonResponse(
-            {"ok": False, "error": "omnivore_payment_failed", "detail": str(e)},
-            status=502,
-        )
+    except Exception as pos_err:
+        # Try to refund the charge
+        try:
+            if getattr(intent, "id", None):
+                refund_payment_intent(intent.id, reason="requested_by_customer")
+        except PaymentError as refund_err:
+            return JsonResponse({
+                "ok": False,
+                "error": "pos_post_failed_and_refund_failed",
+                "pos_detail": str(pos_err),
+                "refund_detail": str(refund_err),
+                "payment_intent": getattr(intent, "id", None),
+            }, status=502)
 
-    # Close ALL open links for this POS ticket (the POS ticket is now paid)
+        return JsonResponse({
+            "ok": False,
+            "error": "omnivore_payment_failed_refunded",
+            "detail": str(pos_err),
+            "payment_intent": getattr(intent, "id", None),
+        }, status=502)
+
+    # 5) Close ALL open TicketLinks for this ticket and snapshot amounts
     now = timezone.now()
-    open_links = list(
-        TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open")
-    )
+    open_links = list(TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open"))
     for link in open_links:
         link.status = "closed"
         link.closed_at = now
+        link.total_cents = base_due
         link.tip_cents = tip_cents
-        link.paid_cents = amount
+        link.paid_cents = gross_cents
         link.pos_ref = reference
-        link.save(update_fields=["status", "closed_at", "tip_cents", "paid_cents", "pos_ref"])
+        link.save(update_fields=[
+            "status", "closed_at",
+            "total_cents", "tip_cents", "paid_cents", "pos_ref",
+        ])
 
-    return JsonResponse({"ok": True, "closed": len(open_links)})
+    return JsonResponse({
+        "ok": True,
+        "closed": len(open_links),
+        "paid_cents": gross_cents,
+        "tip_cents": tip_cents,
+        "payment_intent": getattr(intent, "id", None),
+        "destination": rp.stripe_account_id or None,
+    })
