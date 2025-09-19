@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager, views_owner, views_restaurants
+from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager, views_owner, views_restaurants, views_auth_reset
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -32,6 +32,10 @@ urlpatterns = [
     #path("owner/restaurant", views.owner_restaurant_page, name="owner_restaurant_page"),  # renders form
     path("owner/restaurant/save", views.owner_restaurant_save_api, name="owner_restaurant_save_api"),
     path("owner/", views_owner.owner_dashboard, name="owner_dashboard"),
+    path("auth/reset/start",    views_auth_reset.reset_start,    name="auth_reset_start"),
+    path("auth/reset/verify",   views_auth_reset.reset_verify,   name="auth_reset_verify"),
+    path("auth/reset/pin",      views_auth_reset.reset_pin,      name="auth_reset_pin"),
+    path("auth/reset/finalize", views_auth_reset.reset_finalize, name="auth_reset_finalize"),
 
     path("owner/api/state", views_owner.owner_api_state, name="owner_api_state"),
     path("owner/api/set-restaurant", views_owner.owner_api_set_restaurant, name="owner_api_set_restaurant"),

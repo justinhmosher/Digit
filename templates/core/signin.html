@@ -7,15 +7,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Customer Sign In — Dine N Dash</title>
 
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
-          colors: {
-            brand: { DEFAULT: "#0f172a" },
-            accent: { DEFAULT: "#10b981" }
-          },
+          colors: { brand: { DEFAULT: "#0f172a" }, accent: { DEFAULT: "#10b981" } },
           borderRadius: { '2xl': '1rem' }
         }
       }
@@ -24,14 +22,16 @@
 </head>
 <body class="bg-gradient-to-b from-white to-slate-50 text-slate-900 antialiased min-h-screen flex flex-col">
 
+  <!-- Header -->
   <header class="border-b border-slate-200 bg-white/80 backdrop-blur">
     <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-3">
         <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
       </a>
       <div>
-        <a href="/restaurant/signin"
-           class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">Restaurant Sign In</a>
+        <a href="/restaurant/signin" class="rounded-2xl bg-brand text-white px-4 py-2 text-sm hover:bg-brand/90">
+          Restaurant Sign In
+        </a>
       </div>
     </div>
   </header>
@@ -70,6 +70,12 @@
           </button>
         </form>
 
+        <div class="mt-4 text-center">
+          <button id="forgotBtn" class="text-sm text-brand underline hover:no-underline">
+            Forgot your password?
+          </button>
+        </div>
+
         <!-- Sign Up link -->
         <div class="mt-6 text-center text-sm">
           <p>Don’t have an account?
@@ -85,17 +91,14 @@
         </div>
 
         <!-- Google Sign In -->
-<!-- Google Sign In -->
-<div class="mt-4">
-  <a href="{% url 'core:customer_google_start' %}"
-     class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-         class="h-5 w-5" alt="Google">
-    <span class="font-medium">Continue with Google</span>
-  </a>
-</div>
-
-
+        <div class="mt-4">
+          <a href="{% url 'core:customer_google_start' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                 class="h-5 w-5" alt="Google">
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
       </div>
     </section>
   </main>
@@ -108,6 +111,149 @@
       <p class="mt-2">&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</p>
     </div>
   </footer>
+
+  <!-- Forgot Password Modal -->
+  <div id="fpWrap" class="fixed inset-0 z-50 hidden">
+    <div id="fpBackdrop" class="absolute inset-0 bg-black/40"></div>
+    <div class="absolute inset-0 grid place-items-center p-4">
+      <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200">
+        <div class="flex items-center justify-between px-5 py-4 border-b">
+          <div class="font-semibold">Reset your password</div>
+          <button id="fpClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+        </div>
+
+        <div class="p-5 space-y-5">
+          <div id="fpAlert" class="hidden rounded-md px-3 py-2 text-sm"></div>
+
+          <!-- Step 1: identifier -->
+          <div id="stepIdent" class="space-y-3">
+            <label class="text-sm font-medium text-slate-700">Email or phone</label>
+            <input id="fpIdent" class="w-full h-11 rounded-xl border px-3" placeholder="you@example.com or +15551234567">
+            <button id="fpSend" class="w-full h-11 rounded-xl bg-slate-900 text-white">Send code</button>
+            <p class="text-xs text-slate-500">We’ll send a 6-digit code via email or SMS.</p>
+          </div>
+
+          <!-- Step 2: OTP -->
+          <div id="stepOtp" class="space-y-3 hidden">
+            <label class="text-sm font-medium text-slate-700">Enter the 6-digit code</label>
+            <input id="fpOtp" class="w-full h-11 rounded-xl border px-3" inputmode="numeric" maxlength="10" placeholder="123456">
+            <button id="fpVerify" class="w-full h-11 rounded-xl bg-slate-900 text-white">Verify code</button>
+            <button id="fpBack1" class="w-full h-10 rounded-xl border">Back</button>
+          </div>
+
+          <!-- Step 3: PIN -->
+          <div id="stepPin" class="space-y-3 hidden">
+            <label class="text-sm font-medium text-slate-700">Enter your 4-digit PIN</label>
+            <input id="fpPin" class="w-full h-11 rounded-xl border px-3" inputmode="numeric" maxlength="10" placeholder="••••" type="password">
+            <button id="fpPinBtn" class="w-full h-11 rounded-xl bg-slate-900 text-white">Continue</button>
+            <button id="fpBack2" class="w-full h-10 rounded-xl border">Back</button>
+          </div>
+
+          <!-- Step 4: New password -->
+          <div id="stepNew" class="space-y-3 hidden">
+            <label class="text-sm font-medium text-slate-700">New password</label>
+            <input id="fpP1" class="w-full h-11 rounded-xl border px-3" type="password" placeholder="New password (min 8)">
+            <input id="fpP2" class="w-full h-11 rounded-xl border px-3" type="password" placeholder="Confirm password">
+            <button id="fpSet" class="w-full h-11 rounded-xl bg-slate-900 text-white">Set password</button>
+            <button id="fpBack3" class="w-full h-10 rounded-xl border">Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ------- helpers -------
+  const $ = s => document.querySelector(s);
+  function getCSRFCookie() {
+    const m = document.cookie.match(/(?:^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || '');
+  }
+  function alertBox(msg, ok=false){
+    const el = $('#fpAlert');
+    el.className = 'rounded-md px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+  function hideAlert(){ $('#fpAlert').classList.add('hidden'); }
+  function showStep(id){
+    ['stepIdent','stepOtp','stepPin','stepNew'].forEach(s => $('#'+s).classList.add('hidden'));
+    $('#'+id).classList.remove('hidden');
+    hideAlert();
+  }
+  async function postForm(url, body){
+    const resp = await fetch(url, {
+      method:'POST',
+      headers:{'X-CSRFToken': getCSRFCookie()},
+      body: new URLSearchParams(body || {})
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok || !data.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  }
+
+  // ------- open/close modal -------
+  $('#forgotBtn')?.addEventListener('click', () => {
+    $('#fpWrap').classList.remove('hidden');
+    showStep('stepIdent');
+  });
+  $('#fpClose')?.addEventListener('click', () => $('#fpWrap').classList.add('hidden'));
+  $('#fpBackdrop')?.addEventListener('click', () => $('#fpWrap').classList.add('hidden'));
+
+  // ------- Step 1: send code -------
+  $('#fpSend')?.addEventListener('click', async () => {
+    const ident = ($('#fpIdent').value || '').trim();
+    if(!ident) return alertBox('Enter your email or phone.');
+    try{
+      await postForm("{% url 'core:auth_reset_start' %}", {identifier: ident});
+      alertBox('Code sent. Check your email/SMS.', true);
+      showStep('stepOtp');
+    }catch(e){ alertBox('Could not send code. Try again.'); }
+  });
+
+  // back from OTP
+  $('#fpBack1')?.addEventListener('click', ()=> showStep('stepIdent'));
+
+  // ------- Step 2: verify code -------
+  $('#fpVerify')?.addEventListener('click', async () => {
+    const otp = ($('#fpOtp').value || '').trim();
+    if(!otp) return alertBox('Enter the code you received.');
+    try{
+      await postForm("{% url 'core:auth_reset_verify' %}", {otp});
+      alertBox('Code verified.', true);
+      showStep('stepPin');
+    }catch(e){ alertBox('Invalid code. Please try again.'); }
+  });
+
+  // back from PIN
+  $('#fpBack2')?.addEventListener('click', ()=> showStep('stepOtp'));
+
+  // ------- Step 3: verify PIN -------
+  $('#fpPinBtn')?.addEventListener('click', async () => {
+    const pin = ($('#fpPin').value || '').trim();
+    if(!pin) return alertBox('Enter your PIN.');
+    try{
+      await postForm("{% url 'core:auth_reset_pin' %}", {pin});
+      alertBox('PIN accepted.', true);
+      showStep('stepNew');
+    }catch(e){ alertBox('Incorrect PIN.'); }
+  });
+
+  // back from new password
+  $('#fpBack3')?.addEventListener('click', ()=> showStep('stepPin'));
+
+  // ------- Step 4: set new password -------
+  $('#fpSet')?.addEventListener('click', async () => {
+    const p1 = ($('#fpP1').value || ''), p2 = ($('#fpP2').value || '');
+    if(p1.length < 8) return alertBox('Password must be at least 8 characters.');
+    if(p1 !== p2)    return alertBox('Passwords do not match.');
+    try{
+      await postForm("{% url 'core:auth_reset_finalize' %}", {password1: p1, password2: p2});
+      alertBox('Password updated. You can now sign in.', true);
+      setTimeout(()=> { $('#fpWrap').classList.add('hidden'); }, 900);
+    }catch(e){ alertBox('Could not update password.'); }
+  });
+</script>
 
 </body>
 </html>
