@@ -11,7 +11,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from decouple import config
 
-from .models import CustomerProfile, Member, TicketLink
+from .models import CustomerProfile, Member, TicketLink, RestaurantProfile
 from .omnivore import (
     get_ticket,
     get_ticket_items,
@@ -68,6 +68,11 @@ def _due_member_for_user(user) -> Member | None:
     )
 
 
+# views.py
+from django.conf import settings
+from django.utils.html import mark_safe
+import json
+
 @ensure_csrf_cookie
 def customer_home(request: HttpRequest) -> HttpResponse:
     """
@@ -76,6 +81,8 @@ def customer_home(request: HttpRequest) -> HttpResponse:
       - has_live_order: bool
       - member_number: str
       - card_brand / card_last4 (from Stripe, if available)
+      - maps_api_key: str (for Google Maps JS)
+      - restaurants_json: JSON (optional; for map + rankings)
     """
     user = request.user
     has_customer = False
@@ -112,16 +119,12 @@ def customer_home(request: HttpRequest) -> HttpResponse:
                 member_number = (m.number or "").strip()
 
         # ---- Stripe card details (brand / last4) ----
-        if cp and cp.stripe_customer_id:
-            pm_id = (cp.default_payment_method or "").strip()
-
+        if cp and getattr(cp, "stripe_customer_id", None):
+            pm_id = (getattr(cp, "default_payment_method", "") or "").strip()
             try:
-                # (1) If no stored PM id, try the Customer's invoice_settings.default_payment_method
                 if not pm_id:
                     cust = stripe.Customer.retrieve(cp.stripe_customer_id)
                     pm_id = (cust.get("invoice_settings", {}) or {}).get("default_payment_method") or ""
-
-                # (2) Still nothing? Use the first attached card on the customer
                 if not pm_id:
                     pms = stripe.PaymentMethod.list(
                         customer=cp.stripe_customer_id,
@@ -130,8 +133,6 @@ def customer_home(request: HttpRequest) -> HttpResponse:
                     )
                     if pms and pms.data:
                         pm_id = pms.data[0].id
-
-                # (3) If we have a PM id, read brand/last4
                 if pm_id:
                     pm = stripe.PaymentMethod.retrieve(pm_id)
                     card = (pm or {}).get("card") or {}
@@ -140,8 +141,29 @@ def customer_home(request: HttpRequest) -> HttpResponse:
                         card_brand = brand[:1].upper() + brand[1:] if brand else ""
                         card_last4 = (card.get("last4") or "").strip()
             except Exception:
-                # Swallow errors so the page still renders; you can log this if you like.
+                # Swallow errors so the page still renders.
                 pass
+
+    # ---- Google Maps API key ----
+    maps_api_key = config("GOOGLE_MAPS_API")
+
+    # ---- (Optional) Real restaurants for the map/list ----
+    # If you don't want to ship real data yet, leave [] and the HTML will use demoRestaurants.
+    def fmt_addr(r):
+        parts = [r.addr_line1, r.city, r.state]
+        return ", ".join([p for p in parts if p])
+
+    restaurants = []
+    for r in RestaurantProfile.objects.filter(is_active=True).order_by("id"):
+        restaurants.append({
+            "id": r.id,
+            "name": r.display_name(),
+            "address": fmt_addr(r) or "",
+            "city": (r.city or ""),
+            # If you later add lat/lng fields, include them and the front-end will skip geocoding:
+            # "lat": r.lat, "lng": r.lng,
+            "tx": (r.stripe_cached or {}).get("tx_14d")  # optional metric if you cache it
+        })
 
     ctx = {
         "has_customer": has_customer,
@@ -149,6 +171,8 @@ def customer_home(request: HttpRequest) -> HttpResponse:
         "member_number": member_number,
         "card_brand": card_brand,
         "card_last4": card_last4,
+        "maps_api_key": maps_api_key,
+        "restaurants_json": mark_safe(json.dumps(restaurants)),  # safe because we json-dumped it
     }
     return render(request, "core/profile.html", ctx)
 

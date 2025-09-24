@@ -197,6 +197,21 @@
         </p>
       </div>
 
+      <!-- Map + city search -->
+      <div class="mt-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-3">
+          <input id="citySearch"
+                 placeholder="Search a city (e.g., San Francisco)"
+                 class="flex-1 rounded-2xl border px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                 type="text" autocomplete="off" />
+          <button id="clearCity"
+                  class="rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">
+            Clear
+          </button>
+        </div>
+        <div id="map" class="mt-4 rounded-2xl" style="height: 420px;"></div>
+      </div>
+
       <div id="rankings" class="mt-6">
         <ul id="rankList" class="divide-y"></ul>
       </div>
@@ -597,6 +612,197 @@
       // start polling only if live
       if (hasLive) fetchReceipt({silent:false});
     });
+
+
+
+    /* ========== GOOGLE MAPS: Restaurants + City Filter ========== */
+    let gmap, gmarkers = [], ginfo, geocoder, allRestaurants = [];
+    let cityAutocomplete;
+
+    async function fetchRestaurants(){
+      // TODO: swap to backend when ready:
+      // const r = await fetch('/api/restaurants/map', {headers:{Accept:'application/json'}});
+      // const d = await r.json(); return d.items; // [{id,name,address,city,lat,lng,tx}]
+      return demoRestaurants.map((r, idx) => ({
+        id: idx+1,
+        name: r.name,
+        address: r.address,
+        city: (r.address.split(",")[1] || "").trim(),
+        lat: null, lng: null,
+        tx: r.tx
+      }));
+    }
+
+    function cacheKey(addr){ return `geo:${addr}`; }
+
+    async function geocodeOnce(addr){
+      const key = cacheKey(addr);
+      const cached = sessionStorage.getItem(key);
+      if (cached) return JSON.parse(cached);
+      return new Promise((resolve) => {
+        geocoder.geocode({ address: addr }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            const loc = results[0].geometry.location;
+            const pt = { lat: loc.lat(), lng: loc.lng() };
+            sessionStorage.setItem(key, JSON.stringify(pt));
+            resolve(pt);
+          } else {
+            resolve(null);
+          }
+        });
+      });
+    }
+
+    function markerIcon(){
+      return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 6,
+        fillColor: '#0f172a',
+        fillOpacity: 0.95,
+        strokeColor: '#0f172a',
+        strokeWeight: 1
+      };
+    }
+
+    function clearMarkers(){ gmarkers.forEach(m => m.setMap(null)); gmarkers = []; }
+
+    function addMarker(r){
+      const m = new google.maps.Marker({
+        position: {lat:r.lat, lng:r.lng},
+        map: gmap,
+        title: r.name,
+        icon: markerIcon()
+      });
+      m.__data = r;
+      m.addListener('click', () => {
+        const html = `
+          <div style="min-width:220px">
+            <div style="font-weight:600">${r.name}</div>
+            <div style="color:#64748b; font-size:12px">${r.address}</div>
+            <div style="margin-top:6px; font-size:12px">Transactions: <b>${r.tx ?? '-'}</b></div>
+            <div style="margin-top:8px">
+              <a target="_blank" rel="noreferrer"
+                 href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}"
+                 style="text-decoration:underline">Open in Google Maps</a>
+            </div>
+          </div>`;
+        ginfo.setContent(html);
+        ginfo.open(gmap, m);
+
+        // Sync details panel
+        $("#detailsEmpty")?.classList.add("hidden");
+        $("#detailsBox")?.classList.remove("hidden");
+        $("#dName").textContent = r.name;
+        $("#dAddr").textContent = r.address;
+        $("#dTx").textContent = r.tx ?? "-";
+        $("#dOpened").textContent = "";
+        $("#mapsLink").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}`;
+      });
+      gmarkers.push(m);
+    }
+
+    function fitToMarkers(markers){
+      if (!markers.length) return;
+      const bounds = new google.maps.LatLngBounds();
+      markers.forEach(m => bounds.extend(m.getPosition()));
+      gmap.fitBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
+    }
+
+    function filterListByCity(city){
+      const ul = $("#rankList");
+      if (!ul) return;
+      const normalized = (city || "").toLowerCase();
+      const rows = Array.from(ul.querySelectorAll("li"));
+      rows.forEach(li => {
+        const addr = li.querySelector(".text-xs")?.textContent || "";
+        const thisCity = (addr.split(",")[1] || "").trim().toLowerCase();
+        li.classList.toggle("hidden", normalized && thisCity !== normalized);
+      });
+    }
+
+    function filterMarkersByCity(city){
+      const normalized = (city || "").toLowerCase();
+      const visible = [];
+      gmarkers.forEach(m => {
+        const c = (m.__data.city || "").toLowerCase();
+        const show = !normalized || c === normalized;
+        m.setVisible(show);
+        if (show) visible.push(m);
+      });
+      if (visible.length) fitToMarkers(visible);
+    }
+
+    async function buildMarkers(items){
+      const withGeo = await Promise.all(items.map(async r => {
+        if (r.lat && r.lng) return r;
+        const pt = await geocodeOnce(r.address);
+        if (pt) { r.lat = pt.lat; r.lng = pt.lng; }
+        return r;
+      }));
+      allRestaurants = withGeo.filter(r => r.lat && r.lng);
+
+      clearMarkers();
+      allRestaurants.forEach(addMarker);
+      fitToMarkers(gmarkers);
+    }
+
+    function setupPlacesAutocomplete(){
+      const input = $("#citySearch");
+      cityAutocomplete = new google.maps.places.Autocomplete(input, {
+        types: ["(cities)"],
+      });
+      cityAutocomplete.addListener("place_changed", () => {
+        const place = cityAutocomplete.getPlace();
+        let city = "";
+        if (place && place.address_components) {
+          const comp = place.address_components.find(c => c.types.includes("locality")) ||
+                       place.address_components.find(c => c.types.includes("postal_town")) ||
+                       place.address_components.find(c => c.types.includes("administrative_area_level_3"));
+          city = comp ? comp.long_name : (place.name || "");
+        } else {
+          city = input.value.trim();
+        }
+        if (place && place.geometry) {
+          if (place.geometry.viewport) gmap.fitBounds(place.geometry.viewport);
+          else if (place.geometry.location) gmap.setCenter(place.geometry.location);
+        }
+        filterMarkersByCity(city);
+        filterListByCity(city);
+      });
+
+      $("#clearCity")?.addEventListener("click", () => {
+        $("#citySearch").value = "";
+        filterMarkersByCity("");
+        filterListByCity("");
+        fitToMarkers(gmarkers);
+      });
+    }
+
+    // Expose init for Google loader
+    window.initDndMap = async function initDndMap(){
+      geocoder = new google.maps.Geocoder();
+      ginfo = new google.maps.InfoWindow();
+
+      // Initial center: SF as a neutral start
+      gmap = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 37.773972, lng: -122.431297 },
+        zoom: 6,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+      });
+
+      setupPlacesAutocomplete();
+
+      const items = await fetchRestaurants();
+      await buildMarkers(items);
+    };
   </script>
+
+  <!-- Google Maps loader (enable Maps JavaScript API + Places API & restrict the key) -->
+<script async
+  src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places&callback=initDndMap">
+</script>
+
 </body>
 </html>

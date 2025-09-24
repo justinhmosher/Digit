@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.encoding import force_str
 import uuid, hashlib
+from django.db.models import Q
 
 # ---------- Profiles ----------
 class OwnerProfile(models.Model):
@@ -228,6 +229,37 @@ class TicketLink(models.Model):
 
     def __str__(self):
         return f"{self.member_id} · {self.restaurant.display_name()} · {self.ticket_number or self.ticket_id} · {self.status}"
+
+
+class Review(models.Model):
+    restaurant   = models.ForeignKey(RestaurantProfile, on_delete=models.CASCADE, related_name="reviews")
+    ticket_link  = models.ForeignKey("TicketLink", null=True, blank=True, on_delete=models.SET_NULL, related_name="reviews")
+    member       = models.ForeignKey("Member", null=True, blank=True, on_delete=models.SET_NULL, related_name="reviews")
+
+    stars        = models.PositiveSmallIntegerField()  # 1..5
+    comment      = models.TextField(blank=True)
+
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            # Prevent duplicate reviews per ticket (when we have a ticket)
+            models.UniqueConstraint(
+                fields=["ticket_link"],
+                condition=Q(ticket_link__isnull=False),
+                name="uniq_review_per_ticketlink",
+            ),
+        ]
+
+    def clean(self):
+        if not (1 <= int(self.stars) <= 5):
+            raise ValueError("Stars must be between 1 and 5")
+
+    def __str__(self):
+        who = self.user_id or self.member_id or "anon"
+        return f"Review({self.stars}★) for {self.restaurant_id} by {who}"
+
 
 
 
