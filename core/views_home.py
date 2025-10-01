@@ -1,39 +1,40 @@
 # core/views_home.py
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+from typing import Optional
+
+from django.conf import settings
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpRequest, HttpResponse
 from django.shortcuts import render, redirect, resolve_url
 from django.utils import timezone
+from django.utils.html import mark_safe
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_protect
 from django.views.decorators.http import require_GET, require_POST
 
+# Third-party config
 from decouple import config
+import stripe
 
-from .models import CustomerProfile, Member, TicketLink, RestaurantProfile
+# Set Stripe secret (keeps prior behavior)
+stripe.api_key = config("STRIPE_SK")
+
+# Local imports
+from .models import (
+    CustomerProfile,
+    Member,
+    TicketLink,
+    RestaurantProfile,
+    Review,  # <-- make sure Review model exists as discussed
+)
 from .omnivore import (
     get_ticket,
     get_ticket_items,
-    create_external_payment,
     create_payment_with_tender_type,
 )
-
-# Stripe for card brand/last4 on Profile
-import stripe
-
-from django.contrib.auth import logout
-from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render, redirect, resolve_url
-from django.views.decorators.csrf import ensure_csrf_cookie
-
-from .models import CustomerProfile, Member, TicketLink
-
-# add these if not already present in this file
-import stripe
-from decouple import config
-stripe.api_key = config("STRIPE_SK")
 from core.views_processing import (
     charge_customer_off_session,
     refund_payment_intent,
@@ -42,7 +43,10 @@ from core.views_processing import (
 )
 
 
-def _member_for_user(user) -> Member | None:
+# --------------------
+# Small helpers (unchanged semantics)
+# --------------------
+def _member_for_user(user) -> Optional[Member]:
     if not getattr(user, "is_authenticated", False):
         return None
     cp = getattr(user, "customer_profile", None)
@@ -50,13 +54,14 @@ def _member_for_user(user) -> Member | None:
         return None
     return Member.objects.filter(customer=cp).first()
 
+
 def _user_has_customer(user) -> bool:
     return bool(getattr(user, "customer_profile", None))
 
-def _due_member_for_user(user) -> Member | None:
+
+def _due_member_for_user(user) -> Optional[Member]:
     """
-    Return the most recently-created Member for ANY CustomerProfile owned by this user.
-    This avoids issues if multiple CustomerProfiles were created during testing.
+    Most recently-created Member for ANY CustomerProfile owned by this user.
     """
     if not getattr(user, "is_authenticated", False):
         return None
@@ -68,21 +73,40 @@ def _due_member_for_user(user) -> Member | None:
     )
 
 
-# views.py
-from django.conf import settings
-from django.utils.html import mark_safe
-import json
+def _money_cents_from_ticket(t: dict) -> tuple[int, int, int, int]:
+    """
+    Returns (subtotal, tax, total, due) in cents with sensible fallbacks.
+    """
+    items = t.get("items", []) if t else []
+    totals = (t or {}).get("totals") or {}
 
+    subtotal_calc = 0
+    for i in items:
+        try:
+            qty = int(i.get("quantity", 1) or 1)
+            cents = int(i.get("price", 0) or 0)
+        except Exception:
+            qty, cents = 1, 0
+        subtotal_calc += qty * cents
+
+    subtotal = int(totals.get("sub_total", subtotal_calc) or subtotal_calc)
+    tax      = int(totals.get("tax", 0) or 0)
+    total    = int(totals.get("total", subtotal + tax) or (subtotal + tax))
+    due      = int(totals.get("due", total) or total)
+    return subtotal, tax, total, due
+
+
+# --------------------
+# Home
+# --------------------
 @ensure_csrf_cookie
 def customer_home(request: HttpRequest) -> HttpResponse:
     """
     Render the profile/home page with:
-      - has_customer: bool
-      - has_live_order: bool
-      - member_number: str
-      - card_brand / card_last4 (from Stripe, if available)
-      - maps_api_key: str (for Google Maps JS)
-      - restaurants_json: JSON (optional; for map + rankings)
+      - has_customer, has_live_order, member_number
+      - Stripe card brand/last4
+      - maps_api_key
+      - restaurants_json (for the map; can be empty and front-end will use demo)
     """
     user = request.user
     has_customer = False
@@ -96,7 +120,7 @@ def customer_home(request: HttpRequest) -> HttpResponse:
         cp = CustomerProfile.objects.filter(user=user).order_by("-id").first()
         has_customer = cp is not None
 
-        # Prefer the member tied to the newest *open* link
+        # Prefer newest open link
         open_link = (
             TicketLink.objects
             .filter(member__customer__user=user, status="open")
@@ -108,7 +132,7 @@ def customer_home(request: HttpRequest) -> HttpResponse:
             has_live_order = True
             member_number = (open_link.member.number or "").strip()
         else:
-            # Fallback: latest member for this user (for the Profile tab)
+            # Fallback: latest member for this user
             m = (
                 Member.objects
                 .filter(customer__user=user)
@@ -118,7 +142,7 @@ def customer_home(request: HttpRequest) -> HttpResponse:
             if m:
                 member_number = (m.number or "").strip()
 
-        # ---- Stripe card details (brand / last4) ----
+        # Stripe card details (brand/last4)
         if cp and getattr(cp, "stripe_customer_id", None):
             pm_id = (getattr(cp, "default_payment_method", "") or "").strip()
             try:
@@ -141,15 +165,14 @@ def customer_home(request: HttpRequest) -> HttpResponse:
                         card_brand = brand[:1].upper() + brand[1:] if brand else ""
                         card_last4 = (card.get("last4") or "").strip()
             except Exception:
-                # Swallow errors so the page still renders.
+                # Page still renders fine if Stripe fails
                 pass
 
-    # ---- Google Maps API key ----
-    maps_api_key = config("GOOGLE_MAPS_API")
+    # Google Maps API key
+    maps_api_key = config("GOOGLE_MAPS_API", default="")
 
-    # ---- (Optional) Real restaurants for the map/list ----
-    # If you don't want to ship real data yet, leave [] and the HTML will use demoRestaurants.
-    def fmt_addr(r):
+    # Restaurants payload for the map (optional)
+    def fmt_addr(r: RestaurantProfile) -> str:
         parts = [r.addr_line1, r.city, r.state]
         return ", ".join([p for p in parts if p])
 
@@ -160,9 +183,9 @@ def customer_home(request: HttpRequest) -> HttpResponse:
             "name": r.display_name(),
             "address": fmt_addr(r) or "",
             "city": (r.city or ""),
-            # If you later add lat/lng fields, include them and the front-end will skip geocoding:
+            # If you add lat/lng fields later, include them to skip geocoding on the client
             # "lat": r.lat, "lng": r.lng,
-            "tx": (r.stripe_cached or {}).get("tx_14d")  # optional metric if you cache it
+            "tx": (r.stripe_cached or {}).get("tx_14d"),
         })
 
     ctx = {
@@ -172,25 +195,14 @@ def customer_home(request: HttpRequest) -> HttpResponse:
         "card_brand": card_brand,
         "card_last4": card_last4,
         "maps_api_key": maps_api_key,
-        "restaurants_json": mark_safe(json.dumps(restaurants)),  # safe because we json-dumped it
+        "restaurants_json": mark_safe(json.dumps(restaurants)),
     }
     return render(request, "core/profile.html", ctx)
 
 
-
-def _due_cents(ticket: dict) -> int:
-    totals = (ticket or {}).get("totals") or {}
-    if totals.get("due") is not None:
-        try:
-            return int(totals.get("due") or 0)
-        except Exception:
-            pass
-    try:
-        return int(totals.get("total") or 0)
-    except Exception:
-        return 0
-
-
+# --------------------
+# Signout (unchanged)
+# --------------------
 def signout(request: HttpRequest) -> HttpResponse:
     logout(request)
     nxt = request.GET.get("next")
@@ -199,18 +211,22 @@ def signout(request: HttpRequest) -> HttpResponse:
     return redirect(resolve_url("core:profile"))
 
 
+# --------------------
+# Live ticket receipt (used by /api/member/<member>/receipt)
+# --------------------
 @require_GET
-def api_ticket_receipt(request: HttpRequest, member: str) -> JsonResponse:
+def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse:
     """
     Return the live receipt for the most recent OPEN TicketLink for this user+member.
+    Path: /api/member/<member>/receipt
     """
     if not request.user.is_authenticated:
         return JsonResponse({"ok": False, "error": "Auth required."}, status=401)
 
-    # Authorize: the member number in the URL must belong to THIS user
+    # Authorize: the member number must belong to THIS user
     m = (
         Member.objects
-        .filter(number=str(member), customer__user=request.user)
+        .filter(number=str(member_number), customer__user=request.user)
         .first()
     )
     if not m:
@@ -226,18 +242,18 @@ def api_ticket_receipt(request: HttpRequest, member: str) -> JsonResponse:
     if not tl:
         return JsonResponse({"ok": False, "error": "No active ticket."}, status=404)
 
-    # POS location from the restaurant record
-    loc_id = (tl.restaurant.omnivore_location_id or "").strip()
+    rp: RestaurantProfile = tl.restaurant
+    loc_id = (rp.omnivore_location_id or "").strip()
     if not loc_id:
         return JsonResponse({"ok": False, "error": "Restaurant not wired to POS."}, status=500)
 
     # Live POS data
-    t = get_ticket(loc_id, tl.ticket_id)
-    items = get_ticket_items(loc_id, tl.ticket_id)
+    t = get_ticket(loc_id, tl.ticket_id) or {}
+    items = get_ticket_items(loc_id, tl.ticket_id) or []
 
-    # Build rows + compute subtotal if POS doesn't provide it
-    subtotal_calc = 0
+    # Build rows + totals
     rows = []
+    subtotal_calc = 0
     for i in items:
         qty = int(i.get("quantity", 1) or 1)
         cents = int(i.get("price", 0) or 0)
@@ -256,69 +272,6 @@ def api_ticket_receipt(request: HttpRequest, member: str) -> JsonResponse:
     return JsonResponse({
         "ok": True,
         "ticket_id": tl.ticket_id,
-        "server": tl.server_name,
-        "items": rows,
-        "subtotal_cents": subtotal,
-        "tax_cents": tax,
-        "total_cents": total,
-        "due_cents": due,
-    })
-
-@require_GET
-def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse:
-    # auth guard
-    def _assert_member_ownership(req: HttpRequest, num: str) -> Member | None:
-        if not req.user.is_authenticated:
-            return None
-        m = _member_for_user(req.user)
-        if not m or m.number != str(num):
-            return None
-        return m
-
-    m = _assert_member_ownership(request, member_number)
-    if not m:
-        return JsonResponse({"ok": False, "error": "Not authorized for this member."}, status=403)
-
-    tl = (
-        TicketLink.objects
-        .filter(member=m, status="open")
-        .select_related("restaurant")
-        .order_by("-opened_at")
-        .first()
-    )
-    if not tl:
-        return JsonResponse({"ok": False, "error": "No active ticket."}, status=404)
-
-    location_id = (tl.restaurant.omnivore_location_id or "").strip()
-    if not location_id:
-        return JsonResponse({"ok": False, "error": "Restaurant not wired to POS."}, status=500)
-
-    # Pull live ticket + items from Omnivore
-    t = get_ticket(location_id, tl.ticket_id)
-    items = get_ticket_items(location_id, tl.ticket_id)
-
-    # Build line rows + compute fallback subtotal
-    rows = []
-    subtotal_calc = 0
-    for i in items:
-        qty = int(i.get("quantity", 1) or 1)
-        cents = int(i.get("price", 0) or 0)
-        subtotal_calc += qty * cents
-        rows.append({"name": i.get("name"), "qty": qty, "cents": cents})
-
-    totals   = (t or {}).get("totals") or {}
-    subtotal = int(totals.get("sub_total", subtotal_calc) or subtotal_calc)
-    tax      = int(totals.get("tax", 0) or 0)
-    total    = int(totals.get("total", subtotal + tax) or (subtotal + tax))
-    due      = int(totals.get("due", total) or total)
-
-    # remember what we last saw
-    tl.last_total_cents = due
-    tl.save(update_fields=["last_total_cents"])
-
-    return JsonResponse({
-        "ok": True,
-        "ticket_id": tl.ticket_id,
         "server": tl.server_name or "",
         "items": rows,
         "subtotal_cents": subtotal,
@@ -328,25 +281,113 @@ def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse
     })
 
 
-
+# --------------------
+# Customer close tab (used by /api/member/<member>/close)
+# Includes review context in success JSON
+# --------------------
 @ensure_csrf_cookie
 @csrf_protect
 @require_POST
 def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     """
-    Customer close (Stripe Connect version):
-      - Auth: <member> must belong to signed-in user
-      - Body: {"tip_cents": <int>, "reference": "customer-close"}
-      - Compute amount due from POS; gross = amount + tip
-      - Charge saved card (customer.default_payment_method) off-session
-        * destination = restaurant.stripe_account_id (if present)
-      - Post to POS; if POS post fails, refund Stripe
-      - Close all open TicketLinks for that ticket with snapshots
+    Customer close (Stripe Connect version)
+    Body: {"tip_cents": <int>, "reference": "customer-close"}
+
+    Enhancements:
+      - Snapshots the POS ticket's line items into TicketLink.items_json
+      - Snapshots POS totals (subtotal/tax/discounts/total) into TicketLink fields
+      - Persists raw POS ticket JSON into TicketLink.raw_ticket_json
+      - Fills merchant snapshot fields from RestaurantProfile if empty
     """
+    # ---------- Local helpers (self-contained) ----------
+    def _get_embedded_list(obj, key):
+        """Safely return list from obj['_embedded'][key] or obj[key] or []."""
+        if not obj:
+            return []
+        emb = obj.get("_embedded") or {}
+        if isinstance(emb, dict) and isinstance(emb.get(key), list):
+            return emb.get(key) or []
+        if isinstance(obj.get(key), list):
+            return obj.get(key) or []
+        return []
+
+    def _normalize_modifiers(line_item: dict) -> list:
+        """Collect modifiers/options in a compact, receipt-friendly structure."""
+        mods = []
+        for bucket in ("modifiers", "options", "applied_modifiers"):
+            for m in _get_embedded_list(line_item, bucket):
+                mods.append({
+                    "id":          str(m.get("id") or m.get("modifier_id") or m.get("pos_id") or ""),
+                    "name":        m.get("name") or "",
+                    "qty":         int(m.get("quantity") or 1),
+                    "price_cents": int(m.get("price") or m.get("price_per_unit") or 0),
+                    "raw":         m,
+                })
+        return mods
+
+    def _normalize_line_items(ticket_json: dict) -> list:
+        """Map Omnivore ticket lines -> compact dicts for TicketLink.items_json."""
+        items = []
+        line_items = _get_embedded_list(ticket_json, "items") or _get_embedded_list(ticket_json, "line_items")
+        for li in line_items:
+            mi_val = li.get("menu_item")
+            if isinstance(mi_val, dict):
+                menu_item_id = str(mi_val.get("id") or mi_val.get("pos_id") or "")
+                menu_item_name = mi_val.get("name") or li.get("name") or ""
+            else:
+                menu_item_id = str(mi_val or li.get("menu_item_id") or li.get("pos_id") or "")
+                menu_item_name = li.get("name") or ""
+
+            price_level = li.get("price_level") or li.get("price_level_id") or None
+
+            item_obj = {
+                "menu_item_id": menu_item_id,
+                "name":         menu_item_name,
+                "qty":          int(li.get("quantity") or 1),
+                "seat":         li.get("seat"),
+                "price_level":  str(price_level) if price_level is not None else None,
+                "price_cents":  int(li.get("price") or li.get("price_per_unit") or li.get("unit_price") or 0),
+                "total_cents":  int(li.get("total") or li.get("extended_price") or 0),
+                "voided":       bool(li.get("void") or li.get("voided") or False),
+                "mods":         _normalize_modifiers(li),
+                "raw":          li,
+            }
+            items.append(item_obj)
+        return items
+
+    def _totals_from_ticket(ticket_json: dict) -> dict:
+        totals = (ticket_json or {}).get("totals") or {}
+        to_int = lambda v: int(v) if v not in (None, "") else 0
+        return {
+            "subtotal_cents":        to_int(totals.get("subtotal")),
+            "tax_cents":             to_int(totals.get("tax")),
+            "discounts_cents":       to_int(totals.get("discounts") or totals.get("discount") or 0),
+            "total_cents":           to_int(totals.get("total")),
+            "due_cents":             to_int(totals.get("due")),
+            "service_charge_cents":  to_int(totals.get("service_charge") or totals.get("svc_charge") or 0),
+        }
+
+    def _fill_merchant_snapshot(link: TicketLink, rp: RestaurantProfile):
+        if not link.merchant_name:
+            link.merchant_name = rp.display_name() or (getattr(rp, "legal_name", "") or "")
+        if not link.merchant_addr1:
+            link.merchant_addr1 = getattr(rp, "address1", "") or ""
+        if not link.merchant_addr2:
+            link.merchant_addr2 = getattr(rp, "address2", "") or ""
+        if not link.merchant_city:
+            link.merchant_city = getattr(rp, "city", "") or ""
+        if not link.merchant_state:
+            link.merchant_state = getattr(rp, "state", "") or ""
+        if not link.merchant_zip:
+            link.merchant_zip = getattr(rp, "zipcode", "") or ""
+        if not link.merchant_phone:
+            link.merchant_phone = getattr(rp, "phone", "") or ""
+
+    # ---------- Auth ----------
     if not request.user.is_authenticated:
         return JsonResponse({"ok": False, "error": "auth_required"}, status=401)
 
-    # 0) Ensure the member belongs to this user
+    # ---------- Ensure member belongs to user ----------
     m = (
         Member.objects
         .select_related("customer")
@@ -356,10 +397,10 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     if not m:
         return JsonResponse({"ok": False, "error": "not_authorized_for_member"}, status=403)
 
-    # Must have at least one open link to find the ticket + restaurant
+    # ---------- Find open ticket link ----------
     tl = (
         TicketLink.objects
-        .select_related("restaurant")
+        .select_related("restaurant", "member", "member__customer")
         .filter(member=m, status="open")
         .order_by("-opened_at")
         .first()
@@ -368,11 +409,11 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         return JsonResponse({"ok": False, "error": "no_active_ticket"}, status=404)
 
     rp: RestaurantProfile = tl.restaurant
-    loc_id = (rp.omnivore_location_id or LOCATION_ID or "").strip()
+    loc_id = (rp.omnivore_location_id or "").strip()
     if not loc_id:
         return JsonResponse({"ok": False, "error": "restaurant_missing_location_id"}, status=500)
 
-    # Parse body
+    # ---------- Parse body ----------
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
@@ -383,12 +424,13 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     except Exception:
         tip_cents = 0
 
-    # 1) Fresh due from POS (fallback to snapshots)
+    # ---------- Get fresh due from POS (fallback to snapshots) ----------
     try:
-        t = get_ticket(loc_id, tl.ticket_id)
+        t = get_ticket(loc_id, tl.ticket_id)  # POS ticket JSON
         totals = (t or {}).get("totals") or {}
         base_due = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
     except Exception:
+        t = None
         base_due = 0
 
     if base_due <= 0:
@@ -400,13 +442,12 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
 
     gross_cents = base_due + tip_cents
 
-    # 2) Identify billable customer + payment method
+    # ---------- Identify customer + PM ----------
     cp: CustomerProfile | None = getattr(m, "customer", None)
     if not cp or not cp.stripe_customer_id or not cp.default_payment_method:
         return JsonResponse({"ok": False, "error": "customer_missing_payment_method"}, status=400)
 
-    # 3) Charge via Stripe (off-session), routing funds to the restaurant’s connected acct if present
-    #    Build deterministic idempotency key so accidental double-taps don’t double-charge.
+    # ---------- Charge via Stripe (off-session) ----------
     stripe_meta = {
         "ticket_id": tl.ticket_id,
         "restaurant_id": str(rp.id),
@@ -425,7 +466,6 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     })
 
     try:
-        # charge_customer_off_session already supports Connect routing (destination)
         intent = charge_customer_off_session(
             customer_id=cp.stripe_customer_id,
             payment_method_id=cp.default_payment_method,
@@ -434,13 +474,10 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
             description=description,
             idempotency_key=idem_key,
             metadata=stripe_meta,
-            # Optional platform fee:
-            # application_fee_amount=your_platform_fee_cents_or_None,
             destination_account_id=(rp.stripe_account_id or None),
             on_behalf_of=(rp.stripe_account_id or None),
         )
     except PaymentError as e:
-        # Bubble rich info for UI/observability
         return JsonResponse({
             "ok": False,
             "error": "stripe_charge_failed",
@@ -450,18 +487,17 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
             "payment_intent": e.payment_intent_id,
         }, status=402)
 
-    # 4) Post to POS. If POS fails, refund the Stripe charge to avoid charging without closing POS.
+    # ---------- Post to POS (payment). If POS fails, refund Stripe ----------
     try:
         create_payment_with_tender_type(
             location_id=loc_id,
             ticket_id=tl.ticket_id,
             amount_cents=base_due,
-            tender_type_id=None,   # adapter ignores
-            reference=reference,   # kept for logs
+            tender_type_id=None,
+            reference=reference,
             tip_cents=tip_cents,
         )
     except Exception as pos_err:
-        # Try to refund the charge
         try:
             if getattr(intent, "id", None):
                 refund_payment_intent(intent.id, reason="requested_by_customer")
@@ -481,21 +517,62 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
             "payment_intent": getattr(intent, "id", None),
         }, status=502)
 
-    # 5) Close ALL open TicketLinks for this ticket and snapshot amounts
+    # ---------- Close links + SNAPSHOT items/totals/raw ----------
     now = timezone.now()
     open_links = list(TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open"))
+
+    # Assemble normalized items + totals from POS ticket if available
+    ticket_json = t or {}
+    try:
+        normalized_items = _normalize_line_items(ticket_json) if ticket_json else []
+    except Exception:
+        normalized_items = []
+
+    normalized_totals = {
+        "subtotal_cents": 0,
+        "tax_cents": 0,
+        "discounts_cents": 0,
+        "total_cents": base_due,
+        "due_cents": 0,
+        "service_charge_cents": 0,
+    }
+    try:
+        tt = _totals_from_ticket(ticket_json) if ticket_json else {}
+        if isinstance(tt, dict) and any(tt.values()):
+            normalized_totals.update(tt)
+    except Exception:
+        pass
+
+    update_fields = [
+        "status", "closed_at",
+        "total_cents", "tip_cents", "paid_cents",
+        "discounts_cents", "subtotal_cents", "tax_cents",
+        "items_json", "raw_ticket_json", "pos_ref",
+        "merchant_name", "merchant_addr1", "merchant_addr2",
+        "merchant_city", "merchant_state", "merchant_zip", "merchant_phone",
+    ]
+
     for link in open_links:
+        _fill_merchant_snapshot(link, rp)
+
         link.status = "closed"
         link.closed_at = now
-        link.total_cents = base_due
-        link.tip_cents = tip_cents
-        link.paid_cents = gross_cents
-        link.pos_ref = reference
-        link.save(update_fields=[
-            "status", "closed_at",
-            "total_cents", "tip_cents", "paid_cents", "pos_ref",
-        ])
 
+        link.total_cents     = int(normalized_totals.get("total_cents") or base_due or 0)
+        link.subtotal_cents  = int(normalized_totals.get("subtotal_cents") or 0)
+        link.tax_cents       = int(normalized_totals.get("tax_cents") or 0)
+        link.discounts_cents = int(normalized_totals.get("discounts_cents") or 0)
+        link.tip_cents       = int(tip_cents or 0)
+        link.paid_cents      = int(gross_cents or 0)
+
+        link.items_json      = normalized_items or link.items_json or []
+        link.raw_ticket_json = ticket_json or link.raw_ticket_json or {}
+
+        link.pos_ref = reference
+
+        link.save(update_fields=update_fields)
+
+    # ---------- Success + review context ----------
     return JsonResponse({
         "ok": True,
         "closed": len(open_links),
@@ -503,4 +580,91 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         "tip_cents": tip_cents,
         "payment_intent": getattr(intent, "id", None),
         "destination": rp.stripe_account_id or None,
+        "review": {
+            "restaurant_id": rp.id,
+            "restaurant_name": rp.display_name(),
+            "ticket_link_id": tl.id,
+        },
     })
+
+# --------------------
+# Submit a review
+# --------------------
+@require_POST
+@csrf_protect
+@login_required
+def api_submit_review(request: HttpRequest) -> JsonResponse:
+    """
+    Body JSON:
+      { "restaurant_id": int, "ticket_link_id": int|null, "stars": 1..5, "comment": "..." }
+
+    Guards:
+      - user must be authenticated
+      - if ticket_link_id provided, it must belong to THIS user (via Member->CustomerProfile->user)
+      - one review per ticket_link
+    """
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        data = {}
+
+    rid  = data.get("restaurant_id")
+    tlid = data.get("ticket_link_id")
+
+    try:
+        stars = int(data.get("stars") or 0)
+    except Exception:
+        stars = 0
+
+    comment = (data.get("comment") or "").strip()
+
+    if not rid or not (1 <= stars <= 5):
+        return JsonResponse({"ok": False, "error": "invalid_input"}, status=400)
+
+    rp = RestaurantProfile.objects.filter(id=rid, is_active=True).first()
+    if not rp:
+        return JsonResponse({"ok": False, "error": "restaurant_not_found"}, status=404)
+
+    tl = None
+    m = None
+
+    if tlid:
+        # Load the ticket and verify it belongs to the signed-in user
+        tl = (
+            TicketLink.objects
+            .select_related("member", "member__customer")
+            .filter(id=tlid)
+            .first()
+        )
+        if not tl:
+            return JsonResponse({"ok": False, "error": "ticket_not_found"}, status=404)
+
+        # Authz: the ticket's member must belong to this user
+        if not tl.member or not tl.member.customer or tl.member.customer.user_id != request.user.id:
+            return JsonResponse({"ok": False, "error": "not_authorized_for_ticket"}, status=403)
+
+        m = tl.member
+
+        # Enforce one review per ticket
+        if Review.objects.filter(ticket_link=tl).exists():
+            return JsonResponse({"ok": False, "error": "already_reviewed"}, status=409)
+    else:
+        # No ticket given — optionally attach the latest member for this user (or leave None)
+        m = (
+            Member.objects
+            .filter(customer__user=request.user)
+            .order_by("-id")
+            .first()
+        )
+
+    # Create the review (no `user` field in your model)
+    rev = Review.objects.create(
+        restaurant=rp,
+        ticket_link=tl,
+        member=m,
+        stars=stars,
+        comment=comment,
+    )
+
+    return JsonResponse({"ok": True, "id": rev.id})
+

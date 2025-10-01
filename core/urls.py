@@ -23,6 +23,7 @@ urlpatterns = [
     path("restaurants/connect/start",  views_restaurants.connect_onboard_start,  name="connect_onboard_start"),
     path("restaurants/connect/return", views_restaurants.connect_onboard_return, name="connect_onboard_return"),
     path("restaurants/connect/dashboard", views_restaurants.connect_dashboard_login, name="connect_dashboard_login"),
+    path("api/reviews", views_home.api_submit_review, name="core:api_submit_review"),
     # dashboards
     # OWNER (standard, JSON-only)
     path("owner/signup", views.owner_signup, name="owner_signup"),        # renders HTML shell

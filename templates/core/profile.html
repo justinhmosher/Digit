@@ -308,501 +308,738 @@
     </div>
   </footer>
 
-  <script>
-    // ------- Demo data for Rec/Txn -------
-    const demoRestaurants = [
-      { name: "Kumo Izakaya", tx: 106, address: "221 Market St, San Francisco, CA", opened: "2024-11-12" },
-      { name: "Café Verona", tx: 101, address: "48 Clement Ave, San Francisco, CA", opened: "2023-04-04" },
-      { name: "Spice Alley", tx: 96,  address: "431 Palm St, San Jose, CA", opened: "2024-08-18" },
-      { name: "Tide & Tonic", tx: 93, address: "73 Beach Rd, Santa Cruz, CA", opened: "2025-07-12" },
-      { name: "Morning Glory", tx: 90, address: "10 Sunrise Ave, Oakland, CA", opened: "2023-09-09" }
-    ];
-    const demoTxns = [
-      { date: "2025-08-18", restaurant: "Kumo Izakaya", city: "San Francisco", subtotal: 64.2, tipPct: 18 },
-      { date: "2025-08-12", restaurant: "Café Verona",  city: "San Francisco", subtotal: 49.9, tipPct: 20 }
-    ];
+<script>
+  /* =========================================================
+     SERVER DATA + DEMO (unchanged inputs)
+  ========================================================= */
+  window.DND_RESTAURANTS = {{ restaurants_json|default:"[]"|safe }};
+  const demoRestaurants = [
+    { name: "Kumo Izakaya", tx: 106, address: "221 Market St, San Francisco, CA, USA", opened: "2024-11-12" },
+    { name: "Café Verona",  tx: 101, address: "48 Clement Ave, San Francisco, CA, USA", opened: "2023-04-04" },
+    { name: "Spice Alley",  tx: 96,  address: "431 Palm St, San Jose, CA, USA", opened: "2024-08-18" },
+    { name: "Tide & Tonic", tx: 93,  address: "73 Beach Rd, Santa Cruz, CA, USA", opened: "2025-07-12" },
+    { name: "Morning Glory",tx: 90,  address: "10 Sunrise Ave, Oakland, CA, USA", opened: "2023-09-09" }
+  ];
+  const demoTxns = [
+    { date: "2025-08-18", restaurant: "Kumo Izakaya", city: "San Francisco", subtotal: 64.2, tipPct: 18 },
+    { date: "2025-08-12", restaurant: "Café Verona",  city: "San Francisco", subtotal: 49.9, tipPct: 20 }
+  ];
 
-    const member   = document.body.dataset.member || "";
-    const hasLive  = document.body.dataset.live === "1";
-    const $  = s => document.querySelector(s);
-    const $$ = s => Array.from(document.querySelectorAll(s));
-    const money = c => `$${(Number(c||0)/100).toFixed(2)}`;
+  /* =========================================================
+     GLOBALS / UTILITIES (kept)
+  ========================================================= */
+  const member   = document.body.dataset.member || "";
+  const hasLive  = document.body.dataset.live === "1";
+  const $  = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const money = c => `$${(Number(c||0)/100).toFixed(2)}`;
+  const REVIEW_URL = "/api/review/submit";
 
-    // ----- Toast -----
-    function showToast(msg, {title="Notice", tone="info"} = {}) {
-      $("#toastTitle").textContent = title;
-      $("#toastMsg").textContent = String(msg || "");
-      const toneCls = tone === "error"
-        ? "border-red-200 bg-red-50"
-        : tone === "success"
-          ? "border-emerald-200 bg-emerald-50"
-          : "border-slate-200 bg-white";
-      const iconCls = tone === "error" ? "bg-red-400" : tone === "success" ? "bg-emerald-400" : "bg-slate-400";
-      $("#toastBox").className = `pointer-events-auto max-w-xl w-full rounded-2xl border px-4 py-3 shadow-lg ${toneCls} text-slate-800 flex items-start gap-3`;
-      $("#toastIcon").className = `mt-[2px] h-5 w-5 rounded-full ${iconCls}`;
-      $("#toast").classList.remove("hidden");
-      $("#toastClose").onclick = () => $("#toast").classList.add("hidden");
-      setTimeout(() => $("#toast").classList.add("hidden"), 4000);
-    }
+  function showToast(msg, {title="Notice", tone="info"} = {}) {
+    $("#toastTitle").textContent = title;
+    $("#toastMsg").textContent = String(msg || "");
+    const toneCls = tone === "error"
+      ? "border-red-200 bg-red-50"
+      : tone === "success"
+        ? "border-emerald-200 bg-emerald-50"
+        : "border-slate-200 bg-white";
+    const iconCls = tone === "error" ? "bg-red-400" : tone === "success" ? "bg-emerald-400" : "bg-slate-400";
+    $("#toastBox").className = `pointer-events-auto max-w-xl w-full rounded-2xl border px-4 py-3 shadow-lg ${toneCls} text-slate-800 flex items-start gap-3`;
+    $("#toastIcon").className = `mt-[2px] h-5 w-5 rounded-full ${iconCls}`;
+    $("#toast").classList.remove("hidden");
+    $("#toastClose").onclick = () => $("#toast").classList.add("hidden");
+    setTimeout(() => $("#toast").classList.add("hidden"), 4000);
+  }
 
-    // ----- Tabs (desktop & mobile) -----
-    function getTabIds(){
-      const tabs = new Set([...$$('[data-tab]')].map(b => b.dataset.tab));
-      return Array.from(tabs);
-    }
-    function setTab(next){
-      const ids = getTabIds();
-      if (!ids.includes(next)) next = hasLive ? 'live' : 'rec';
-      $$(".tab").forEach(b => {
-        const active = b.dataset.tab === next;
-        b.className = "tab px-4 py-2 rounded-2xl text-sm border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
-      });
-      $$(".m-tab").forEach(b => {
-        const active = b.dataset.tab === next;
-        b.className = "m-tab w-full text-left px-4 py-3 rounded-xl text-base border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
-      });
-      ids.forEach(id => {
-        const panel = $("#panel-"+id);
-        if (panel) panel.classList.toggle("hidden", id !== next);
-      });
-    }
-    $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
-    $$(".m-tab").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); openDrawer(false); }));
-
-    // ----- Mobile drawer -----
-    function openDrawer(on) {
-      const wrap = $("#drawerWrap"), drawer = $("#drawer"), backdrop = $("#drawerBackdrop");
-      wrap.classList.toggle("pointer-events-none", !on);
-      drawer.style.transform = on ? "translateX(0)" : "translateX(-100%)";
-      backdrop.style.opacity = on ? "1" : "0";
-    }
-    $("#openMobile")?.addEventListener("click", () => openDrawer(true));
-    $("#closeMobile")?.addEventListener("click", () => openDrawer(false));
-    $("#drawerBackdrop")?.addEventListener("click", () => openDrawer(false));
-
-    // ----- Recommendations (demo) -----
-    function renderRec(){
-      const ul = $("#rankList"); if (!ul) return;
-      ul.innerHTML = "";
-      const maxTx = demoRestaurants.reduce((m,r)=>Math.max(m, r.tx), 1);
-      demoRestaurants.forEach((r,i) => {
-        const pct = Math.round((r.tx / maxTx) * 100);
-        const li = document.createElement("li");
-        li.className = "py-3";
-        li.innerHTML = `
-          <button class="w-full text-left rounded-2xl p-3 border bg-white/70 hover:bg-white hover:shadow-sm transition"
-                  data-idx="${i}">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold bg-slate-900 text-white">${i+1}</div>
-                <div class="min-w-0">
-                  <div class="font-semibold truncate">${r.name}</div>
-                  <div class="text-xs text-slate-500 truncate">${r.address}</div>
-                </div>
-              </div>
-              <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx} tx</div>
-            </div>
-            <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
-            </div>
-          </button>`;
-        ul.appendChild(li);
-      });
-
-      ul.addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-idx]");
-        if (!btn) return;
-        const i = +btn.dataset.idx;
-        const r = demoRestaurants[i];
-        $("#detailsEmpty")?.classList.add("hidden");
-        $("#detailsBox")?.classList.remove("hidden");
-        $("#dName").textContent = r.name;
-        $("#dAddr").textContent = r.address;
-        $("#dTx").textContent = r.tx;
-        $("#dOpened").textContent = r.opened;
-        $("#mapsLink").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}`;
-      });
-    }
-
-    // ----- Transactions (demo) -----
-    function renderTxn(){
-      const body = $("#txnBody"); const count = $("#txnCount");
-      if (!body || !count) return;
-      body.innerHTML = "";
-      demoTxns.forEach(t => {
-        const tip = +(t.subtotal * (t.tipPct / 100)).toFixed(2);
-        const total = +(t.subtotal + tip).toFixed(2);
-        const tr = document.createElement("tr");
-        tr.className = "hover:bg-slate-50";
-        tr.innerHTML = `
-          <td class="py-3 pr-4">${t.date}</td>
-          <td class="py-3 pr-4">${t.restaurant}</td>
-          <td class="py-3 pr-4">${t.city}</td>
-          <td class="py-3 pr-4 text-right">$${t.subtotal.toFixed(2)}</td>
-          <td class="py-3 pr-4 text-right">${t.tipPct}% ($${tip.toFixed(2)})</td>
-          <td class="py-3 pr-4 text-right font-semibold">$${total.toFixed(2)}</td>`;
-        body.appendChild(tr);
-      });
-      count.textContent = `${demoTxns.length} total`;
-    }
-
-    // ===== Flicker-free Live Order (SWR) =====
-    const POLL_MS_BASE = 8000;
-    let firstPaint = true;
-    let lastFP = null;
-    let timer = null;
-    let ctrl  = null;
-
-    function fingerprint(d){
-      const key = JSON.stringify({
-        i: (d.items||[]).map(i => [i.name, i.qty, i.cents]),
-        s: d.subtotal_cents, t: d.tax_cents, T: d.total_cents, d: d.due_cents
-      });
-      let h=0; for (let i=0;i<key.length;i++) { h = (h*31 + key.charCodeAt(i))|0; }
-      return String(h);
-    }
-
-    function renderLive(d){
-      $("#liveServer").textContent   = d.server || "";
-      $("#liveSubtotal").textContent = money(d.subtotal_cents);
-      $("#liveTax").textContent      = money(d.tax_cents);
-
-      const pctEl = $("#tipPct");
-      const pct   = pctEl ? Math.max(0, parseFloat(pctEl.value || "0")) : 0;
-      const tip   = Math.round((d.subtotal_cents||0) * (pct/100));
-      $("#liveTipAmt").textContent = money(tip);
-      $("#liveTotal").textContent  = money((d.total_cents||0) + tip);
-      $("#liveDue").textContent    = money((d.due_cents||0) + tip);
-
-      const ul = $("#liveItems");
-      ul.innerHTML = (d.items||[]).map(i => `
-        <li class="flex items-center justify-between py-2">
-          <span class="truncate">${i.name || ""}</span>
-          <span class="tabular-nums text-slate-700">${i.qty} × ${money(i.cents)}</span>
-        </li>
-      `).join("");
-    }
-
-    function showLiveBlocks(state){
-      const loading = $("#liveLoading");
-      const content = $("#liveContent");
-      const empty   = $("#liveEmpty");
-      if (state === "loading-first") {
-        loading?.classList.remove("hidden");
-        content?.classList.add("hidden");
-        empty?.classList.add("hidden");
-      } else if (state === "show-content") {
-        loading?.classList.add("hidden");
-        empty?.classList.add("hidden");
-        content?.classList.remove("hidden");
-      } else if (state === "empty") {
-        loading?.classList.add("hidden");
-        content?.classList.add("hidden");
-        empty?.classList.remove("hidden");
-      }
-    }
-
-    async function fetchReceipt({silent=false} = {}){
-      if (!member) return;
-      if (ctrl) ctrl.abort();
-      ctrl = new AbortController();
-      if (firstPaint && !silent) showLiveBlocks("loading-first");
-
-      try {
-        const r = await fetch(`/api/member/${encodeURIComponent(member)}/receipt`, {
-          signal: ctrl.signal, cache: "no-store", headers: {"Accept":"application/json"}
-        });
-        if (r.status === 404) {
-          showLiveBlocks("empty");
-          scheduleNext(POLL_MS_BASE);
-          return;
-        }
-        const d = await r.json();
-        if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
-
-        if (firstPaint) showLiveBlocks("show-content");
-
-        const fp = fingerprint(d);
-        if (fp !== lastFP) {
-          lastFP = fp;
-          renderLive(d);
-        }
-        firstPaint = false;
-        scheduleNext(POLL_MS_BASE);
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        scheduleNext(Math.min(POLL_MS_BASE * 2, 30000));
-      }
-    }
-
-    function scheduleNext(ms){
-      clearTimeout(timer);
-      timer = setTimeout(() => fetchReceipt({silent:true}), ms);
-    }
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        clearTimeout(timer);
-        if (ctrl) ctrl.abort();
-      } else {
-        fetchReceipt({silent:true});
-      }
+  /* =========================================================
+     TABS & DRAWER (kept)
+  ========================================================= */
+  function getTabIds(){ return Array.from(new Set([...$$('[data-tab]')].map(b => b.dataset.tab))); }
+  function setTab(next){
+    const ids = getTabIds();
+    if (!ids.includes(next)) next = hasLive ? 'live' : 'rec';
+    $$(".tab").forEach(b => {
+      const active = b.dataset.tab === next;
+      b.className = "tab px-4 py-2 rounded-2xl text-sm border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
     });
-
-    // Tip preview
-    $("#tipPct")?.addEventListener("input", () => {
-      const sub = ($("#liveSubtotal")?.textContent || "$0").replace(/[^0-9.]/g,"");
-      const tax = ($("#liveTax")?.textContent || "$0").replace(/[^0-9.]/g,"");
-      const pct = Math.max(0, parseFloat($("#tipPct").value || "0"));
-      const subCents = Math.round(parseFloat(sub || "0") * 100);
-      const taxCents = Math.round(parseFloat(tax || "0") * 100);
-      const tip = Math.round(subCents * (pct/100));
-      $("#liveTipAmt").textContent = money(tip);
-      $("#liveTotal").textContent  = money(subCents + taxCents + tip);
-      $("#liveDue").textContent    = money((subCents + taxCents) + tip); // UI-only preview
+    $$(".m-tab").forEach(b => {
+      const active = b.dataset.tab === next;
+      b.className = "m-tab w-full text-left px-4 py-3 rounded-xl text-base border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
     });
+    ids.forEach(id => $("#panel-"+id)?.classList.toggle("hidden", id !== next));
+  }
+  $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+  $$(".m-tab").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); openDrawer(false); }));
 
-    // Manual refresh
-    $("#refreshLive")?.addEventListener("click", () => fetchReceipt({silent:true}));
+  function openDrawer(on) {
+    const wrap = $("#drawerWrap"), drawer = $("#drawer"), backdrop = $("#drawerBackdrop");
+    wrap.classList.toggle("pointer-events-none", !on);
+    drawer.style.transform = on ? "translateX(0)" : "translateX(-100%)";
+    backdrop.style.opacity = on ? "1" : "0";
+  }
+  $("#openMobile")?.addEventListener("click", () => openDrawer(true));
+  $("#closeMobile")?.addEventListener("click", () => openDrawer(false));
+  $("#drawerBackdrop")?.addEventListener("click", () => openDrawer(false));
 
-    // Close out
-    function getCSRFCookie(){ const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; }
-    $("#closeTabBtn")?.addEventListener("click", async () => {
-      try {
-        const r = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
-          method:"POST",
-          headers: {"X-CSRFToken": getCSRFCookie()},
-          body: "{}"
-        });
-        if (r.ok) {
-          showToast("Closed out & receipt updated.", {tone:"success"});
-          firstPaint = true; lastFP = null;
-          await fetchReceipt({silent:false});
-        } else {
-          showToast("Close out failed.", {tone:"error"});
-        }
-      } catch {
-        showToast("Network error while closing.", {tone:"error"});
-      }
-    });
-
-    // Info box
-    let openInfo = false;
-    $("#infoBtn")?.addEventListener("click", () => {
-      openInfo = !openInfo;
-      $("#infoBox")?.classList.toggle("hidden", !openInfo);
-    });
-
-    // Copy member number
-    $("#copyBtn")?.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(member || ""); showToast("Copied!", {tone:"success"}); } catch {}
-    });
-
-    // Init
-    document.addEventListener("DOMContentLoaded", () => {
-      const y = $("#year"); if (y) y.textContent = new Date().getFullYear();
-
-      // default tab
-      setTab(hasLive ? "live" : "rec");
-
-      // render static panels
-      renderRec();
-      renderTxn();
-
-      // start polling only if live
-      if (hasLive) fetchReceipt({silent:false});
-    });
-
-
-
-    /* ========== GOOGLE MAPS: Restaurants + City Filter ========== */
-    let gmap, gmarkers = [], ginfo, geocoder, allRestaurants = [];
-    let cityAutocomplete;
-
-    async function fetchRestaurants(){
-      // TODO: swap to backend when ready:
-      // const r = await fetch('/api/restaurants/map', {headers:{Accept:'application/json'}});
-      // const d = await r.json(); return d.items; // [{id,name,address,city,lat,lng,tx}]
-      return demoRestaurants.map((r, idx) => ({
-        id: idx+1,
-        name: r.name,
-        address: r.address,
-        city: (r.address.split(",")[1] || "").trim(),
-        lat: null, lng: null,
-        tx: r.tx
-      }));
-    }
-
-    function cacheKey(addr){ return `geo:${addr}`; }
-
-    async function geocodeOnce(addr){
-      const key = cacheKey(addr);
-      const cached = sessionStorage.getItem(key);
-      if (cached) return JSON.parse(cached);
-      return new Promise((resolve) => {
-        geocoder.geocode({ address: addr }, (results, status) => {
-          if (status === "OK" && results[0]) {
-            const loc = results[0].geometry.location;
-            const pt = { lat: loc.lat(), lng: loc.lng() };
-            sessionStorage.setItem(key, JSON.stringify(pt));
-            resolve(pt);
-          } else {
-            resolve(null);
-          }
-        });
-      });
-    }
-
-    function markerIcon(){
-      return {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 6,
-        fillColor: '#0f172a',
-        fillOpacity: 0.95,
-        strokeColor: '#0f172a',
-        strokeWeight: 1
-      };
-    }
-
-    function clearMarkers(){ gmarkers.forEach(m => m.setMap(null)); gmarkers = []; }
-
-    function addMarker(r){
-      const m = new google.maps.Marker({
-        position: {lat:r.lat, lng:r.lng},
-        map: gmap,
-        title: r.name,
-        icon: markerIcon()
-      });
-      m.__data = r;
-      m.addListener('click', () => {
-        const html = `
-          <div style="min-width:220px">
-            <div style="font-weight:600">${r.name}</div>
-            <div style="color:#64748b; font-size:12px">${r.address}</div>
-            <div style="margin-top:6px; font-size:12px">Transactions: <b>${r.tx ?? '-'}</b></div>
-            <div style="margin-top:8px">
-              <a target="_blank" rel="noreferrer"
-                 href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}"
-                 style="text-decoration:underline">Open in Google Maps</a>
-            </div>
-          </div>`;
-        ginfo.setContent(html);
-        ginfo.open(gmap, m);
-
-        // Sync details panel
-        $("#detailsEmpty")?.classList.add("hidden");
-        $("#detailsBox")?.classList.remove("hidden");
-        $("#dName").textContent = r.name;
-        $("#dAddr").textContent = r.address;
-        $("#dTx").textContent = r.tx ?? "-";
-        $("#dOpened").textContent = "";
-        $("#mapsLink").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}`;
-      });
-      gmarkers.push(m);
-    }
-
-    function fitToMarkers(markers){
-      if (!markers.length) return;
-      const bounds = new google.maps.LatLngBounds();
-      markers.forEach(m => bounds.extend(m.getPosition()));
-      gmap.fitBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
-    }
-
-    function filterListByCity(city){
-      const ul = $("#rankList");
-      if (!ul) return;
-      const normalized = (city || "").toLowerCase();
-      const rows = Array.from(ul.querySelectorAll("li"));
-      rows.forEach(li => {
-        const addr = li.querySelector(".text-xs")?.textContent || "";
-        const thisCity = (addr.split(",")[1] || "").trim().toLowerCase();
-        li.classList.toggle("hidden", normalized && thisCity !== normalized);
-      });
-    }
-
-    function filterMarkersByCity(city){
-      const normalized = (city || "").toLowerCase();
-      const visible = [];
-      gmarkers.forEach(m => {
-        const c = (m.__data.city || "").toLowerCase();
-        const show = !normalized || c === normalized;
-        m.setVisible(show);
-        if (show) visible.push(m);
-      });
-      if (visible.length) fitToMarkers(visible);
-    }
-
-    async function buildMarkers(items){
-      const withGeo = await Promise.all(items.map(async r => {
-        if (r.lat && r.lng) return r;
-        const pt = await geocodeOnce(r.address);
-        if (pt) { r.lat = pt.lat; r.lng = pt.lng; }
-        return r;
-      }));
-      allRestaurants = withGeo.filter(r => r.lat && r.lng);
-
-      clearMarkers();
-      allRestaurants.forEach(addMarker);
-      fitToMarkers(gmarkers);
-    }
-
-    function setupPlacesAutocomplete(){
-      const input = $("#citySearch");
-      cityAutocomplete = new google.maps.places.Autocomplete(input, {
-        types: ["(cities)"],
-      });
-      cityAutocomplete.addListener("place_changed", () => {
-        const place = cityAutocomplete.getPlace();
-        let city = "";
-        if (place && place.address_components) {
-          const comp = place.address_components.find(c => c.types.includes("locality")) ||
-                       place.address_components.find(c => c.types.includes("postal_town")) ||
-                       place.address_components.find(c => c.types.includes("administrative_area_level_3"));
-          city = comp ? comp.long_name : (place.name || "");
-        } else {
-          city = input.value.trim();
-        }
-        if (place && place.geometry) {
-          if (place.geometry.viewport) gmap.fitBounds(place.geometry.viewport);
-          else if (place.geometry.location) gmap.setCenter(place.geometry.location);
-        }
-        filterMarkersByCity(city);
-        filterListByCity(city);
-      });
-
-      $("#clearCity")?.addEventListener("click", () => {
-        $("#citySearch").value = "";
-        filterMarkersByCity("");
-        filterListByCity("");
-        fitToMarkers(gmarkers);
-      });
-    }
-
-    // Expose init for Google loader
-    window.initDndMap = async function initDndMap(){
-      geocoder = new google.maps.Geocoder();
-      ginfo = new google.maps.InfoWindow();
-
-      // Initial center: SF as a neutral start
-      gmap = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: 37.773972, lng: -122.431297 },
-        zoom: 6,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: true,
-      });
-
-      setupPlacesAutocomplete();
-
-      const items = await fetchRestaurants();
-      await buildMarkers(items);
+  /* =========================================================
+     MERGE DB + DEMO (kept)
+  ========================================================= */
+  function normalizeRestaurant(rec, idxBase = 0, idx = 0) {
+    return {
+      id: rec.id ?? (idxBase + idx + 1),
+      name: rec.name || "",
+      address: rec.address || "",
+      city: rec.city || ((rec.address || "").split(",")[1] || "").trim(),
+      lat: rec.lat ?? null,
+      lng: rec.lng ?? null,
+      tx: rec.tx ?? 0,
+      opened: rec.opened || "",
     };
-  </script>
+  }
+  function getCombinedRestaurants() {
+    const db   = Array.isArray(window.DND_RESTAURANTS) ? window.DND_RESTAURANTS : [];
+    const demo = Array.isArray(window.demoRestaurants) ? window.demoRestaurants :
+                 (typeof demoRestaurants !== "undefined" ? demoRestaurants : []);
+    const normDB   = db.map((r, i) => normalizeRestaurant(r, 0, i));
+    const normDemo = demo.map((r, i) => normalizeRestaurant(r, normDB.length, i));
+    const seen = new Set();
+    const merged = [];
+    for (const r of [...normDB, ...normDemo]) {
+      const key = (r.name.trim().toLowerCase() + "||" + r.address.trim().toLowerCase());
+      if (key && !seen.has(key)) { seen.add(key); merged.push(r); }
+    }
+    return merged;
+  }
 
-  <!-- Google Maps loader (enable Maps JavaScript API + Places API & restrict the key) -->
-<script async
-  src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places&callback=initDndMap">
+  /* =========================================================
+     RECOMMENDATIONS LIST (NOW BOUNDS-AWARE)
+  ========================================================= */
+  // We render from a provided array (already filtered by map bounds).
+  function renderRecFor(items){
+    const ul = $("#rankList"); if (!ul) return;
+    ul.innerHTML = "";
+    if (!items.length) {
+      ul.innerHTML = `
+        <li class="py-6 text-center text-slate-500">
+          No restaurants in view — pan or zoom the map.
+        </li>`;
+      return;
+    }
+    const maxTx = items.reduce((m,r)=>Math.max(m, r.tx||0), 1);
+    items.forEach((r,i) => {
+      const pct = Math.round(((r.tx||0) / maxTx) * 100);
+      const li = document.createElement("li");
+      li.className = "py-3";
+      li.innerHTML = `
+        <button class="w-full text-left rounded-2xl p-3 border bg-white/70 hover:bg-white hover:shadow-sm transition"
+                data-id="${r.id}">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold bg-slate-900 text-white">${i+1}</div>
+              <div class="min-w-0">
+                <div class="font-semibold truncate">${r.name || "—"}</div>
+                <div class="text-xs text-slate-500 truncate">${r.address || ""}</div>
+              </div>
+            </div>
+            <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx||0} tx</div>
+          </div>
+          <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
+          </div>
+        </button>`;
+      ul.appendChild(li);
+    });
+
+    // click -> sync details + bounce marker
+    ul.onclick = (e) => {
+      const btn = e.target.closest("button[data-id]"); if (!btn) return;
+      const id = btn.dataset.id;
+      const m = markerById.get(String(id));
+      const r = m?.__data;
+      if (!r) return;
+
+      $("#detailsEmpty")?.classList.add("hidden");
+      $("#detailsBox")?.classList.remove("hidden");
+      $("#dName").textContent   = r.name || "";
+      $("#dAddr").textContent   = r.address || "";
+      $("#dTx").textContent     = r.tx ?? "-";
+      $("#dOpened").textContent = r.opened || "";
+      $("#mapsLink").href       = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address||"")}`;
+
+      if (m && window.google?.maps?.Animation) {
+        m.setAnimation(google.maps.Animation.BOUNCE);
+        setTimeout(()=>m.setAnimation(null), 700);
+      }
+      if (gmap && m) gmap.panTo(m.getPosition());
+    };
+  }
+
+  /* =========================================================
+     TRANSACTIONS (kept)
+  ========================================================= */
+  function renderTxn(){
+    const body = $("#txnBody"); const count = $("#txnCount");
+    if (!body || !count) return;
+    body.innerHTML = "";
+    demoTxns.forEach(t => {
+      const tip = +(t.subtotal * (t.tipPct / 100)).toFixed(2);
+      const total = +(t.subtotal + tip).toFixed(2);
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50";
+      tr.innerHTML = `
+        <td class="py-3 pr-4">${t.date}</td>
+        <td class="py-3 pr-4">${t.restaurant}</td>
+        <td class="py-3 pr-4">${t.city}</td>
+        <td class="py-3 pr-4 text-right">$${t.subtotal.toFixed(2)}</td>
+        <td class="py-3 pr-4 text-right">${t.tipPct}% ($${tip.toFixed(2)})</td>
+        <td class="py-3 pr-4 text-right font-semibold">$${total.toFixed(2)}</td>`;
+      body.appendChild(tr);
+    });
+    count.textContent = `${demoTxns.length} total`;
+  }
+
+  /* =========================================================
+     LIVE ORDER (kept)
+  ========================================================= */
+  const POLL_MS_BASE = 8000;
+  let firstPaint = true, lastFP = null, timer = null, ctrl  = null;
+
+  function fingerprint(d){
+    const key = JSON.stringify({
+      i: (d.items||[]).map(i => [i.name, i.qty, i.cents]),
+      s: d.subtotal_cents, t: d.tax_cents, T: d.total_cents, d: d.due_cents
+    });
+    let h=0; for (let i=0;i<key.length;i++) { h = (h*31 + key.charCodeAt(i))|0; }
+    return String(h);
+  }
+  function renderLive(d){
+    $("#liveServer").textContent   = d.server || "";
+    $("#liveSubtotal").textContent = money(d.subtotal_cents);
+    $("#liveTax").textContent      = money(d.tax_cents);
+    const pctEl = $("#tipPct");
+    const pct   = pctEl ? Math.max(0, parseFloat(pctEl.value || "0")) : 0;
+    const tip   = Math.round((d.subtotal_cents||0) * (pct/100));
+    $("#liveTipAmt").textContent = money(tip);
+    $("#liveTotal").textContent  = money((d.total_cents||0) + tip);
+    $("#liveDue").textContent    = money((d.due_cents||0) + tip);
+    $("#liveItems").innerHTML = (d.items||[]).map(i => `
+      <li class="flex items-center justify-between py-2">
+        <span class="truncate">${i.name || ""}</span>
+        <span class="tabular-nums text-slate-700">${i.qty} × ${money(i.cents)}</span>
+      </li>`).join("");
+  }
+  function showLiveBlocks(state){
+    const loading = $("#liveLoading"), content = $("#liveContent"), empty = $("#liveEmpty");
+    if (state === "loading-first") { loading?.classList.remove("hidden"); content?.classList.add("hidden"); empty?.classList.add("hidden"); }
+    else if (state === "show-content") { loading?.classList.add("hidden"); empty?.classList.add("hidden"); content?.classList.remove("hidden"); }
+    else if (state === "empty") { loading?.classList.add("hidden"); content?.classList.add("hidden"); empty?.classList.remove("hidden"); }
+  }
+  async function fetchReceipt({silent=false} = {}){
+    if (!member) { showLiveBlocks("empty"); return; }
+    if (ctrl) ctrl.abort();
+    ctrl = new AbortController();
+    if (firstPaint && !silent) showLiveBlocks("loading-first");
+    try {
+      const r = await fetch(`/api/member/${encodeURIComponent(member)}/receipt`, {
+        signal: ctrl.signal, cache: "no-store", headers: {"Accept":"application/json"}
+      });
+      if (r.status === 404) { showLiveBlocks("empty"); scheduleNext(POLL_MS_BASE); return; }
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      if (firstPaint) showLiveBlocks("show-content");
+      const fp = fingerprint(d);
+      if (fp !== lastFP) { lastFP = fp; renderLive(d); }
+      firstPaint = false;
+      scheduleNext(POLL_MS_BASE);
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      scheduleNext(Math.min(POLL_MS_BASE * 2, 30000));
+    }
+  }
+  function scheduleNext(ms){ clearTimeout(timer); timer = setTimeout(() => fetchReceipt({silent:true}), ms); }
+  $("#tipPct")?.addEventListener("input", () => {
+    const sub = ($("#liveSubtotal")?.textContent || "$0").replace(/[^0-9.]/g,"");
+    const tax = ($("#liveTax")?.textContent || "$0").replace(/[^0-9.]/g,"");
+    const pct = Math.max(0, parseFloat($("#tipPct").value || "0"));
+    const subCents = Math.round(parseFloat(sub || "0") * 100);
+    const taxCents = Math.round(parseFloat(tax || "0") * 100);
+    const tip = Math.round(subCents * (pct/100));
+    $("#liveTipAmt").textContent = money(tip);
+    $("#liveTotal").textContent  = money(subCents + taxCents + tip);
+    $("#liveDue").textContent    = money((subCents + taxCents) + tip);
+  });
+  function getCSRFCookie(){ const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; }
+  $("#refreshLive")?.addEventListener("click", () => fetchReceipt({silent:true}));
+  $("#closeTabBtn")?.addEventListener("click", async () => {
+    try {
+      const r = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
+        method:"POST",
+        headers: {"X-CSRFToken": getCSRFCookie()},
+        body: "{}"
+      });
+      if (r.ok) {
+        const d = await r.json().catch(()=>({}));
+        showToast("Closed out & receipt updated.", {tone:"success"});
+        firstPaint = true; lastFP = null;
+        await fetchReceipt({silent:false});
+        if (d && d.review && d.review.restaurant_id) openReviewModal(d.review);
+      } else {
+        showToast("Close out failed.", {tone:"error"});
+      }
+    } catch {
+      showToast("Network error while closing.", {tone:"error"});
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { clearTimeout(timer); if (ctrl) ctrl.abort(); }
+    else { fetchReceipt({silent:true}); }
+  });
+
+  /* =========================================================
+     REVIEW MODAL (kept)
+  ========================================================= */
+  function ensureReviewModal(){
+    if ($("#reviewModal")) return;
+    const div = document.createElement("div");
+    div.id = "reviewModal";
+    div.className = "fixed inset-0 z-[200] hidden";
+    div.innerHTML = `
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 grid place-items-center p-4">
+        <div class="w-full max-w-md rounded-3xl bg-white shadow-xl border border-slate-200 p-6">
+          <div class="flex items-start justify-between">
+            <h3 class="text-lg font-semibold">Rate your experience</h3>
+            <button id="rvClose" class="rounded-xl border px-2 py-1 text-sm hover:bg-slate-50">Close</button>
+          </div>
+          <div class="mt-4 text-sm text-slate-600" id="rvTitle"></div>
+          <div class="mt-5 flex items-center gap-2" id="rvStars" role="radiogroup" aria-label="Rating out of 5">
+            ${[1,2,3,4,5].map(n => `
+              <button type="button" class="rv-star w-10 h-10 rounded-full grid place-items-center border text-2xl select-none"
+                      data-star="${n}" aria-label="${n} star" aria-checked="false">★</button>
+            `).join("")}
+          </div>
+          <textarea id="rvComment" rows="4" class="mt-5 w-full rounded-2xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+            placeholder="Optional comment"></textarea>
+          <div class="mt-5 flex items-center justify-end gap-3">
+            <button id="rvSkip" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Skip</button>
+            <button id="rvSubmit" class="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm disabled:opacity-50" disabled>Submit</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+
+    let hoverStar = 0, chosenStar = 0;
+    function paintStars(n, highlight="#facc15"){
+      $$(".rv-star").forEach(btn => {
+        const val = +btn.dataset.star;
+        const on = val <= n;
+        btn.style.backgroundColor = on ? highlight : "";
+        btn.style.borderColor = on ? "#eab308" : "";
+        btn.style.color = on ? "#ffffff" : "";
+        btn.setAttribute("aria-checked", String(val === chosenStar));
+      });
+      $("#rvSubmit").disabled = !(chosenStar >= 1 && chosenStar <= 5);
+    }
+    $("#rvStars").addEventListener("mouseover", (e) => {
+      const b = e.target.closest(".rv-star"); if (!b) return;
+      hoverStar = +b.dataset.star; paintStars(hoverStar);
+    });
+    $("#rvStars").addEventListener("mousemove", (e) => {
+      const b = e.target.closest(".rv-star"); if (!b) return;
+      const v = +b.dataset.star; if (v !== hoverStar) { hoverStar = v; paintStars(hoverStar); }
+    });
+    $("#rvStars").addEventListener("mouseleave", () => paintStars(chosenStar));
+    $("#rvStars").addEventListener("click", (e) => {
+      const b = e.target.closest(".rv-star"); if (!b) return;
+      chosenStar = +b.dataset.star; paintStars(chosenStar);
+    });
+    $("#rvClose").addEventListener("click", () => { $("#reviewModal").classList.add("hidden"); });
+    $("#rvSkip").addEventListener("click", () => { $("#reviewModal").classList.add("hidden"); });
+
+    $("#rvSubmit").addEventListener("click", async () => {
+      const payload = {
+        restaurant_id: +($("#reviewModal").dataset.restId || 0),
+        ticket_link_id: +($("#reviewModal").dataset.tlId || 0) || null,
+        stars: chosenStar,
+        comment: ($("#rvComment").value || "").trim(),
+      };
+      if (!(payload.restaurant_id && payload.stars >= 1 && payload.stars <= 5)) return;
+      try {
+        const r = await fetch(REVIEW_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFCookie() },
+          body: JSON.stringify(payload)
+        });
+        const d = await r.json().catch(()=>({}));
+        if (r.ok && d.ok) { showToast("Thanks for the review!", {tone:"success"}); $("#reviewModal").classList.add("hidden"); }
+        else { showToast(d.error || "Review failed.", {tone:"error"}); }
+      } catch { showToast("Network error submitting review.", {tone:"error"}); }
+    });
+
+    div.__setContext = ({restaurant_id, restaurant_name, ticket_link_id}) => {
+      $("#rvTitle").textContent = restaurant_name ? `How was ${restaurant_name}?` : "How was your order?";
+      $("#reviewModal").dataset.restId = restaurant_id || "";
+      $("#reviewModal").dataset.tlId = ticket_link_id || "";
+      $("#rvComment").value = "";
+      hoverStar = 0; chosenStar = 0; paintStars(0);
+    };
+  }
+  function openReviewModal(ctx){ ensureReviewModal(); const el = $("#reviewModal"); el.__setContext?.(ctx || {}); el.classList.remove("hidden"); }
+
+  /* =========================================================
+     INIT (kept)
+  ========================================================= */
+  document.addEventListener("DOMContentLoaded", () => {
+    const y = $("#year"); if (y) y.textContent = new Date().getFullYear();
+    setTab(hasLive ? "live" : "rec");
+    renderTxn();
+    if (hasLive) fetchReceipt({silent:false});
+  });
+
+  /* =========================================================
+     GOOGLE MAPS (bounds-aware list + geolocate + ensure-one)
+  ========================================================= */
+  let gmap, gmarkers = [], ginfo, geocoder, cityAutocomplete;
+  const markerById = new Map();  // id -> google.maps.Marker
+  let allRestaurants = [];       // merged list with lat/lng
+  let lastVisibleIdsKey = "";    // to avoid redundant re-renders
+
+  async function fetchRestaurants(){
+    return getCombinedRestaurants(); // merged DB + demo
+  }
+  function cacheKey(addr){ return `geo:${addr}`; }
+  async function geocodeOnce(addr){
+    const key = cacheKey(addr);
+    const cached = sessionStorage.getItem(key);
+    if (cached) return JSON.parse(cached);
+    return new Promise((resolve) => {
+      geocoder.geocode({ address: addr }, (results, status) => {
+        if (status === "OK" && results[0]) {
+          const loc = results[0].geometry.location;
+          const pt = { lat: loc.lat(), lng: loc.lng() };
+          sessionStorage.setItem(key, JSON.stringify(pt));
+          resolve(pt);
+        } else { resolve(null); }
+      });
+    });
+  }
+  function markerIcon(){
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 6,
+      fillColor: '#0f172a',
+      fillOpacity: 0.95,
+      strokeColor: '#0f172a',
+      strokeWeight: 1
+    };
+  }
+  function clearMarkers(){
+    gmarkers.forEach(m => m.setMap(null));
+    gmarkers = [];
+    markerById.clear();
+  }
+  function addMarker(r){
+    const m = new google.maps.Marker({
+      position: {lat:r.lat, lng:r.lng},
+      map: gmap,
+      title: r.name,
+      icon: markerIcon()
+    });
+    m.__data = r;
+    m.addListener('click', () => {
+      const html = `
+        <div style="min-width:220px">
+          <div style="font-weight:600">${r.name}</div>
+          <div style="color:#64748b; font-size:12px">${r.address}</div>
+          <div style="margin-top:6px; font-size:12px">Transactions: <b>${r.tx ?? '-'}</b></div>
+          <div style="margin-top:8px">
+            <a target="_blank" rel="noreferrer"
+               href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}"
+               style="text-decoration:underline">Open in Google Maps</a>
+          </div>
+        </div>`;
+      if (!ginfo) ginfo = new google.maps.InfoWindow();
+      ginfo.setContent(html);
+      ginfo.open(gmap, m);
+
+      // sync details
+      $("#detailsEmpty")?.classList.add("hidden");
+      $("#detailsBox")?.classList.remove("hidden");
+      $("#dName").textContent = r.name;
+      $("#dAddr").textContent = r.address;
+      $("#dTx").textContent = r.tx ?? "-";
+      $("#dOpened").textContent = "";
+      $("#mapsLink").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}`;
+    });
+    gmarkers.push(m);
+    markerById.set(String(r.id), m);
+  }
+  async function buildMarkers(items){
+    geocoder = new google.maps.Geocoder();
+    const withGeo = await Promise.all(items.map(async r => {
+      if (r.lat && r.lng) return r;
+      const pt = await geocodeOnce(r.address);
+      if (pt) { r.lat = pt.lat; r.lng = pt.lng; }
+      return r;
+    }));
+    allRestaurants = withGeo.filter(r => r.lat && r.lng);
+    clearMarkers();
+    allRestaurants.forEach(addMarker);
+  }
+
+  // Compute visible restaurants given current map bounds.
+  function getVisibleRestaurants(){
+    const b = gmap?.getBounds(); if (!b) return [];
+    const visible = [];
+    for (const m of gmarkers) {
+      if (m.getVisible() !== false && b.contains(m.getPosition())) {
+        visible.push(m.__data);
+      }
+    }
+    // Sort by tx desc, then name
+    visible.sort((a,b) => (b.tx||0) - (a.tx||0) || a.name.localeCompare(b.name));
+    return visible;
+  }
+  function syncListWithMapBounds(){
+    const vis = getVisibleRestaurants();
+    const key = vis.map(r => r.id).join(",");
+    if (key === lastVisibleIdsKey) return; // no change
+    lastVisibleIdsKey = key;
+    renderRecFor(vis);
+  }
+
+  // Try to center near user; if none in view, ensure nearest is shown.
+  function ensureAtLeastOneRestaurantInView(){
+    const vis = getVisibleRestaurants();
+    if (vis.length) return; // already have some
+    if (!allRestaurants.length) return;
+
+    // pick nearest to center
+    const c = gmap.getCenter();
+    const nearest = allRestaurants
+      .map(r => ({ r, d: google.maps.geometry ?
+        google.maps.geometry.spherical.computeDistanceBetween(
+          c, new google.maps.LatLng(r.lat, r.lng)
+        ) : Math.hypot(r.lat - c.lat(), r.lng - c.lng()) }))
+      .sort((a,b) => a.d - b.d)[0]?.r;
+
+    if (nearest) {
+      // set bounds around nearest (~3km box fallback if geometry library not loaded)
+      const padDeg = 0.03; // ~3km lat/long-ish
+      const bounds = new google.maps.LatLngBounds(
+        new google.maps.LatLng(nearest.lat - padDeg, nearest.lng - padDeg),
+        new google.maps.LatLng(nearest.lat + padDeg, nearest.lng + padDeg)
+      );
+      gmap.fitBounds(bounds);
+    }
+  }
+
+  function setupPlacesAutocomplete(){
+    const input = $("#citySearch");
+    cityAutocomplete = new google.maps.places.Autocomplete(input, { types: ["(cities)"] });
+    cityAutocomplete.addListener("place_changed", () => {
+      const place = cityAutocomplete.getPlace();
+      let city = "";
+      if (place && place.address_components) {
+        const comp = place.address_components.find(c => c.types.includes("locality")) ||
+                     place.address_components.find(c => c.types.includes("postal_town")) ||
+                     place.address_components.find(c => c.types.includes("administrative_area_level_3"));
+        city = comp ? comp.long_name : (place.name || "");
+      } else { city = input.value.trim(); }
+
+      if (place && place.geometry) {
+        if (place.geometry.viewport) gmap.fitBounds(place.geometry.viewport);
+        else if (place.geometry.location) { gmap.setCenter(place.geometry.location); gmap.setZoom(12); }
+      }
+      // Sync list to new viewport
+      syncListWithMapBounds();
+    });
+
+    $("#clearCity")?.addEventListener("click", () => {
+      $("#citySearch").value = "";
+      // keep current map view, just re-sync list
+      syncListWithMapBounds();
+    });
+  }
+
+  // Geolocate user and center; if none visible afterward, ensure nearest.
+  function centerNearUserThenEnsure(){
+    if (!navigator.geolocation) { ensureAtLeastOneRestaurantInView(); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const here = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+        gmap.setCenter(here);
+        gmap.setZoom(12);
+        setTimeout(() => {
+          ensureAtLeastOneRestaurantInView();
+          syncListWithMapBounds();
+        }, 0);
+      },
+      () => {
+        ensureAtLeastOneRestaurantInView();
+        syncListWithMapBounds();
+      },
+      { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
+    );
+  }
+
+  // Init Map
+  window.initDndMap = async function initDndMap(){
+    gmap = new google.maps.Map(document.getElementById("map"), {
+      center: { lat: 39.5, lng: -98.35 }, // fallback: CONUS
+      zoom: 4,
+      minZoom: 3,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+    });
+
+    setupPlacesAutocomplete();
+
+    const items = await fetchRestaurants();
+    await buildMarkers(items);
+
+    // First sync list to bounds (may be empty until we center)
+    syncListWithMapBounds();
+
+    // Try to center near the user and ensure at least one restaurant is in view
+    centerNearUserThenEnsure();
+
+    // Whenever the map stops moving/zooming, re-filter the list to visible-only
+    gmap.addListener("idle", () => {
+      syncListWithMapBounds();
+    });
+  };
 </script>
 
+ <!-- Review Modal -->
+  <div id="reviewModal" class="fixed inset-0 z-[120] hidden">
+    <div class="absolute inset-0 bg-black/40"></div>
+    <div class="absolute inset-0 grid place-items-center px-4">
+      <div class="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-xl p-6">
+        <div class="flex items-start justify-between">
+          <h3 class="text-xl font-semibold">How was your visit?</h3>
+          <button id="revClose" class="rounded-xl border p-2 hover:bg-slate-50" aria-label="Close">✕</button>
+        </div>
+        <p id="revSubtitle" class="mt-1 text-sm text-slate-500"></p>
+
+        <div class="mt-4">
+          <div id="revStars" class="flex gap-2">
+            <!-- Stars start grey; JS paints yellow on hover/click -->
+            <button type="button" tabindex="0" aria-label="1 star"
+              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
+            <button type="button" tabindex="0" aria-label="2 stars"
+              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
+            <button type="button" tabindex="0" aria-label="3 stars"
+              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
+            <button type="button" tabindex="0" aria-label="4 stars"
+              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
+            <button type="button" tabindex="0" aria-label="5 stars"
+              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
+          </div>
+          <textarea id="revComment" rows="4"
+            placeholder="Leave a comment (optional)…"
+            class="mt-4 w-full rounded-2xl border px-3 py-2 text-sm"></textarea>
+        </div>
+
+        <div class="mt-6 flex items-center justify-end gap-3">
+          <button id="revSkip" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Skip</button>
+          <button id="revSubmit" class="rounded-2xl bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800">Submit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Star widget JS (must be after modal HTML) -->
+  <script>
+    let REVIEW_CTX = null;      // { restaurant_id, restaurant_name, ticket_link_id }
+    let REVIEW_STARS = 0;
+
+    function openReviewModal(ctx){
+      REVIEW_CTX = ctx || null;
+      REVIEW_STARS = 0;
+      document.getElementById("revSubtitle").textContent =
+        ctx?.restaurant_name ? `for ${ctx.restaurant_name}` : "";
+      document.getElementById("revComment").value = "";
+      paintStars(0);
+      document.getElementById("reviewModal").classList.remove("hidden");
+    }
+    function closeReviewModal(){
+      document.getElementById("reviewModal").classList.add("hidden");
+    }
+
+    function paintStars(n){
+      const stars = document.querySelectorAll("#revStars .rev-star");
+      stars.forEach((el, i) => {
+        const on = i < n;
+        el.classList.toggle("text-yellow-400", on);
+        el.classList.toggle("text-slate-400", !on);
+        el.classList.toggle("bg-yellow-50", on);
+        el.classList.toggle("border-yellow-300", on);
+        el.classList.toggle("border-slate-300", !on);
+      });
+    }
+
+    function initReviewStars(){
+      const stars = document.querySelectorAll("#revStars .rev-star");
+      paintStars(0);
+      stars.forEach((btn, idx) => {
+        btn.addEventListener("mouseenter", () => paintStars(idx + 1));
+        btn.addEventListener("focus", () => paintStars(idx + 1));
+        btn.addEventListener("mouseleave", () => paintStars(REVIEW_STARS));
+        btn.addEventListener("blur", () => paintStars(REVIEW_STARS));
+        btn.addEventListener("click", () => { REVIEW_STARS = idx + 1; paintStars(REVIEW_STARS); });
+        btn.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); REVIEW_STARS = idx + 1; paintStars(REVIEW_STARS); }
+        });
+      });
+
+      document.getElementById("revClose")?.addEventListener("click", closeReviewModal);
+      document.getElementById("revSkip")?.addEventListener("click", closeReviewModal);
+      document.getElementById("revSubmit")?.addEventListener("click", submitReview);
+    }
+
+    async function submitReview(){
+      if (!REVIEW_CTX) { closeReviewModal(); return; }
+      if (!(REVIEW_STARS >= 1 && REVIEW_STARS <= 5)) {
+        showToast("Please select stars (1–5).", {tone:"error"}); return;
+      }
+      const payload = {
+        restaurant_id: REVIEW_CTX.restaurant_id,
+        ticket_link_id: REVIEW_CTX.ticket_link_id || null,
+        stars: REVIEW_STARS,
+        comment: (document.getElementById("revComment").value || "").trim(),
+      };
+      try {
+        const r = await fetch("/api/reviews", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "X-CSRFToken": (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)||[])[1]||""},
+          body: JSON.stringify(payload),
+        });
+        const d = await r.json().catch(()=>({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        showToast("Thanks for your feedback!", {tone:"success"});
+      } catch {
+        showToast("Couldn't save review.", {tone:"error"});
+      } finally {
+        closeReviewModal();
+      }
+    }
+
+    // Ensure listeners attach after DOM is ready
+    document.addEventListener("DOMContentLoaded", initReviewStars);
+
+    // Expose opener so close-out handler can trigger it
+    window.openReviewModal = openReviewModal;
+  </script>
+
+
+
+
+  <!-- Google Maps loader -->
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places&callback=initDndMap">
+  </script>
 </body>
 </html>
+

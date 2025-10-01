@@ -161,7 +161,6 @@ class Member(models.Model):
     customer = models.ForeignKey(CustomerProfile, on_delete=models.CASCADE)
     # optional: link to a CustomerProfile/User, phone, etc.
 
-
 class TicketLink(models.Model):
     STATUS = (("pending","Pending"),("open","Open"),("closed","Closed"))
 
@@ -230,7 +229,6 @@ class TicketLink(models.Model):
     def __str__(self):
         return f"{self.member_id} · {self.restaurant.display_name()} · {self.ticket_number or self.ticket_id} · {self.status}"
 
-
 class Review(models.Model):
     restaurant   = models.ForeignKey(RestaurantProfile, on_delete=models.CASCADE, related_name="reviews")
     ticket_link  = models.ForeignKey("TicketLink", null=True, blank=True, on_delete=models.SET_NULL, related_name="reviews")
@@ -257,7 +255,7 @@ class Review(models.Model):
             raise ValueError("Stars must be between 1 and 5")
 
     def __str__(self):
-        who = self.user_id or self.member_id or "anon"
+        who = self.member_id or "anon"
         return f"Review({self.stars}★) for {self.restaurant_id} by {who}"
 
 
