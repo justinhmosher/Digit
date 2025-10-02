@@ -359,7 +359,7 @@
           <div id="menuEmpty" class="text-slate-600 text-sm mt-2 hidden">No menu-item ratings in this range.</div>
         </div>
 
-        <!-- Staff Pane -->
+        <!-- Staff Pane (no 'Active in POS' column) -->
         <div id="paneStaffA" class="hidden" role="tabpanel" aria-labelledby="tabStaffA">
           <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -368,7 +368,6 @@
                   <th class="py-2 px-3 cursor-pointer" data-sort="name">Staff</th>
                   <th class="py-2 px-3 text-right cursor-pointer" data-sort="avg_rating">Avg rating</th>
                   <th class="py-2 px-3 text-right cursor-pointer" data-sort="num_rated_tickets"># rated tickets</th>
-                  <th class="py-2 px-3">Active in POS</th>
                   <th class="py-2 px-3">Trend</th>
                 </tr>
               </thead>
@@ -418,6 +417,39 @@
     $(panel).style.transform = on ? 'translateX(0)' : 'translateX(100%)';
   }
 
+  // Star bar with tooltip (hover shows exact avg)
+  function starBar(avg) {
+    const val = Math.max(0, Math.min(5, parseFloat(avg || 0)));
+    const pct = (val / 5) * 100;
+    return `
+      <div class="relative group inline-flex items-center" aria-label="${val.toFixed(2)} out of 5">
+        <div class="relative inline-block leading-none">
+          <div class="text-slate-300 select-none">★★★★★</div>
+          <div class="absolute inset-0 overflow-hidden" style="width:${pct}%">
+            <div class="text-amber-500 select-none">★★★★★</div>
+          </div>
+        </div>
+        <div class="absolute left-1/2 -translate-x-1/2 -top-8 hidden group-hover:block">
+          <div class="px-2 py-1 rounded-md text-xs bg-slate-900 text-white shadow">${val.toFixed(2)} / 5</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Trend bar with tooltip (also shows avg / 5)
+  function trendBarFromAvg(avg) {
+    const val = Math.max(0, Math.min(5, parseFloat(avg || 0)));
+    const pct = (val / 5) * 100;
+    return `
+      <div class="relative group inline-block w-40 h-2 bg-slate-200 rounded-full overflow-hidden">
+        <div class="h-full bg-emerald-500" style="width:${pct}%"></div>
+        <div class="absolute left-1/2 -translate-x-1/2 -top-8 hidden group-hover:block">
+          <div class="px-2 py-1 rounded-md text-xs bg-slate-900 text-white shadow">${val.toFixed(2)} / 5</div>
+        </div>
+      </div>
+    `;
+  }
+
   // ========== SETTINGS dropdown ==========
   $('#settingsBtn')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -437,12 +469,10 @@
     drawer(false, '#profilesWrap', '#profilesDrawer');
     drawer(true,  '#addRestaurantWrap', '#addRestaurantDrawer');
   });
-  // SETTINGS → Analytics
+  // SETTINGS → Analytics (open + auto-load)
   $('#menuAnalytics')?.addEventListener('click', () => {
     $('#settingsMenu')?.classList.add('hidden');
-    drawer(true, '#analyticsWrap', '#analyticsDrawer');
-    setAnTab('menu');
-    refreshAnalytics();
+    openAnalytics(); // opens drawer and refreshes analytics immediately
   });
 
   // ========== PROFILES drawer + tabs ==========
@@ -474,7 +504,7 @@
   $('#openInviteStaffFromProfiles')?.addEventListener('click', ()=> drawer(true, '#inviteStaffWrap', '#inviteStaffDrawer'));
 
   // ========== ADD RESTAURANT drawer ==========
-  const closeAddRestaurant = () => drawer(false, '#addRestaurantWrap', '#addRestaurantDrawer'); // FIXED
+  const closeAddRestaurant = () => drawer(false, '#addRestaurantWrap', '#addRestaurantDrawer');
   $('#addRestaurantClose')?.addEventListener('click', closeAddRestaurant);
   $('#addRestaurantBackdrop')?.addEventListener('click', closeAddRestaurant);
 
@@ -680,7 +710,8 @@
     try{
       await postJSON("{% url 'core:owner_api_set_restaurant' %}", { restaurant_id: e.target.value });
       refreshAll();
-      refreshAnalytics();
+      // also refresh analytics if open
+      if (!$('#analyticsWrap').classList.contains('hidden')) refreshAnalytics();
     }catch(err){ toast(err.message, false); }
   });
 
@@ -691,7 +722,7 @@
       await postJSON("{% url 'core:owner_api_remove_restaurant' %}", { restaurant_id: STATE.current_restaurant_id });
       toast('Restaurant removed');
       refreshAll();
-      refreshAnalytics();
+      if (!$('#analyticsWrap').classList.contains('hidden')) refreshAnalytics();
     }catch(e){ toast(e.message, false); }
   });
 
@@ -714,11 +745,11 @@
       $('#restLegal').value=''; $('#restDBA').value=''; $('#restEmail').value=''; $('#restPhone').value='';
       drawer(false, '#addRestaurantWrap', '#addRestaurantDrawer');
       refreshAll();
-      refreshAnalytics();
+      if (!$('#analyticsWrap').classList.contains('hidden')) refreshAnalytics();
     }catch(e){ alertIn('#addRestaurantAlert', e.message || 'Failed to create.'); }
   });
 
-  // ========== invites ==========
+  // ========== invites (manager + staff) ==========
   function showInviteAlert(msg, ok=false){
     const el = $('#inviteAlert');
     el.className = 'rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
@@ -838,44 +869,78 @@
   }
 
   // ========== review loader ==========
-  async function openReview(ticketLinkId){
-    const url = "{% url 'core:owner_ticket_review_json' 1 %}".replace('1', encodeURIComponent(ticketLinkId));
-    const resp = await fetch(url, {credentials:'same-origin'});
-    const data = await resp.json().catch(()=>({}));
-    if (!resp.ok || data.ok === false) return toast(data.error || 'Failed to load review', false);
+// ========== review loader ==========
+async function openReview(ticketLinkId){
+  const url = "{% url 'core:owner_ticket_review_json' 1 %}".replace('1', encodeURIComponent(ticketLinkId));
+  const resp = await fetch(url, {credentials:'same-origin'});
+  const data = await resp.json().catch(()=>({}));
+  if (!resp.ok || data.ok === false) return toast(data.error || 'Failed to load review', false);
 
-    const body = $('#rvBody');
-    $('#rvTitle').textContent = `Ticket ${data.ticket_id} — Review`;
+  // --- Inspect what's coming back (open DevTools → Console to see it) ---
+  console.log('[review-json]', data);
 
-    if (!data.has_review){
-      body.innerHTML = `<div class="text-sm text-slate-600">No review was submitted for this ticket.</div>`;
-      return toggleReview(true);
-    }
+  const body = $('#rvBody');
+  $('#rvTitle').textContent = `Ticket ${data.ticket_id} — Review`;
 
-    const r = data.review;
-    const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
-    const who  = (r.reviewer_name || r.reviewer_email || 'Anonymous');
-    const stars = Number(r.rating || 0);
-
-    body.innerHTML = `
-      <div class="text-sm text-slate-600 space-y-1">
-        <div><span class="font-medium">Member:</span> ${data.member || '—'}</div>
-        <div><span class="font-medium">When:</span> ${when}</div>
-        <div><span class="font-medium">By:</span> ${who}</div>
-      </div>
-      <div>
-        <div class="text-base font-medium mb-1">Rating</div>
-        <div class="text-amber-500 text-lg" aria-label="${stars} out of 5">
-          ${'★'.repeat(stars)}${'☆'.repeat(Math.max(0, 5 - stars))}
-        </div>
-      </div>
-      <div>
-        <div class="text-base font-medium mb-1">Comment</div>
-        <div class="rounded-xl border p-3 bg-slate-50 text-sm whitespace-pre-wrap">${(r.comment || '').replace(/</g,'&lt;')}</div>
-      </div>
-    `;
-    toggleReview(true);
+  if (!data.has_review){
+    body.innerHTML = `<div class="text-sm text-slate-600">No review was submitted for this ticket.</div>`;
+    return toggleReview(true);
   }
+
+  const r = data.review || {};
+
+  // Robust star extraction: try several common keys
+  // Prefer integers 0..5, but accept floats and clamp
+  const rawStarVal =
+      r.stars ??
+      r.rating ??
+      r.score ??
+      r.value ??
+      data.stars ??
+      data.rating ??
+      0;
+
+  let stars = Number(rawStarVal);
+  if (!Number.isFinite(stars)) stars = 0;
+  stars = Math.max(0, Math.min(5, stars));
+
+  const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+  const who  = (r.reviewer_name || r.reviewer_email || 'Anonymous');
+
+  // Build star glyphs from the numeric value
+  // If you only want whole stars, keep Math.round.
+  // If you later add halves, you can extend this easily.
+  const whole = Math.round(stars);
+  const starLine = '★'.repeat(whole) + '☆'.repeat(Math.max(0, 5 - whole));
+
+  body.innerHTML = `
+    <div class="text-sm text-slate-600 space-y-1">
+      <div><span class="font-medium">Member:</span> ${data.member || '—'}</div>
+      <div><span class="font-medium">When:</span> ${when}</div>
+      <div><span class="font-medium">By:</span> ${who}</div>
+    </div>
+
+    <div class="mt-3">
+      <div class="text-base font-medium mb-1">Rating</div>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-700 text-sm">${stars.toFixed(2)}</span>
+        <span class="text-amber-500 text-lg" aria-label="${stars} out of 5">
+          ${starLine}
+        </span>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <div class="text-base font-medium mb-1">Comment</div>
+      <div class="rounded-xl border p-3 bg-slate-50 text-sm whitespace-pre-wrap">${
+        (r.comment || '').replace(/</g,'&lt;')
+      }</div>
+    </div>
+  `;
+
+  toggleReview(true);
+}
+
 
   // =================== ANALYTICS: fetch/render/sort/export ===================
   let ANALYTICS = {
@@ -884,20 +949,23 @@
     sort: { pane: 'menu', key: 'avg_rating', dir: 'desc' }
   };
 
-  function setAnTab(which){
-    const panes = ['menu', 'staff'];
-    panes.forEach(p => {
-      const btn = p==='menu' ? '#tabMenu' : '#tabStaffA';
-      const paneId = p==='menu' ? '#paneMenu' : '#paneStaffA';
-      $(btn)?.classList.toggle('bg-slate-900', p===which);
-      $(btn)?.classList.toggle('text-white', p===which);
-      $(btn)?.classList.toggle('hover:bg-slate-50', p!==which);
-      $(paneId)?.classList.toggle('hidden', p!==which);
-    });
-    ANALYTICS.sort.pane = which;
-  }
-  $('#tabMenu')?.addEventListener('click', ()=> setAnTab('menu'));
-  $('#tabStaffA')?.addEventListener('click', ()=> setAnTab('staff'));
+function setAnTab(which){
+  const panes = ['menu', 'staff'];
+  panes.forEach(p => {
+    const btn = p==='menu' ? '#tabMenu' : '#tabStaffA';
+    const paneId = p==='menu' ? '#paneMenu' : '#paneStaffA';
+    $(btn)?.classList.toggle('bg-slate-900', p===which);
+    $(btn)?.classList.toggle('text-white', p===which);
+    $(btn)?.classList.toggle('hover:bg-slate-50', p!==which);
+    $(paneId)?.classList.toggle('hidden', p!==which);
+  });
+  ANALYTICS.sort.pane = which;
+  // ⬇️ ensure the visible pane renders immediately
+  renderAnalytics();
+}
+$('#tabMenu')?.addEventListener('click', ()=> setAnTab('menu'));
+$('#tabStaffA')?.addEventListener('click', ()=> setAnTab('staff'));
+
 
   async function fetchMenuRatings(){
     const url = new URL("{% url 'core:owner_api_menu_item_ratings' %}", window.location.origin);
@@ -919,15 +987,6 @@
     const data = await resp.json().catch(()=>({}));
     if (!resp.ok || data.ok === false) throw new Error(data.error || 'Failed to load staff analytics');
     return data.staff || [];
-  }
-
-  function bar(percent){
-    const p = Math.max(0, Math.min(100, percent));
-    return `
-      <div class="w-40 h-2 bg-slate-200 rounded-full overflow-hidden">
-        <div class="h-full bg-emerald-500" style="width:${p}%"></div>
-      </div>
-    `;
   }
 
   function sortData(arr, key, dir){
@@ -961,16 +1020,20 @@
     if (!rows.length) empty.classList.remove('hidden'); else empty.classList.add('hidden');
 
     rows.forEach(r=>{
-      const pct = (Number(r.avg_rating||0) / 5) * 100;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="py-2 px-3">${r.name || 'Unknown item'}</td>
         <td class="py-2 px-3">${r.category || ''}</td>
         <td class="py-2 px-3 text-right">${money(r.price_cents || 0)}</td>
-        <td class="py-2 px-3 text-right">${Number(r.avg_rating || 0).toFixed(2)}</td>
+        <td class="py-2 px-3 text-right">
+          <div class="flex items-center justify-end gap-2">
+            <span class="hidden sm:inline text-slate-500">${Number(r.avg_rating || 0).toFixed(2)}</span>
+            ${starBar(r.avg_rating)}
+          </div>
+        </td>
         <td class="py-2 px-3 text-right">${r.num_rated_tickets || 0}</td>
         <td class="py-2 px-3 text-right">${r.total_qty_on_rated_tickets || 0}</td>
-        <td class="py-2 px-3">${bar(pct)}</td>
+        <td class="py-2 px-3">${trendBarFromAvg(r.avg_rating)}</td>
       `;
       body.appendChild(tr);
     });
@@ -985,18 +1048,17 @@
     if (!rows.length) empty.classList.remove('hidden'); else empty.classList.add('hidden');
 
     rows.forEach(r=>{
-      const pct = (Number(r.avg_rating||0) / 5) * 100;
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="py-2 px-3">${r.name || 'Unknown'}</td>
-        <td class="py-2 px-3 text-right">${Number(r.avg_rating || 0).toFixed(2)}</td>
-        <td class="py-2 px-3 text-right">${r.num_rated_tickets || 0}</td>
-        <td class="py-2 px-3">
-          <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${r.is_active_in_pos ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-600'}">
-            ${r.is_active_in_pos ? 'Active' : 'Not in POS'}
-          </span>
+        <td class="py-2 px-3">${r.name || '—'}</td>
+        <td class="py-2 px-3 text-right">
+          <div class="flex items-center justify-end gap-2">
+            <span class="hidden sm:inline text-slate-500">${Number(r.avg_rating || 0).toFixed(2)}</span>
+            ${starBar(r.avg_rating)}
+          </div>
         </td>
-        <td class="py-2 px-3">${bar(pct)}</td>
+        <td class="py-2 px-3 text-right">${r.num_rated_tickets || 0}</td>
+        <td class="py-2 px-3">${trendBarFromAvg(r.avg_rating)}</td>
       `;
       body.appendChild(tr);
     });
@@ -1021,7 +1083,7 @@
     const rows = pane==='menu' ? ANALYTICS.menu : ANALYTICS.staff;
     const headers = pane==='menu'
       ? ['menu_item_id','name','category','price_cents','avg_rating','num_rated_tickets','total_qty_on_rated_tickets']
-      : ['staff_key','name','avg_rating','num_rated_tickets','is_active_in_pos'];
+      : ['staff_key','name','avg_rating','num_rated_tickets']; // Active column removed
     const lines = [headers.join(',')];
     rows.forEach(r=>{
       const vals = headers.map(h=>{
@@ -1041,23 +1103,31 @@
     document.body.appendChild(a); a.click(); a.remove();
   }
 
+  // Open analytics and auto-load (no manual refresh needed)
+  function openAnalytics() {
+    drawer(true, '#analyticsWrap', '#analyticsDrawer');
+    setAnTab('menu'); // default
+    refreshAnalytics();
+  }
+
   // Analytics drawer events
   $('#analyticsClose')?.addEventListener('click', ()=> drawer(false, '#analyticsWrap', '#analyticsDrawer'));
   $('#analyticsBackdrop')?.addEventListener('click', ()=> drawer(false, '#analyticsWrap', '#analyticsDrawer'));
   $('#anRefresh')?.addEventListener('click', refreshAnalytics);
   $('#anExport')?.addEventListener('click', exportCSV);
-  // sort handlers for both tables
   attachSortHandlers('#paneMenu thead', 'menu');
   attachSortHandlers('#paneStaffA thead', 'staff');
 
+  // Auto-refresh analytics when date filters change (no button press required)
+  $('#anStart')?.addEventListener('change', refreshAnalytics);
+  $('#anEnd')?.addEventListener('change', refreshAnalytics);
+
   // ========== initial ==========
   (function init(){
-    setAnTab('menu');   // default tab for drawer
-    refreshAll();       // loads restaurants/tickets/etc.
-    // analytics loads when Settings → Analytics is opened
+    refreshAll();  // loads restaurants/tickets etc.
+    // Analytics is loaded when you open it from Settings, and every time you change dates.
   })();
 </script>
 
 </body>
 </html>
-

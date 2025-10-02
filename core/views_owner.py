@@ -22,7 +22,8 @@ from .models import (
     OwnerInvite,
     ManagerInvite,
     StaffInvite,
-    StaffProfile
+    StaffProfile,
+    Review
 )
 from .omnivore import get_ticket, get_ticket_items
 from django.views.decorators.http import require_http_methods
@@ -664,79 +665,66 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
     })
 
 
-@login_required
-@require_GET
-def owner_ticket_review_json(request: HttpRequest, ticket_link_id: int) -> JsonResponse:
-    """
-    Returns the (optional) review associated with a TicketLink the signed-in owner can access.
-    Response is shaped for the Review drawer on the Owner Dashboard.
-    """
-    # Ensure the caller is an owner and resolve current restaurant
+def _owner_restaurant_or_404(request):
+    # however you currently get the active restaurant (reusing your helper if you have one)
     op = _get_owner_profile(request.user)
     if not op:
-        return JsonResponse({"ok": False, "error": "Not an owner."}, status=403)
+        raise Http404("Owner not found")
     rp = _get_current_restaurant(request, op)
     if not rp:
-        return JsonResponse({"ok": False, "error": "Select a restaurant."}, status=400)
+        raise Http404("Restaurant not selected")
+    return rp
 
-    # TicketLink must belong to this restaurant
-    tl = (
-        TicketLink.objects
-        .select_related("member", "restaurant")
-        .filter(id=ticket_link_id, restaurant=rp)
-        .first()
-    )
-    if not tl:
+@login_required
+def owner_ticket_review_json(request, ticket_link_id: int) -> JsonResponse:
+    rp = _owner_restaurant_or_404(request)
+
+    try:
+        tl = TicketLink.objects.select_related("member").get(
+            pk=ticket_link_id, restaurant=rp
+        )
+    except TicketLink.DoesNotExist:
         return JsonResponse({"ok": False, "error": "Ticket not found."}, status=404)
 
-    # Try a few likely review model names to avoid breaking if yours differs
-    ReviewModel = None
-    for label in ("core.Review", "core.TicketReview", "reviews.Review"):
-        try:
-            ReviewModel = apps.get_model(label)
-            break
-        except Exception:
-            continue
+    # If you store one review per ticket, this is fine; otherwise pick your rule
+    review = (
+        Review.objects.filter(ticket_link=tl)
+        .order_by("-created_at")
+        .first()
+    )
 
-    review_obj = None
-    if ReviewModel is not None:
-        qs = getattr(ReviewModel, "objects", None)
-        if qs:
-            # First try FK to TicketLink
-            try:
-                review_obj = qs.filter(ticket_link=tl).order_by("-id").first()
-            except Exception:
-                review_obj = None
-            # Fallback: look by ticket_id + restaurant if present
-            if review_obj is None:
-                try:
-                    filt = {"ticket_id": tl.ticket_id}
-                    if hasattr(ReviewModel, "restaurant"):
-                        filt["restaurant"] = rp
-                    review_obj = qs.filter(**filt).order_by("-id").first()
-                except Exception:
-                    review_obj = None
-
-    payload = {
+    out = {
         "ok": True,
-        "ticket_link_id": tl.id,
         "ticket_id": tl.ticket_id,
-        "member": (tl.member.number if tl.member else ""),
-        "has_review": bool(review_obj),
+        "ticket_number": tl.ticket_number,
+        "member": getattr(tl.member, "member_id", None) or getattr(tl.member, "id", None),
+        "has_review": bool(review),
         "review": None,
     }
 
-    if review_obj:
-        payload["review"] = {
-            "id": getattr(review_obj, "id", None),
-            "rating": getattr(review_obj, "rating", None),
-            "comment": getattr(review_obj, "comment", "") or getattr(review_obj, "text", "") or "",
-            "created_at": getattr(review_obj, "created_at", None) or getattr(review_obj, "submitted_at", None),
-            "reviewer_name": getattr(review_obj, "reviewer_name", "") or getattr(review_obj, "name", ""),
-            "reviewer_email": getattr(review_obj, "reviewer_email", "") or getattr(review_obj, "email", ""),
+    if review:
+        # Stars must be a number 0..5
+        stars = review.stars or 0  # adjust field name if different
+        try:
+            stars = int(stars)
+        except Exception:
+            try:
+                stars = float(stars)
+            except Exception:
+                stars = 0
+        stars = max(0, min(5, stars))
+
+        out["review"] = {
+            "id": review.id,
+            "stars": stars,     # canonical
+            "rating": stars,    # redundant alias for front-end safety
+            "comment": review.comment or "",
+            "created_at": review.created_at.isoformat() if review.created_at else None,
+            "reviewer_name": getattr(review, "reviewer_name", "") or "",
+            "reviewer_email": getattr(review, "reviewer_email", "") or "",
         }
 
-    return JsonResponse(payload)
+    return JsonResponse(out)
 # core/utils_reviews.py
 from django.apps import apps
 
