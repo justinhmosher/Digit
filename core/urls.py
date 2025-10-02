@@ -88,7 +88,7 @@ urlpatterns = [
     path("staff/api/board", views_staff.api_staff_board_state, name="staff_board_state"),
     path("staff/api/link-member", views_staff.api_link_member_to_ticket, name="link_member"),
     #path("staff/api/close-ticket", views_staff.api_staff_close_ticket, name="staff_close_ticket"),
-
+    path("owner/ticket-review/<int:ticket_link_id>/",views_owner.owner_ticket_review_json,name="owner_ticket_review_json",),
     path("verify/<str:member>", veiws_verify.verify_member, name="verify_member"),
     path("api/receipt/<str:member_number>", views_staff.api_ticket_receipt, name="ticket_receipt"),
     path("manager/invite-staff", views_add_staff.manager_invite_staff, name="manager_invite_staff"),
@@ -102,4 +102,7 @@ urlpatterns = [
     path("owner/OTP/verify",views_owner.owner_accept_verify, name = "owner_accept_verify"),
     path("owner/accept", views_owner.owner_accept, name="owner_accept"),
     path("stripe/webhook/owner/", views_restaurants.stripe_owner_webhook, name="stripe_owner_webhook"),
+    path("owner/api/menu-item-ratings/", views_owner.owner_api_menu_item_ratings, name="owner_api_menu_item_ratings"),
+    path("owner/api/staff-ratings/", views_owner.owner_api_staff_ratings, name="owner_api_staff_ratings"),
+    path("owner_api_staff_ratings_debug", views_owner.owner_api_staff_ratings_debug, name="owner_api_staff_ratings_debug"),
 ]

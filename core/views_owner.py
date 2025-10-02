@@ -21,13 +21,15 @@ from .models import (
     TicketLink,
     OwnerInvite,
     ManagerInvite,
-    StaffInvite
+    StaffInvite,
+    StaffProfile
 )
 from .omnivore import get_ticket, get_ticket_items
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
 User = get_user_model()
 from .utils import send_manager_invite_email, send_owner_invite_email, send_staff_invite_email
+import re
 
 # ----------------- helpers -----------------
 
@@ -39,15 +41,7 @@ from django.http import JsonResponse, HttpRequest
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.utils.dateparse import parse_date
-
-from .models import (
-    OwnerProfile,
-    RestaurantProfile,
-    Ownership,
-    ManagerProfile,
-    StaffProfile,
-    TicketLink,
-)
+from django.apps import apps
 
 
 def _get_owner_profile(user):
@@ -92,7 +86,7 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
       - restaurants list + current selection
       - owners (emails)
       - managers (names)
-      - staff (names)  <-- via StaffProfile.restaurant
+      - staff (names)
       - open tickets summary
       - recent closed tickets with optional filters
     """
@@ -147,9 +141,10 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
             name = (u.get_full_name() if u else "") or (email.split("@")[0] if email else "")
             managers.append({"id": m.id, "name": name})
 
-    # Staff (names)  <-- This is what was missing
+    # Staff (names)
     staff = []
     if current:
+        from .models import StaffProfile  # ensure available
         sqs = (
             StaffProfile.objects
             .select_related("user")
@@ -206,6 +201,7 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
                 "server": tl.server_name or "",
                 "closed_at": tl.closed_at.strftime("%Y-%m-%d %H:%M") if tl.closed_at else "",
                 "total_cents": (tl.paid_cents or tl.total_cents or tl.last_total_cents or 0),
+                "ticket_link_id": tl.id,  # NEW: used by Review button
             }
             if q:
                 hay = f'{row["ticket_number"] or ""} {row["member"] or ""}'.lower()
@@ -219,10 +215,12 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
         "current_restaurant_id": current_id,
         "owners": owners,
         "managers": managers,
-        "staff": staff,            # <-- now populated from StaffProfile
+        "staff": staff,
         "open": open_list,
         "recent": recent,
     })
+
+
 
 
 @login_required
@@ -588,7 +586,7 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
     if not tl:
         return JsonResponse({"ok": False, "error": "Ticket not found."}, status=404)
 
-    # OPEN (live pull): Subtotal = Total display
+    # OPEN (live pull): Subtotal = Total display; include per-item unit price
     if tl.status == "open" and (rp.omnivore_location_id or "").strip():
         try:
             t = get_ticket(rp.omnivore_location_id, tl.ticket_id)
@@ -598,9 +596,16 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
 
         rows = []
         for it in items:
-            qty = int(it.get("quantity", 1) or 1)
-            cents = int(it.get("price", 0) or 0)
-            rows.append({"name": it.get("name"), "qty": qty, "cents": cents})
+            qty   = int(it.get("quantity", 1) or 1)
+            unit  = int(it.get("price", 0) or 0)   # per-unit price in cents from Omnivore
+            line  = unit * qty
+            rows.append({
+                "name": it.get("name"),
+                "qty": qty,
+                "unit_cents": unit,
+                "line_total_cents": line,
+                "cents": unit,  # back-compat for older UI
+            })
 
         totals = (t or {}).get("totals") or {}
         tax = int(totals.get("tax", 0) or 0)
@@ -612,7 +617,7 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
         except Exception:
             total = 0
         if total <= 0:
-            line_sum = sum(int(r["qty"]) * int(r["cents"]) for r in rows)
+            line_sum = sum(int(r["line_total_cents"]) for r in rows)
             total = line_sum + tax + tip
 
         return JsonResponse({
@@ -622,20 +627,27 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
             "member": tl.member.number if tl.member else "",
             "server": tl.server_name or ((t.get("_embedded") or {}).get("employee") or {}).get("check_name", ""),
             "items": rows,
-            "subtotal_cents": total,                 # display rule
+            "subtotal_cents": total,  # display rule
             "tax_cents": tax,
             "tip_cents": tip,
             "total_cents": total,
             "is_open": True,
         })
 
-    # CLOSED: Your admin mapping
+    # CLOSED: use snapshot captured at close; expose unit + line totals
     rows = []
     for it in (tl.items_json or []):
         name  = it.get("name") or it.get("label") or "Item"
         qty   = int(it.get("qty") or it.get("quantity") or 1)
-        cents = int(it.get("cents") or it.get("price") or 0)
-        rows.append({"name": name, "qty": qty, "cents": cents})
+        unit  = int(it.get("price_cents") or it.get("unit_cents") or it.get("cents") or it.get("price") or 0)
+        line  = int(it.get("total_cents") or it.get("line_total_cents") or (unit * qty))
+        rows.append({
+            "name": name,
+            "qty": qty,
+            "unit_cents": unit,
+            "line_total_cents": line,
+            "cents": unit,  # back-compat
+        })
 
     return JsonResponse({
         "ok": True,
@@ -644,12 +656,581 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
         "member": tl.member.number if tl.member else "",
         "server": tl.server_name or "",
         "items": rows,
-        "subtotal_cents": int(tl.total_cents or 0),   # <-- per your rule: show total_cents as Subtotal
+        "subtotal_cents": int(tl.total_cents or 0),  # per your mapping
         "tax_cents": int(tl.tax_cents or 0),
         "tip_cents": int(tl.tip_cents or 0),
         "total_cents": int(tl.paid_cents or (tl.total_cents or 0) + (tl.tax_cents or 0) + (tl.tip_cents or 0)),
         "is_open": False,
     })
+
+
+@login_required
+@require_GET
+def owner_ticket_review_json(request: HttpRequest, ticket_link_id: int) -> JsonResponse:
+    """
+    Returns the (optional) review associated with a TicketLink the signed-in owner can access.
+    Response is shaped for the Review drawer on the Owner Dashboard.
+    """
+    # Ensure the caller is an owner and resolve current restaurant
+    op = _get_owner_profile(request.user)
+    if not op:
+        return JsonResponse({"ok": False, "error": "Not an owner."}, status=403)
+    rp = _get_current_restaurant(request, op)
+    if not rp:
+        return JsonResponse({"ok": False, "error": "Select a restaurant."}, status=400)
+
+    # TicketLink must belong to this restaurant
+    tl = (
+        TicketLink.objects
+        .select_related("member", "restaurant")
+        .filter(id=ticket_link_id, restaurant=rp)
+        .first()
+    )
+    if not tl:
+        return JsonResponse({"ok": False, "error": "Ticket not found."}, status=404)
+
+    # Try a few likely review model names to avoid breaking if yours differs
+    ReviewModel = None
+    for label in ("core.Review", "core.TicketReview", "reviews.Review"):
+        try:
+            ReviewModel = apps.get_model(label)
+            break
+        except Exception:
+            continue
+
+    review_obj = None
+    if ReviewModel is not None:
+        qs = getattr(ReviewModel, "objects", None)
+        if qs:
+            # First try FK to TicketLink
+            try:
+                review_obj = qs.filter(ticket_link=tl).order_by("-id").first()
+            except Exception:
+                review_obj = None
+            # Fallback: look by ticket_id + restaurant if present
+            if review_obj is None:
+                try:
+                    filt = {"ticket_id": tl.ticket_id}
+                    if hasattr(ReviewModel, "restaurant"):
+                        filt["restaurant"] = rp
+                    review_obj = qs.filter(**filt).order_by("-id").first()
+                except Exception:
+                    review_obj = None
+
+    payload = {
+        "ok": True,
+        "ticket_link_id": tl.id,
+        "ticket_id": tl.ticket_id,
+        "member": (tl.member.number if tl.member else ""),
+        "has_review": bool(review_obj),
+        "review": None,
+    }
+
+    if review_obj:
+        payload["review"] = {
+            "id": getattr(review_obj, "id", None),
+            "rating": getattr(review_obj, "rating", None),
+            "comment": getattr(review_obj, "comment", "") or getattr(review_obj, "text", "") or "",
+            "created_at": getattr(review_obj, "created_at", None) or getattr(review_obj, "submitted_at", None),
+            "reviewer_name": getattr(review_obj, "reviewer_name", "") or getattr(review_obj, "name", ""),
+            "reviewer_email": getattr(review_obj, "reviewer_email", "") or getattr(review_obj, "email", ""),
+        }
+
+    return JsonResponse(payload)
+# core/utils_reviews.py
+from django.apps import apps
+
+# Common attribute names across projects
+_POSSIBLE_RATING_ATTRS = ("rating", "review_rating", "stars", "score")
+# Common JSON/blob fields that may contain nested review data
+_POSSIBLE_REVIEW_FIELDS = ("review_json", "raw_review_json", "raw_ticket_json", "extra_json")
+
+def _dig_rating_from_mapping(m):
+    """
+    Try common keys/paths inside a dict-like review/ticket payload.
+    Return int 0–5 (usually 1–5) or None.
+    """
+    if not isinstance(m, dict):
+        return None
+
+    # Direct keys first
+    for k in ("rating", "review_rating", "stars", "score"):
+        try:
+            v = m.get(k)
+            if v is not None:
+                v = int(v)
+                if 0 <= v <= 5:
+                    return v
+        except Exception:
+            pass
+
+    # Nested "review": { rating: ... }
+    try:
+        rev = m.get("review") or {}
+        v = rev.get("rating")
+        if v is not None:
+            v = int(v)
+            if 0 <= v <= 5:
+                return v
+    except Exception:
+        pass
+
+    # Other common nesting patterns
+    for path in (("details", "rating"), ("feedback", "rating"), ("customer", "rating")):
+        try:
+            cur = m
+            for k in path:
+                if not isinstance(cur, dict):
+                    cur = {}
+                cur = cur.get(k)
+            if cur is not None:
+                v = int(cur)
+                if 0 <= v <= 5:
+                    return v
+        except Exception:
+            pass
+
+    return None
+
+
+# core/utils_reviews.py
+from django.apps import apps
+
+_POSSIBLE_RATING_ATTRS = ("rating", "review_rating", "stars", "score")
+_POSSIBLE_REVIEW_FIELDS = ("review_json", "raw_review_json", "raw_ticket_json", "extra_json")
+
+def _dig_rating_from_mapping(m):
+    if not isinstance(m, dict):
+        return None
+    for k in ("rating", "review_rating", "stars", "score"):
+        try:
+            v = m.get(k)
+            if v is not None:
+                v = int(v)
+                if 0 <= v <= 5:
+                    return v
+        except Exception:
+            pass
+    try:
+        rev = m.get("review") or {}
+        v = rev.get("rating")
+        if v is not None:
+            v = int(v)
+            if 0 <= v <= 5:
+                return v
+    except Exception:
+        pass
+    for path in (("details", "rating"), ("feedback", "rating"), ("customer", "rating")):
+        try:
+            cur = m
+            for k in path:
+                if not isinstance(cur, dict):
+                    cur = {}
+                cur = cur.get(k)
+            if cur is not None:
+                v = int(cur)
+                if 0 <= v <= 5:
+                    return v
+        except Exception:
+            pass
+    return None
+
+def get_ticket_rating_from_anywhere(ticket_link):
+    # 1) Review models
+    for label in ("core.Review", "core.TicketReview", "reviews.Review"):
+        try:
+            Review = apps.get_model(label)
+        except Exception:
+            Review = None
+        if not Review:
+            continue
+
+        try:
+            r = Review.objects.filter(ticket_link=ticket_link).order_by("-id").first()
+        except Exception:
+            r = None
+
+        if r is None:
+            try:
+                filt = {"ticket_id": ticket_link.ticket_id}
+                if hasattr(Review, "restaurant"):
+                    filt["restaurant"] = ticket_link.restaurant
+                r = Review.objects.filter(**filt).order_by("-id").first()
+            except Exception:
+                r = None
+
+        if r is not None:
+            for attr in _POSSIBLE_RATING_ATTRS:
+                try:
+                    val = getattr(r, attr, None)
+                    if val is not None:
+                        val = int(val)
+                        if 0 <= val <= 5:
+                            return val
+                except Exception:
+                    pass
+            for blob_attr in _POSSIBLE_REVIEW_FIELDS:
+                try:
+                    blob = getattr(r, blob_attr, None)
+                    if blob:
+                        v = _dig_rating_from_mapping(blob)
+                        if v is not None:
+                            return v
+                except Exception:
+                    pass
+
+    # 2) Direct attrs on TicketLink
+    for attr in _POSSIBLE_RATING_ATTRS:
+        try:
+            val = getattr(ticket_link, attr, None)
+            if val is not None:
+                val = int(val)
+                if 0 <= val <= 5:
+                    return val
+        except Exception:
+            pass
+
+    # 3) Dict/JSON blobs on TicketLink
+    for blob_attr in _POSSIBLE_REVIEW_FIELDS:
+        try:
+            blob = getattr(ticket_link, blob_attr, None)
+            if blob:
+                v = _dig_rating_from_mapping(blob)
+                if v is not None:
+                    return v
+        except Exception:
+            pass
+
+    return None
+
+
+# --- MENU ITEMS ANALYTICS ---
+@login_required
+@require_GET
+def owner_api_menu_item_ratings(request: HttpRequest) -> JsonResponse:
+    """
+    Menu analytics that ALWAYS returns rows from closed tickets:
+      - If a rating exists on a ticket, include it in the average.
+      - If not, show the item with avg_rating=None and volume counts.
+      - Price comes from RestaurantProfile.menu_cache, else ticket unit price.
+    """
+
+    op = _get_owner_profile(request.user)
+    if not op:
+        return JsonResponse({"ok": False, "error": "Not an owner."}, status=403)
+    rp = _get_current_restaurant(request, op)
+    if not rp:
+        return JsonResponse({"ok": False, "error": "Select a restaurant."}, status=400)
+
+    start_s = (request.GET.get("start") or "").strip()
+    end_s   = (request.GET.get("end") or "").strip()
+    qs = TicketLink.objects.filter(restaurant=rp, status="closed")
+    if start_s:
+        try: qs = qs.filter(closed_at__date__gte=parse_date(start_s))
+        except Exception: pass
+    if end_s:
+        try: qs = qs.filter(closed_at__date__lte=parse_date(end_s))
+        except Exception: pass
+
+    item_meta = { str(x.get("id")): x for x in (rp.menu_cache or []) }
+
+    agg = {}
+    for tl in qs.iterator():
+        rating = get_ticket_rating_from_anywhere(tl)  # may be None
+
+        for row in (tl.items_json or []):
+            mid = str(row.get("menu_item_id") or row.get("id") or "").strip()
+            name = (row.get("name") or row.get("label") or "").strip() or "Unknown item"
+            key = mid or f"name:{name}"
+
+            try:
+                qty = int(row.get("quantity") or row.get("qty") or 1)
+            except Exception:
+                qty = 1
+
+            rec = agg.setdefault(key, {
+                "menu_item_id": mid or None,
+                "name": name,
+                "category": "",
+                "price_cents": 0,
+                "sum": 0,
+                "n": 0,
+                "qty_rated_tickets": 0,
+                "qty_all_tickets": 0,
+                "num_rated_tickets": 0,
+                "num_all_tickets": 0,
+            })
+
+            # enrich from cache
+            if mid and mid in item_meta:
+                meta = item_meta[mid]
+                if not rec["category"]:
+                    rec["category"] = meta.get("category") or ""
+                try:
+                    if not rec["price_cents"]:
+                        rec["price_cents"] = int(meta.get("price_cents") or 0)
+                except Exception:
+                    pass
+
+            # fallback to ticket unit price if cache has none
+            if not rec["price_cents"]:
+                for k in ("unit_cents", "price_cents", "cents", "unit_price", "price"):
+                    v = row.get(k)
+                    if v is None: 
+                        continue
+                    try:
+                        iv = int(v)
+                        rec["price_cents"] = iv if iv >= 100 else iv * 100
+                        break
+                    except Exception:
+                        try:
+                            from decimal import Decimal
+                            rec["price_cents"] = int(Decimal(str(v)) * 100)
+                            break
+                        except Exception:
+                            pass
+
+            rec["qty_all_tickets"] += qty
+            rec["num_all_tickets"] += 1
+
+            if rating is not None:
+                rec["sum"] += int(rating)
+                rec["n"]   += 1
+                rec["qty_rated_tickets"] += qty
+                rec["num_rated_tickets"] += 1
+
+    out = []
+    for _, r in agg.items():
+        avg = (r["sum"] / r["n"]) if r["n"] else None
+        out.append({
+            "menu_item_id": r["menu_item_id"] or "",
+            "name": r["name"],
+            "category": r["category"],
+            "price_cents": int(r["price_cents"] or 0),
+            "avg_rating": round(avg, 3) if avg is not None else None,
+            "num_rated_tickets": r["num_rated_tickets"],
+            "total_qty_on_rated_tickets": r["qty_rated_tickets"],
+            # extra (optional) fields if your UI wants them later:
+            "num_all_tickets": r["num_all_tickets"],
+            "total_qty_all_tickets": r["qty_all_tickets"],
+        })
+
+    def sort_key(row):
+        rated = row["avg_rating"] is not None
+        return (0 if rated else 1, -(row["avg_rating"] or 0), -row.get("num_all_tickets", 0))
+
+    out.sort(key=sort_key)
+    return JsonResponse({"ok": True, "items": out})
+
+
+# views.py
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_GET
+from django.http import JsonResponse, HttpRequest
+
+@login_required
+@require_GET
+def owner_api_staff_ratings(request: HttpRequest) -> JsonResponse:
+    """
+    Staff analytics that ALWAYS returns rows (but no 'Unknown').
+    """
+
+    # --- access ---
+    op = _get_owner_profile(request.user)
+    if not op:
+        return JsonResponse({"ok": False, "error": "Not an owner."}, status=403)
+    rp = _get_current_restaurant(request, op)
+    if not rp:
+        return JsonResponse({"ok": False, "error": "Select a restaurant."}, status=400)
+
+    # --- filters ---
+    start_s = (request.GET.get("start") or "").strip()
+    end_s   = (request.GET.get("end") or "").strip()
+    qs = TicketLink.objects.filter(restaurant=rp, status="closed")
+    if start_s:
+        try: qs = qs.filter(closed_at__date__gte=parse_date(start_s))
+        except Exception: pass
+    if end_s:
+        try: qs = qs.filter(closed_at__date__lte=parse_date(end_s))
+        except Exception: pass
+
+    # --- cache maps ---
+    staff_cache = rp.staff_cache or []
+    by_ck_lower = { (s.get("check_name") or "").strip().lower(): s for s in staff_cache if (s.get("check_name") or "").strip() }
+    by_nm_lower = { (s.get("name") or "").strip().lower():       s for s in staff_cache if (s.get("name") or "").strip() }
+
+    # --- seed rows + buckets ---
+    agg = {}
+    def seed_row(key, display, active=True):
+        if key not in agg:
+            agg[key] = {
+                "display": display or "",
+                "active": bool(active),
+                "sum": 0, "n": 0,
+                "tickets_all": 0, "tickets_rated": 0
+            }
+
+    # seed every cached staffer so they appear even with 0 tickets
+    for s in staff_cache:
+        key = (str(s.get("id") or "").strip()
+               or (s.get("check_name") or "").strip()
+               or (s.get("name") or "").strip()
+               or f"seed:{id(s)}")
+        disp = (s.get("check_name") or s.get("name") or "").strip()
+        if disp:  # ✅ only seed if we actually have a display name
+            seed_row(key, disp, s.get("is_active", True))
+
+    agg_all = {"display": "All staff", "active": True, "sum": 0, "n": 0, "tickets_all": 0, "tickets_rated": 0}
+
+    # --- aggregation ---
+    for tl in qs.iterator():
+        rating = get_ticket_rating_from_anywhere(tl)
+
+        # ALL row
+        agg_all["tickets_all"] += 1
+        if rating is not None:
+            agg_all["sum"] += int(rating)
+            agg_all["n"]   += 1
+            agg_all["tickets_rated"] += 1
+
+        resolved = (tl.server_name or "").strip()
+        key = None
+        display = None
+
+        if resolved:
+            low = resolved.lower()
+            if low in by_ck_lower:
+                s = by_ck_lower[low]
+                key = str(s.get("id") or s.get("check_name") or resolved)
+                display = (s.get("check_name") or s.get("name") or resolved)
+                seed_row(key, display, s.get("is_active", True))
+            elif low in by_nm_lower:
+                s = by_nm_lower[low]
+                key = str(s.get("id") or s.get("name") or resolved)
+                display = (s.get("check_name") or s.get("name") or resolved)
+                seed_row(key, display, s.get("is_active", True))
+            else:
+                # keep raw server_name, but skip if it's blank
+                display = resolved
+                key = resolved
+                if display:
+                    seed_row(key, display, True)
+
+        if not key:
+            try:
+                raw = tl.raw_ticket_json or {}
+                emb = (raw.get("_embedded") or {})
+                emp = emb.get("employee") or raw.get("employee") or {}
+                pos_name = (emp.get("check_name") or emp.get("name") or "").strip()
+            except Exception:
+                pos_name = ""
+            if pos_name:
+                low = pos_name.lower()
+                if low in by_ck_lower:
+                    s = by_ck_lower[low]
+                    key = str(s.get("id") or s.get("check_name") or pos_name)
+                    display = (s.get("check_name") or s.get("name") or pos_name)
+                    seed_row(key, display, s.get("is_active", True))
+                elif low in by_nm_lower:
+                    s = by_nm_lower[low]
+                    key = str(s.get("id") or s.get("name") or pos_name)
+                    display = (s.get("check_name") or s.get("name") or pos_name)
+                    seed_row(key, display, s.get("is_active", True))
+                else:
+                    display = pos_name
+                    key = pos_name
+                    if display:
+                        seed_row(key, display, True)
+
+        # ✅ If still no key, SKIP (don’t create “Unknown”)
+        if not key:
+            continue
+
+        row = agg[key]
+        row["tickets_all"] += 1
+        if rating is not None:
+            row["sum"] += int(rating)
+            row["n"]   += 1
+            row["tickets_rated"] += 1
+
+    # --- shape response ---
+    out = []
+    avg_all = (agg_all["sum"] / agg_all["n"]) if agg_all["n"] else None
+    out.append({
+        "staff_key": "ALL",
+        "name": agg_all["display"],
+        "avg_rating": round(avg_all, 3) if avg_all is not None else None,
+        "num_rated_tickets": agg_all["tickets_rated"],
+        "is_active_in_pos": True,
+        "num_all_tickets": agg_all["tickets_all"],
+    })
+    for key, r in agg.items():
+        avg = (r["sum"] / r["n"]) if r["n"] else None
+        out.append({
+            "staff_key": key,
+            "name": r["display"],
+            "avg_rating": round(avg, 3) if avg is not None else None,
+            "num_rated_tickets": r["tickets_rated"],
+            "is_active_in_pos": bool(r["active"]),
+            "num_all_tickets": r["tickets_all"],
+        })
+
+    def sort_key(row):
+        if row["staff_key"] == "ALL": return (-999, 0, 0)
+        rated = row["avg_rating"] is not None
+        return (0 if rated else 1, -(row["avg_rating"] or 0), -row["num_all_tickets"])
+    out[1:] = sorted(out[1:], key=sort_key)
+
+    return JsonResponse({
+        "ok": True,
+        "synced_at": (rp.staff_cache_synced_at.isoformat() if rp.staff_cache_synced_at else None),
+        "staff": out,
+    })
+
+
+# views.py
+@login_required
+@require_GET
+def owner_api_staff_ratings_debug(request: HttpRequest) -> JsonResponse:
+    """Quick visibility into distinct server names & how many tickets have them."""
+    from django.utils.dateparse import parse_date
+    from collections import Counter
+    from .models import TicketLink
+
+    op = _get_owner_profile(request.user)
+    if not op:
+        return JsonResponse({"ok": False, "error": "Not an owner."}, status=403)
+    rp = _get_current_restaurant(request, op)
+    if not rp:
+        return JsonResponse({"ok": False, "error": "Select a restaurant."}, status=400)
+
+    start_s = (request.GET.get("start") or "").strip()
+    end_s   = (request.GET.get("end") or "").strip()
+    qs = TicketLink.objects.filter(restaurant=rp, status="closed")
+    if start_s:
+        try: qs = qs.filter(closed_at__date__gte=parse_date(start_s))
+        except Exception: pass
+    if end_s:
+        try: qs = qs.filter(closed_at__date__lte=parse_date(end_s))
+        except Exception: pass
+
+    names = []
+    for tl in qs.iterator():
+        nm = (tl.server_name or "").strip()
+        if not nm:
+            try:
+                raw = tl.raw_ticket_json or {}
+                emb = (raw.get("_embedded") or {})
+                emp = emb.get("employee") or raw.get("employee") or {}
+                nm = (emp.get("check_name") or emp.get("name") or "").strip()
+            except Exception:
+                nm = ""
+        names.append(nm or "<blank>")
+
+    counts = Counter(names)
+    rows = [{"server_name": k, "tickets": v} for k, v in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
+    return JsonResponse({"ok": True, "rows": rows})
+
 
 @require_GET
 @login_required

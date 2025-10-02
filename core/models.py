@@ -57,14 +57,16 @@ class RestaurantProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     owners = models.ManyToManyField('OwnerProfile', through='Ownership', related_name='restaurants')
+    menu_cache           = models.JSONField(default=list, blank=True)   # [{id, name, price_cents, category, in_stock}]
+    menu_cache_synced_at = models.DateTimeField(null=True, blank=True)
+
+    staff_cache           = models.JSONField(default=list, blank=True)  # [{id, name, check_name, role, is_active}]
+    staff_cache_synced_at = models.DateTimeField(null=True, blank=True)
 
     def display_name(self):
-        # Prefer Stripe business_profile.name (DBA) if cached
         dba = (self.stripe_cached or {}).get("business_profile", {}).get("name") or ""
         return dba or self.dba_name or self.legal_name or f"Restaurant {self.pk}"
-
-    def __str__(self):
-        return self.display_name()
+    def __str__(self): return self.display_name()
 
 
 class Ownership(models.Model):
