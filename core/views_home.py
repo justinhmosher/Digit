@@ -216,29 +216,18 @@ def signout(request: HttpRequest) -> HttpResponse:
 # --------------------
 @require_GET
 def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse:
-    """
-    Return the live receipt for the most recent OPEN TicketLink for this user+member.
-    Path: /api/member/<member>/receipt
-    """
     if not request.user.is_authenticated:
         return JsonResponse({"ok": False, "error": "Auth required."}, status=401)
 
-    # Authorize: the member number must belong to THIS user
-    m = (
-        Member.objects
-        .filter(number=str(member_number), customer__user=request.user)
-        .first()
-    )
+    m = Member.objects.filter(number=str(member_number), customer__user=request.user).first()
     if not m:
         return JsonResponse({"ok": False, "error": "Not authorized for this member."}, status=403)
 
-    tl = (
-        TicketLink.objects
-        .filter(member=m, status="open")
-        .select_related("restaurant")
-        .order_by("-opened_at")
-        .first()
-    )
+    tl = (TicketLink.objects
+          .filter(member=m, status="open")
+          .select_related("restaurant")
+          .order_by("-opened_at")
+          .first())
     if not tl:
         return JsonResponse({"ok": False, "error": "No active ticket."}, status=404)
 
@@ -247,13 +236,10 @@ def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse
     if not loc_id:
         return JsonResponse({"ok": False, "error": "Restaurant not wired to POS."}, status=500)
 
-    # Live POS data
     t = get_ticket(loc_id, tl.ticket_id) or {}
     items = get_ticket_items(loc_id, tl.ticket_id) or []
 
-    # Build rows + totals
-    rows = []
-    subtotal_calc = 0
+    rows, subtotal_calc = [], 0
     for i in items:
         qty = int(i.get("quantity", 1) or 1)
         cents = int(i.get("price", 0) or 0)
@@ -261,13 +247,14 @@ def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse
         rows.append({"name": i.get("name"), "qty": qty, "cents": cents})
 
     totals = (t or {}).get("totals") or {}
-    subtotal = int(totals.get("sub_total", subtotal_calc) or subtotal_calc)
-    tax      = int(totals.get("tax", 0) or 0)
-    total    = int(totals.get("total", subtotal + tax) or (subtotal + tax))
-    due      = int(totals.get("due", total) or total)
+    to_int = lambda v: int(v) if v not in (None, "") else 0
 
-    # Remember latest due for the staff board
-    TicketLink.objects.filter(pk=tl.pk).update(last_total_cents=due)
+    subtotal   = to_int(totals.get("subtotal") or totals.get("sub_total") or subtotal_calc)
+    tax        = to_int(totals.get("tax"))
+    base_total = subtotal + tax
+
+    # Always treat our base (subtotal+tax) as "due" for live-view consistency
+    TicketLink.objects.filter(pk=tl.pk).update(last_total_cents=base_total)
 
     return JsonResponse({
         "ok": True,
@@ -276,8 +263,8 @@ def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse
         "items": rows,
         "subtotal_cents": subtotal,
         "tax_cents": tax,
-        "total_cents": total,
-        "due_cents": due,
+        "total_cents": base_total,   # UI adds tip on top of this
+        "due_cents": base_total,     # keep UI aligned; or drop this field if unused
     })
 
 
@@ -293,15 +280,14 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     Customer close (Stripe Connect version)
     Body: {"tip_cents": <int>, "reference": "customer-close"}
 
-    Enhancements:
-      - Snapshots the POS ticket's line items into TicketLink.items_json
-      - Snapshots POS totals (subtotal/tax/discounts/total) into TicketLink fields
-      - Persists raw POS ticket JSON into TicketLink.raw_ticket_json
-      - Fills merchant snapshot fields from RestaurantProfile if empty
+    Changes:
+      - Compute base_due = subtotal + tax (ignore POS 'due'/'total' quirks)
+      - Charge Stripe for base_due + tip
+      - POS post with fallback: (amount=base, tip=tip) -> else (amount=base+tip, tip=0)
+      - Snapshot consistent numbers into TicketLink
     """
-    # ---------- Local helpers (self-contained) ----------
+    # ---------- helpers ----------
     def _get_embedded_list(obj, key):
-        """Safely return list from obj['_embedded'][key] or obj[key] or []."""
         if not obj:
             return []
         emb = obj.get("_embedded") or {}
@@ -312,7 +298,6 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         return []
 
     def _normalize_modifiers(line_item: dict) -> list:
-        """Collect modifiers/options in a compact, receipt-friendly structure."""
         mods = []
         for bucket in ("modifiers", "options", "applied_modifiers"):
             for m in _get_embedded_list(line_item, bucket):
@@ -326,7 +311,6 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         return mods
 
     def _normalize_line_items(ticket_json: dict) -> list:
-        """Map Omnivore ticket lines -> compact dicts for TicketLink.items_json."""
         items = []
         line_items = _get_embedded_list(ticket_json, "items") or _get_embedded_list(ticket_json, "line_items")
         for li in line_items:
@@ -338,14 +322,12 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
                 menu_item_id = str(mi_val or li.get("menu_item_id") or li.get("pos_id") or "")
                 menu_item_name = li.get("name") or ""
 
-            price_level = li.get("price_level") or li.get("price_level_id") or None
-
             item_obj = {
                 "menu_item_id": menu_item_id,
                 "name":         menu_item_name,
                 "qty":          int(li.get("quantity") or 1),
                 "seat":         li.get("seat"),
-                "price_level":  str(price_level) if price_level is not None else None,
+                "price_level":  str(li.get("price_level") or li.get("price_level_id")) if li.get("price_level") or li.get("price_level_id") else None,
                 "price_cents":  int(li.get("price") or li.get("price_per_unit") or li.get("unit_price") or 0),
                 "total_cents":  int(li.get("total") or li.get("extended_price") or 0),
                 "voided":       bool(li.get("void") or li.get("voided") or False),
@@ -358,12 +340,13 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     def _totals_from_ticket(ticket_json: dict) -> dict:
         totals = (ticket_json or {}).get("totals") or {}
         to_int = lambda v: int(v) if v not in (None, "") else 0
+        sub_val = totals.get("subtotal", totals.get("sub_total", 0))
         return {
-            "subtotal_cents":        to_int(totals.get("subtotal")),
+            "subtotal_cents":        to_int(sub_val),
             "tax_cents":             to_int(totals.get("tax")),
             "discounts_cents":       to_int(totals.get("discounts") or totals.get("discount") or 0),
-            "total_cents":           to_int(totals.get("total")),
-            "due_cents":             to_int(totals.get("due")),
+            "total_cents":           to_int(totals.get("total")),   # POS may include svc/fees here
+            "due_cents":             to_int(totals.get("due")),     # often unreliable
             "service_charge_cents":  to_int(totals.get("service_charge") or totals.get("svc_charge") or 0),
         }
 
@@ -383,11 +366,31 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         if not link.merchant_phone:
             link.merchant_phone = getattr(rp, "phone", "") or ""
 
-    # ---------- Auth ----------
+    def _compute_base_due(ticket_json: dict) -> int:
+        """Return subtotal+tax (in cents). Fall back to summing embedded items."""
+        to_int = lambda v: int(v) if v not in (None, "") else 0
+        totals = (ticket_json or {}).get("totals") or {}
+        sub = to_int(totals.get("sub_total", totals.get("subtotal", 0)))
+        tax = to_int(totals.get("tax"))
+        if sub <= 0:
+            # Sum embedded items if subtotal not present
+            sub_calc = 0
+            for li in _get_embedded_list(ticket_json, "items") or _get_embedded_list(ticket_json, "line_items"):
+                qty = int(li.get("quantity") or 1)
+                # prefer unit price * qty; else extended "total"
+                unit = int(li.get("price") or li.get("price_per_unit") or li.get("unit_price") or 0)
+                if unit:
+                    sub_calc += qty * unit
+                else:
+                    sub_calc += int(li.get("total") or 0)
+            sub = sub_calc
+        return max(sub + tax, 0)
+
+    # ---------- auth ----------
     if not request.user.is_authenticated:
         return JsonResponse({"ok": False, "error": "auth_required"}, status=401)
 
-    # ---------- Ensure member belongs to user ----------
+    # ---------- member belongs to user ----------
     m = (
         Member.objects
         .select_related("customer")
@@ -397,7 +400,7 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     if not m:
         return JsonResponse({"ok": False, "error": "not_authorized_for_member"}, status=403)
 
-    # ---------- Find open ticket link ----------
+    # ---------- open ticket ----------
     tl = (
         TicketLink.objects
         .select_related("restaurant", "member", "member__customer")
@@ -413,26 +416,28 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     if not loc_id:
         return JsonResponse({"ok": False, "error": "restaurant_missing_location_id"}, status=500)
 
-    # ---------- Parse body ----------
+    # ---------- body ----------
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
         data = {}
     reference = (data.get("reference") or "customer-close").strip()
+
     try:
         tip_cents = max(0, int(data.get("tip_cents") or 0))
     except Exception:
         tip_cents = 0
 
-    # ---------- Get fresh due from POS (fallback to snapshots) ----------
+    # ---------- compute base due from POS (subtotal + tax) ----------
+    ticket_json = {}
     try:
-        t = get_ticket(loc_id, tl.ticket_id)  # POS ticket JSON
-        totals = (t or {}).get("totals") or {}
-        base_due = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
+        ticket_json = get_ticket(loc_id, tl.ticket_id) or {}
     except Exception:
-        t = None
-        base_due = 0
+        ticket_json = {}
 
+    base_due = _compute_base_due(ticket_json)
+
+    # LAST RESORT: stale snapshot if POS unreachable and we have something sane
     if base_due <= 0:
         base_due = max(
             [int(x.last_total_cents or 0) for x in TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open")] or [0]
@@ -440,14 +445,14 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
     if base_due <= 0:
         return JsonResponse({"ok": False, "error": "nothing_due"}, status=400)
 
-    gross_cents = base_due + tip_cents
+    gross_cents = base_due + tip_cents  # amount we charge on Stripe
 
-    # ---------- Identify customer + PM ----------
+    # ---------- customer + PM ----------
     cp: CustomerProfile | None = getattr(m, "customer", None)
     if not cp or not cp.stripe_customer_id or not cp.default_payment_method:
         return JsonResponse({"ok": False, "error": "customer_missing_payment_method"}, status=400)
 
-    # ---------- Charge via Stripe (off-session) ----------
+    # ---------- Stripe charge ----------
     stripe_meta = {
         "ticket_id": tl.ticket_id,
         "restaurant_id": str(rp.id),
@@ -487,17 +492,26 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
             "payment_intent": e.payment_intent_id,
         }, status=402)
 
-    # ---------- Post to POS (payment). If POS fails, refund Stripe ----------
-    try:
-        create_payment_with_tender_type(
+    # ---------- POS post with fallback ----------
+    def _post_to_pos(amount_cents: int, tip_cents_val: int):
+        return create_payment_with_tender_type(
             location_id=loc_id,
             ticket_id=tl.ticket_id,
-            amount_cents=base_due,
-            tender_type_id=None,
+            amount_cents=amount_cents,
+            tender_type_id=None,   # pass a specific tender_type_id if POS requires it
             reference=reference,
-            tip_cents=tip_cents,
+            tip_cents=tip_cents_val,
         )
+
+    try:
+        try:
+            # scheme A: amount=base, tip=tip
+            _post_to_pos(base_due, tip_cents)
+        except Exception as first_err:
+            # scheme B: amount includes tip, tip=0
+            _post_to_pos(base_due + tip_cents, 0)
     except Exception as pos_err:
+        # refund Stripe if POS failed
         try:
             if getattr(intent, "id", None):
                 refund_payment_intent(intent.id, reason="requested_by_customer")
@@ -513,35 +527,25 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         return JsonResponse({
             "ok": False,
             "error": "omnivore_payment_failed_refunded",
-            "detail": str(pos_err),
+            "pos_detail": str(pos_err),
             "payment_intent": getattr(intent, "id", None),
         }, status=502)
 
-    # ---------- Close links + SNAPSHOT items/totals/raw ----------
+    # ---------- snapshot + close links ----------
     now = timezone.now()
     open_links = list(TicketLink.objects.filter(ticket_id=tl.ticket_id, status="open"))
 
-    # Assemble normalized items + totals from POS ticket if available
-    ticket_json = t or {}
     try:
         normalized_items = _normalize_line_items(ticket_json) if ticket_json else []
     except Exception:
         normalized_items = []
 
-    normalized_totals = {
-        "subtotal_cents": 0,
-        "tax_cents": 0,
-        "discounts_cents": 0,
-        "total_cents": base_due,
-        "due_cents": 0,
-        "service_charge_cents": 0,
-    }
+    # Prefer our computed base_due for total_cents to keep it consistent with the charge
+    totals_from_pos = {}
     try:
-        tt = _totals_from_ticket(ticket_json) if ticket_json else {}
-        if isinstance(tt, dict) and any(tt.values()):
-            normalized_totals.update(tt)
+        totals_from_pos = _totals_from_ticket(ticket_json) if ticket_json else {}
     except Exception:
-        pass
+        totals_from_pos = {}
 
     update_fields = [
         "status", "closed_at",
@@ -558,10 +562,11 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
         link.status = "closed"
         link.closed_at = now
 
-        link.total_cents     = int(normalized_totals.get("total_cents") or base_due or 0)
-        link.subtotal_cents  = int(normalized_totals.get("subtotal_cents") or 0)
-        link.tax_cents       = int(normalized_totals.get("tax_cents") or 0)
-        link.discounts_cents = int(normalized_totals.get("discounts_cents") or 0)
+        link.subtotal_cents  = int(totals_from_pos.get("subtotal_cents") or 0)
+        link.tax_cents       = int(totals_from_pos.get("tax_cents") or 0)
+        link.discounts_cents = int(totals_from_pos.get("discounts_cents") or 0)
+
+        link.total_cents     = int(base_due)             # <= our authoritative base amount (subtotal+tax)
         link.tip_cents       = int(tip_cents or 0)
         link.paid_cents      = int(gross_cents or 0)
 
@@ -572,12 +577,12 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
 
         link.save(update_fields=update_fields)
 
-    # ---------- Success + review context ----------
     return JsonResponse({
         "ok": True,
         "closed": len(open_links),
         "paid_cents": gross_cents,
         "tip_cents": tip_cents,
+        "base_due_cents": base_due,             # for visibility while testing
         "payment_intent": getattr(intent, "id", None),
         "destination": rp.stripe_account_id or None,
         "review": {
@@ -586,6 +591,8 @@ def api_close_tab(request: HttpRequest, member: str) -> JsonResponse:
             "ticket_link_id": tl.id,
         },
     })
+
+
 
 # --------------------
 # Submit a review

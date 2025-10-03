@@ -310,7 +310,7 @@
 
 <script>
   /* =========================================================
-     SERVER DATA + DEMO (unchanged inputs)
+     SERVER DATA + DEMO
   ========================================================= */
   window.DND_RESTAURANTS = {{ restaurants_json|default:"[]"|safe }};
   const demoRestaurants = [
@@ -326,7 +326,7 @@
   ];
 
   /* =========================================================
-     GLOBALS / UTILITIES (kept)
+     GLOBALS / UTILITIES
   ========================================================= */
   const member   = document.body.dataset.member || "";
   const hasLive  = document.body.dataset.live === "1";
@@ -352,7 +352,7 @@
   }
 
   /* =========================================================
-     TABS & DRAWER (kept)
+     TABS & DRAWER
   ========================================================= */
   function getTabIds(){ return Array.from(new Set([...$$('[data-tab]')].map(b => b.dataset.tab))); }
   function setTab(next){
@@ -382,7 +382,7 @@
   $("#drawerBackdrop")?.addEventListener("click", () => openDrawer(false));
 
   /* =========================================================
-     MERGE DB + DEMO (kept)
+     MERGE DB + DEMO
   ========================================================= */
   function normalizeRestaurant(rec, idxBase = 0, idx = 0) {
     return {
@@ -412,9 +412,8 @@
   }
 
   /* =========================================================
-     RECOMMENDATIONS LIST (NOW BOUNDS-AWARE)
+     RECOMMENDATIONS LIST (bounds-aware)
   ========================================================= */
-  // We render from a provided array (already filtered by map bounds).
   function renderRecFor(items){
     const ul = $("#rankList"); if (!ul) return;
     ul.innerHTML = "";
@@ -450,13 +449,11 @@
       ul.appendChild(li);
     });
 
-    // click -> sync details + bounce marker
     ul.onclick = (e) => {
       const btn = e.target.closest("button[data-id]"); if (!btn) return;
       const id = btn.dataset.id;
       const m = markerById.get(String(id));
-      const r = m?.__data;
-      if (!r) return;
+      const r = m?.__data; if (!r) return;
 
       $("#detailsEmpty")?.classList.add("hidden");
       $("#detailsBox")?.classList.remove("hidden");
@@ -475,7 +472,7 @@
   }
 
   /* =========================================================
-     TRANSACTIONS (kept)
+     TRANSACTIONS (demo)
   ========================================================= */
   function renderTxn(){
     const body = $("#txnBody"); const count = $("#txnCount");
@@ -499,10 +496,11 @@
   }
 
   /* =========================================================
-     LIVE ORDER (kept)
+     LIVE ORDER
   ========================================================= */
   const POLL_MS_BASE = 8000;
   let firstPaint = true, lastFP = null, timer = null, ctrl  = null;
+  window.__lastReceipt = null;   // keep latest receipt for close-out
 
   function fingerprint(d){
     const key = JSON.stringify({
@@ -513,15 +511,28 @@
     return String(h);
   }
   function renderLive(d){
+    // also store here, so UI-only refreshes keep it fresh
+    window.__lastReceipt = d;
+
     $("#liveServer").textContent   = d.server || "";
     $("#liveSubtotal").textContent = money(d.subtotal_cents);
     $("#liveTax").textContent      = money(d.tax_cents);
+
     const pctEl = $("#tipPct");
     const pct   = pctEl ? Math.max(0, parseFloat(pctEl.value || "0")) : 0;
-    const tip   = Math.round((d.subtotal_cents||0) * (pct/100));
+
+    // Tip base: prefer subtotal; fall back to (total - tax)
+    const tipBase = (d.subtotal_cents && d.subtotal_cents > 0)
+      ? d.subtotal_cents
+      : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
+
+    const tip   = Math.round(tipBase * (pct/100));
     $("#liveTipAmt").textContent = money(tip);
     $("#liveTotal").textContent  = money((d.total_cents||0) + tip);
-    $("#liveDue").textContent    = money((d.due_cents||0) + tip);
+
+    const dueEl = $("#liveDue"); // safe if you removed this row
+    if (dueEl) dueEl.textContent = money((d.due_cents||0) + tip);
+
     $("#liveItems").innerHTML = (d.items||[]).map(i => `
       <li class="flex items-center justify-between py-2">
         <span class="truncate">${i.name || ""}</span>
@@ -541,11 +552,17 @@
     if (firstPaint && !silent) showLiveBlocks("loading-first");
     try {
       const r = await fetch(`/api/member/${encodeURIComponent(member)}/receipt`, {
-        signal: ctrl.signal, cache: "no-store", headers: {"Accept":"application/json"}
+        signal: ctrl.signal,
+        cache: "no-store",
+        headers: {"Accept":"application/json"}
       });
       if (r.status === 404) { showLiveBlocks("empty"); scheduleNext(POLL_MS_BASE); return; }
       const d = await r.json();
       if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+      // Remember latest for close-out math
+      window.__lastReceipt = d;
+
       if (firstPaint) showLiveBlocks("show-content");
       const fp = fingerprint(d);
       if (fp !== lastFP) { lastFP = fp; renderLive(d); }
@@ -557,49 +574,94 @@
     }
   }
   function scheduleNext(ms){ clearTimeout(timer); timer = setTimeout(() => fetchReceipt({silent:true}), ms); }
+
+  // Tip % change -> recompute totals (uses latest receipt)
   $("#tipPct")?.addEventListener("input", () => {
-    const sub = ($("#liveSubtotal")?.textContent || "$0").replace(/[^0-9.]/g,"");
-    const tax = ($("#liveTax")?.textContent || "$0").replace(/[^0-9.]/g,"");
+    const d = window.__lastReceipt || {};
     const pct = Math.max(0, parseFloat($("#tipPct").value || "0"));
-    const subCents = Math.round(parseFloat(sub || "0") * 100);
-    const taxCents = Math.round(parseFloat(tax || "0") * 100);
-    const tip = Math.round(subCents * (pct/100));
+
+    const base = (d.subtotal_cents && d.subtotal_cents > 0)
+      ? d.subtotal_cents
+      : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
+
+    const tip = Math.round(base * (pct/100));
     $("#liveTipAmt").textContent = money(tip);
-    $("#liveTotal").textContent  = money(subCents + taxCents + tip);
-    $("#liveDue").textContent    = money((subCents + taxCents) + tip);
+    $("#liveTotal").textContent  = money((d.total_cents||0) + tip);
+    const dueEl = $("#liveDue"); if (dueEl) dueEl.textContent = money((d.due_cents||0) + tip);
   });
-  function getCSRFCookie(){ const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; }
+
+  function getCSRFCookie(){
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+
   $("#refreshLive")?.addEventListener("click", () => fetchReceipt({silent:true}));
-  $("#closeTabBtn")?.addEventListener("click", async () => {
+
+  // CLOSE OUT — sends tip_cents, includes cookies, surfaces real errors
+  $("#closeTabBtn")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+
     try {
-      const r = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
-        method:"POST",
-        headers: {"X-CSRFToken": getCSRFCookie()},
-        body: "{}"
+      if (!member) { showToast("No member found. Please sign in again.", {tone:"error"}); return; }
+      if (!window.__lastReceipt) { showToast("No live receipt yet. Try Refresh.", {tone:"error"}); return; }
+
+      const rec = window.__lastReceipt || {};
+      const pct = Math.max(0, parseFloat($("#tipPct")?.value || "0"));
+
+      const tipBase = (rec.subtotal_cents && rec.subtotal_cents > 0)
+        ? rec.subtotal_cents
+        : Math.max((rec.total_cents || 0) - (rec.tax_cents || 0), 0);
+
+      const tip_cents = Math.round(tipBase * (pct/100));
+      const payload = { tip_cents, reference: "customer-close" };
+
+      const resp = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCSRFCookie()
+        },
+        credentials: "same-origin",     // ensure session cookie is sent
+        body: JSON.stringify(payload)
       });
-      if (r.ok) {
-        const d = await r.json().catch(()=>({}));
-        showToast("Closed out & receipt updated.", {tone:"success"});
-        firstPaint = true; lastFP = null;
-        await fetchReceipt({silent:false});
-        if (d && d.review && d.review.restaurant_id) openReviewModal(d.review);
-      } else {
-        showToast("Close out failed.", {tone:"error"});
+
+      const text = await resp.text();
+      let data = null; try { data = JSON.parse(text); } catch {}
+
+      if (!resp.ok || data?.ok === false) {
+        const msg = data?.error
+          ? data.error + (data.detail ? ` — ${data.detail}` : "")
+          : (text?.slice(0, 180) || `HTTP ${resp.status}`);
+        console.error("Close out failed", {status: resp.status, payload, server: data || text});
+        showToast(`Close out failed: ${msg}`, {tone:"error"});
+        return;
       }
-    } catch {
+
+      showToast("Closed out & receipt updated.", {tone:"success"});
+      firstPaint = true; lastFP = null;
+      await fetchReceipt({silent:false});
+      if (data?.review?.restaurant_id) openReviewModal(data.review);
+
+    } catch (e) {
+      console.error("Close out error:", e);
       showToast("Network error while closing.", {tone:"error"});
+    } finally {
+      btn.disabled = false;
     }
   });
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { clearTimeout(timer); if (ctrl) ctrl.abort(); }
     else { fetchReceipt({silent:true}); }
   });
 
   /* =========================================================
-     REVIEW MODAL (kept)
+     REVIEW MODAL (lazy-create; harmless if HTML already includes one)
   ========================================================= */
   function ensureReviewModal(){
-    if ($("#reviewModal")) return;
+    if ($("#reviewModal")) return;  // if present in HTML, don't recreate
     const div = document.createElement("div");
     div.id = "reviewModal";
     div.className = "fixed inset-0 z-[200] hidden";
@@ -687,7 +749,7 @@
   function openReviewModal(ctx){ ensureReviewModal(); const el = $("#reviewModal"); el.__setContext?.(ctx || {}); el.classList.remove("hidden"); }
 
   /* =========================================================
-     INIT (kept)
+     INIT
   ========================================================= */
   document.addEventListener("DOMContentLoaded", () => {
     const y = $("#year"); if (y) y.textContent = new Date().getFullYear();
@@ -700,13 +762,11 @@
      GOOGLE MAPS (bounds-aware list + geolocate + ensure-one)
   ========================================================= */
   let gmap, gmarkers = [], ginfo, geocoder, cityAutocomplete;
-  const markerById = new Map();  // id -> google.maps.Marker
-  let allRestaurants = [];       // merged list with lat/lng
-  let lastVisibleIdsKey = "";    // to avoid redundant re-renders
+  const markerById = new Map();
+  let allRestaurants = [];
+  let lastVisibleIdsKey = "";
 
-  async function fetchRestaurants(){
-    return getCombinedRestaurants(); // merged DB + demo
-  }
+  async function fetchRestaurants(){ return getCombinedRestaurants(); }
   function cacheKey(addr){ return `geo:${addr}`; }
   async function geocodeOnce(addr){
     const key = cacheKey(addr);
@@ -733,11 +793,7 @@
       strokeWeight: 1
     };
   }
-  function clearMarkers(){
-    gmarkers.forEach(m => m.setMap(null));
-    gmarkers = [];
-    markerById.clear();
-  }
+  function clearMarkers(){ gmarkers.forEach(m => m.setMap(null)); gmarkers = []; markerById.clear(); }
   function addMarker(r){
     const m = new google.maps.Marker({
       position: {lat:r.lat, lng:r.lng},
@@ -762,7 +818,6 @@
       ginfo.setContent(html);
       ginfo.open(gmap, m);
 
-      // sync details
       $("#detailsEmpty")?.classList.add("hidden");
       $("#detailsBox")?.classList.remove("hidden");
       $("#dName").textContent = r.name;
@@ -787,34 +842,28 @@
     allRestaurants.forEach(addMarker);
   }
 
-  // Compute visible restaurants given current map bounds.
   function getVisibleRestaurants(){
     const b = gmap?.getBounds(); if (!b) return [];
     const visible = [];
     for (const m of gmarkers) {
-      if (m.getVisible() !== false && b.contains(m.getPosition())) {
-        visible.push(m.__data);
-      }
+      if (m.getVisible() !== false && b.contains(m.getPosition())) visible.push(m.__data);
     }
-    // Sort by tx desc, then name
     visible.sort((a,b) => (b.tx||0) - (a.tx||0) || a.name.localeCompare(b.name));
     return visible;
   }
   function syncListWithMapBounds(){
     const vis = getVisibleRestaurants();
     const key = vis.map(r => r.id).join(",");
-    if (key === lastVisibleIdsKey) return; // no change
+    if (key === lastVisibleIdsKey) return;
     lastVisibleIdsKey = key;
     renderRecFor(vis);
   }
 
-  // Try to center near user; if none in view, ensure nearest is shown.
   function ensureAtLeastOneRestaurantInView(){
     const vis = getVisibleRestaurants();
-    if (vis.length) return; // already have some
+    if (vis.length) return;
     if (!allRestaurants.length) return;
 
-    // pick nearest to center
     const c = gmap.getCenter();
     const nearest = allRestaurants
       .map(r => ({ r, d: google.maps.geometry ?
@@ -824,8 +873,7 @@
       .sort((a,b) => a.d - b.d)[0]?.r;
 
     if (nearest) {
-      // set bounds around nearest (~3km box fallback if geometry library not loaded)
-      const padDeg = 0.03; // ~3km lat/long-ish
+      const padDeg = 0.03;
       const bounds = new google.maps.LatLngBounds(
         new google.maps.LatLng(nearest.lat - padDeg, nearest.lng - padDeg),
         new google.maps.LatLng(nearest.lat + padDeg, nearest.lng + padDeg)
@@ -851,42 +899,19 @@
         if (place.geometry.viewport) gmap.fitBounds(place.geometry.viewport);
         else if (place.geometry.location) { gmap.setCenter(place.geometry.location); gmap.setZoom(12); }
       }
-      // Sync list to new viewport
       syncListWithMapBounds();
     });
 
     $("#clearCity")?.addEventListener("click", () => {
       $("#citySearch").value = "";
-      // keep current map view, just re-sync list
       syncListWithMapBounds();
     });
-  }
-
-  // Geolocate user and center; if none visible afterward, ensure nearest.
-  function centerNearUserThenEnsure(){
-    if (!navigator.geolocation) { ensureAtLeastOneRestaurantInView(); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const here = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-        gmap.setCenter(here);
-        gmap.setZoom(12);
-        setTimeout(() => {
-          ensureAtLeastOneRestaurantInView();
-          syncListWithMapBounds();
-        }, 0);
-      },
-      () => {
-        ensureAtLeastOneRestaurantInView();
-        syncListWithMapBounds();
-      },
-      { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
-    );
   }
 
   // Init Map
   window.initDndMap = async function initDndMap(){
     gmap = new google.maps.Map(document.getElementById("map"), {
-      center: { lat: 39.5, lng: -98.35 }, // fallback: CONUS
+      center: { lat: 39.5, lng: -98.35 },
       zoom: 4,
       minZoom: 3,
       mapTypeControl: false,
@@ -899,18 +924,28 @@
     const items = await fetchRestaurants();
     await buildMarkers(items);
 
-    // First sync list to bounds (may be empty until we center)
     syncListWithMapBounds();
-
-    // Try to center near the user and ensure at least one restaurant is in view
     centerNearUserThenEnsure();
-
-    // Whenever the map stops moving/zooming, re-filter the list to visible-only
-    gmap.addListener("idle", () => {
-      syncListWithMapBounds();
-    });
+    gmap.addListener("idle", () => { syncListWithMapBounds(); });
   };
+
+  // Geolocate user and center; if none visible afterward, ensure nearest.
+  function centerNearUserThenEnsure(){
+    if (!navigator.geolocation) { ensureAtLeastOneRestaurantInView(); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const here = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+        gmap.setCenter(here);
+        gmap.setZoom(12);
+        setTimeout(() => { ensureAtLeastOneRestaurantInView(); syncListWithMapBounds(); }, 0);
+      },
+      () => { ensureAtLeastOneRestaurantInView(); syncListWithMapBounds(); },
+      { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
+    );
+  }
 </script>
+
+
 
  <!-- Review Modal -->
   <div id="reviewModal" class="fixed inset-0 z-[120] hidden">
