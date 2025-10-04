@@ -204,31 +204,36 @@
   </main>
 
   {% if user.is_authenticated %}
-  <!-- TRANSACTIONS (real) -->
-  <main id="panel-txn" class="mx-auto max-w-7xl px-4 py-10 hidden">
-    <div class="rounded-3xl border bg-white p-6">
-      <div class="flex items-center justify-between flex-wrap gap-3">
-        <h2 class="text-2xl font-bold tracking-tight">Your Transactions</h2>
-        <div id="txnCount" class="text-sm text-slate-600"></div>
-      </div>
-      <div class="mt-4 overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="text-left text-slate-500">
-            <tr>
-              <th class="py-3 pr-4">Date</th>
-              <th class="py-3 pr-4">Restaurant</th>
-              <th class="py-3 pr-4">City</th>
-              <th class="py-3 pr-4 text-right">Subtotal</th>
-              <th class="py-3 pr-4 text-right">Tip</th>
-              <th class="py-3 pr-4 text-right">Total</th>
-              <th class="py-3 pr-0 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="txnBody" class="divide-y"></tbody>
-        </table>
-      </div>
+<!-- TRANSACTIONS (responsive, no subtotal/tip columns) -->
+<main id="panel-txn" class="mx-auto max-w-7xl px-4 py-10 hidden">
+  <div class="rounded-3xl border bg-white p-6">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <h2 class="text-2xl font-bold tracking-tight">Your Transactions</h2>
+      <div id="txnCount" class="text-sm text-slate-600"></div>
     </div>
-  </main>
+
+    <!-- Mobile cards -->
+    <div id="txnMobile" class="mt-4 md:hidden divide-y"></div>
+
+    <!-- Desktop table -->
+    <div class="mt-4 overflow-x-auto -mx-4 sm:mx-0" style="-webkit-overflow-scrolling:touch">
+      <table class="hidden md:table min-w-full text-sm">
+        <thead class="text-left text-slate-500">
+          <tr>
+            <th class="py-3 pr-4">Date</th>
+            <th class="py-3 pr-4">Restaurant</th>
+            <th class="py-3 pr-4 hidden lg:table-cell">City</th>
+            <th class="py-3 pr-4 text-right">Total</th>
+            <th class="py-3 pr-0 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="txnBody" class="divide-y"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+
   {% endif %}
 
 
@@ -764,77 +769,110 @@ async function loadReceipt(tlId){
     /* ===================== TRANSACTIONS: real data + actions ===================== */
     const fmtDate = iso => { if (!iso) return "—"; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; } catch { return "—"; } };
 
-    async function renderTxn(){
-      const body  = document.getElementById("txnBody");
-      const count = document.getElementById("txnCount");
-      if (!body || !count) return;
-      body.innerHTML = ""; count.textContent = "";
+async function renderTxn(){
+  const body    = document.getElementById("txnBody");
+  const mobile  = document.getElementById("txnMobile");
+  const count   = document.getElementById("txnCount");
+  if (!body || !mobile || !count) return;
 
+  body.innerHTML = ""; mobile.innerHTML = ""; count.textContent = "";
+
+  try {
+    const r = await fetch("/api/me/transactions", {headers: {"Accept":"application/json"}, cache:"no-store"});
+    const data = await r.json().catch(()=> ({}));
+    if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+
+    const rows = data.results || [];
+    count.textContent = `${rows.length} total`;
+
+    // ===== Desktop table rows (no Subtotal/Tip) =====
+    rows.forEach(t => {
+      const tip  = t.tip_cents || 0;
+      const paid = t.paid_cents || (t.total_cents||0) + tip;
+
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50";
+      tr.innerHTML = `
+        <td class="py-3 pr-4">${fmtDate(t.closed_at)}</td>
+        <td class="py-3 pr-4">${t.restaurant_name}</td>
+        <td class="py-3 pr-4 hidden lg:table-cell">${t.restaurant_city || ""}</td>
+        <td class="py-3 pr-4 text-right font-semibold">${money(paid)}</td>
+<td class="py-3 pr-0 text-right">
+  <button
+    class="btn-receipt inline-flex items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 text-white px-4 py-2 text-sm md:text-base md:px-5 md:py-2.5 font-semibold min-w-[110px] hover:bg-slate-800 active:translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-slate-400"
+    data-tl="${t.ticket_link_id}">
+    Receipt
+  </button>
+  <button
+    class="btn-review inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white text-slate-900 px-4 py-2 text-sm md:text-base md:px-5 md:py-2.5 font-semibold min-w-[110px] hover:bg-slate-50 active:translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-slate-300 ml-2"
+    data-tl="${t.ticket_link_id}" data-rid="${t.restaurant_id}" data-rname="${t.restaurant_name}">
+    Review
+  </button>
+</td>`;
+      body.appendChild(tr);
+    });
+
+    // ===== Mobile cards (no Subtotal/Tip line) =====
+    mobile.innerHTML = rows.map(t => {
+      const tip  = t.tip_cents || 0;
+      const paid = t.paid_cents || (t.total_cents||0) + tip;
+
+      return `
+        <div class="py-4">
+          <div class="flex items-center justify-between">
+            <div class="text-xs text-slate-500">${fmtDate(t.closed_at)}</div>
+            <div class="font-semibold">${money(paid)}</div>
+          </div>
+          <div class="mt-1 text-sm font-medium">${t.restaurant_name}</div>
+          <div class="text-xs text-slate-500">${t.restaurant_city || ""}</div>
+<div class="mt-3 flex gap-2">
+  <button
+    class="btn-receipt inline-flex items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 text-white px-4 py-2 text-sm font-semibold min-w-[110px] hover:bg-slate-800 active:translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-slate-400"
+    data-tl="${t.ticket_link_id}">
+    Receipt
+  </button>
+  <button
+    class="btn-review inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white text-slate-900 px-4 py-2 text-sm font-semibold min-w-[110px] hover:bg-slate-50 active:translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-slate-300"
+    data-tl="${t.ticket_link_id}" data-rid="${t.restaurant_id}" data-rname="${t.restaurant_name}">
+    Review
+  </button>
+</div>
+`;
+    }).join("");
+
+  } catch {
+    count.textContent = "0 total";
+  }
+
+  // Single click handler works for both table & cards
+  const container = document.getElementById("panel-txn");
+  container.onclick = async (ev) => {
+    const rBtn = ev.target.closest(".btn-receipt");
+    const vBtn = ev.target.closest(".btn-review");
+    if (rBtn) {
+      loadReceipt(rBtn.dataset.tl);
+    } else if (vBtn) {
+      const tlId  = +vBtn.dataset.tl;
+      const rid   = +vBtn.dataset.rid;
+      const rname = vBtn.dataset.rname || "";
       try {
-        const r = await fetch("/api/me/transactions", {headers: {"Accept":"application/json"}, cache:"no-store"});
-        const data = await r.json().catch(()=> ({}));
-        if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
-
-        const rows = data.results || [];
-        rows.forEach(t => {
-          const subtotal = t.subtotal_cents || 0;
-          const tip      = t.tip_cents || 0;
-          const paid     = t.paid_cents || (t.total_cents||0) + tip;
-          const tipPct   = subtotal > 0 ? Math.round((tip / subtotal) * 100) : null;
-
-          const tr = document.createElement("tr");
-          tr.className = "hover:bg-slate-50";
-          tr.innerHTML = `
-            <td class="py-3 pr-4">${fmtDate(t.closed_at)}</td>
-            <td class="py-3 pr-4">${t.restaurant_name}</td>
-            <td class="py-3 pr-4">${t.restaurant_city || ""}</td>
-            <td class="py-3 pr-4 text-right">${money(subtotal)}</td>
-            <td class="py-3 pr-4 text-right">${tipPct !== null ? `${tipPct}% (`+money(tip)+`)` : money(tip)}</td>
-            <td class="py-3 pr-4 text-right font-semibold">${money(paid)}</td>
-            <td class="py-3 pr-0 text-right">
-              <button class="btn-receipt rounded-xl border px-3 py-1.5 text-xs hover:bg-slate-50" data-tl="${t.ticket_link_id}">Receipt</button>
-              <button class="btn-review rounded-xl border px-3 py-1.5 text-xs hover:bg-slate-50 ml-2"
-                      data-tl="${t.ticket_link_id}" data-rid="${t.restaurant_id}" data-rname="${t.restaurant_name}">
-                Review
-              </button>
-            </td>`;
-          body.appendChild(tr);
-        });
-        count.textContent = `${rows.length} total`;
-      } catch (e) {
-        count.textContent = "0 total";
-      }
-
-      // actions
-      body.onclick = async (ev) => {
-        const rBtn = ev.target.closest(".btn-receipt");
-        const vBtn = ev.target.closest(".btn-review");
-        if (rBtn) {
-          loadReceipt(rBtn.dataset.tl);
-        } else if (vBtn) {
-          const tlId  = +vBtn.dataset.tl;
-          const rid   = +vBtn.dataset.rid;
-          const rname = vBtn.dataset.rname || "";
-
-          // Try to prefill existing review
-          try {
-            const resp = await fetch(`/api/reviews/for-ticket/${encodeURIComponent(tlId)}`, {cache:"no-store"});
-            const js = await resp.json().catch(()=> ({}));
-            openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
-            if (resp.ok && js.ok && js.review) {
-              const txt = document.getElementById("rvComment");
-              if (txt) txt.value = js.review.comment || "";
-              const starBtn = document.querySelector(`.rv-star[data-star="${js.review.stars|0}"]`);
-              if (starBtn) starBtn.click();
-            } else {
-              openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
-            }
-          } catch {
-            openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
-          }
+        const resp = await fetch(`/api/reviews/for-ticket/${encodeURIComponent(tlId)}`, {cache:"no-store"});
+        const js = await resp.json().catch(()=> ({}));
+        openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
+        if (resp.ok && js.ok && js.review) {
+          const txt = document.getElementById("rvComment");
+          if (txt) txt.value = js.review.comment || "";
+          const starBtn = document.querySelector(`.rv-star[data-star="${js.review.stars|0}"]`);
+          if (starBtn) starBtn.click();
         }
-      };
+      } catch {
+        openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
+      }
     }
+  };
+}
+
+
 
     /* ===================== Receipt Modal HTML (static) ===================== */
   </script>
