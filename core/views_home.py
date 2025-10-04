@@ -675,3 +675,396 @@ def api_submit_review(request: HttpRequest) -> JsonResponse:
 
     return JsonResponse({"ok": True, "id": rev.id})
 
+# -------- Real customer transactions + receipt + review --------
+from django.views.decorators.http import require_http_methods
+
+@require_GET
+def api_me_transactions(request: HttpRequest) -> JsonResponse:
+    """
+    Return the user's most recent closed TicketLinks.
+    Each row includes enough to render the table and hook actions.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False, "error": "auth_required"}, status=401)
+
+    q = (
+        TicketLink.objects
+        .select_related("restaurant", "member", "member__customer")
+        .filter(member__customer__user=request.user, status="closed")
+        .order_by("-closed_at", "-id")
+    )
+
+    results = []
+    for tl in q[:200]:
+        rp = tl.restaurant
+        results.append({
+            "ticket_link_id": tl.id,
+            "ticket_id": tl.ticket_id,
+            "closed_at": (tl.closed_at.isoformat() if tl.closed_at else None),
+            "restaurant_id": rp.id,
+            "restaurant_name": rp.display_name(),
+            "restaurant_city": getattr(rp, "city", "") or "",
+            "subtotal_cents": int(tl.subtotal_cents or 0),
+            "tax_cents": int(tl.tax_cents or 0),
+            "tip_cents": int(tl.tip_cents or 0),
+            "total_cents": int(tl.total_cents or 0),  # base (subtotal+tax)
+            "paid_cents": int(tl.paid_cents or (int(tl.total_cents or 0) + int(tl.tip_cents or 0))),
+        })
+    return JsonResponse({"ok": True, "results": results})
+
+
+@require_GET
+def api_ticket_link_receipt(request: HttpRequest, tl_id: int) -> JsonResponse:
+    """
+    Itemized receipt for a CLOSED ticket link owned by the user.
+    Uses the normalized items_json captured at close-out.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False, "error": "auth_required"}, status=401)
+
+    tl = (
+        TicketLink.objects
+        .select_related("restaurant", "member", "member__customer")
+        .filter(id=int(tl_id), member__customer__user=request.user, status="closed")
+        .first()
+    )
+    if not tl:
+        return JsonResponse({"ok": False, "error": "not_found"}, status=404)
+
+    # Build items from normalized snapshot
+    items_src = tl.items_json or []
+    items = []
+    sub_calc = 0
+    for it in items_src:
+        qty = int(it.get("qty") or it.get("quantity") or 1)
+        unit = int(it.get("price_cents") or it.get("unit_cents") or 0)
+        line = int(it.get("total_cents") or (qty * unit))
+        sub_calc += line
+        items.append({
+            "name": it.get("name") or "",
+            "qty": qty,
+            "unit_cents": unit,
+            "line_total_cents": line,
+        })
+
+    subtotal = int(tl.subtotal_cents or (sub_calc))
+    tax      = int(tl.tax_cents or 0)
+    tip      = int(tl.tip_cents or 0)
+    total    = int(tl.total_cents or (subtotal + tax))
+    paid     = int(tl.paid_cents or (total + tip))
+
+    return JsonResponse({
+        "ok": True,
+        "ticket_number": str(tl.ticket_id),
+        "server": tl.server_name or "",
+        "restaurant": tl.restaurant.display_name(),
+        "items": items,
+        "subtotal_cents": subtotal,
+        "tax_cents": tax,
+        "tip_cents": tip,
+        "total_cents": total,   # base (subtotal + tax)
+        "paid_cents": paid,     # what customer actually paid (includes tip)
+        "closed_at": tl.closed_at.isoformat() if tl.closed_at else None,
+    })
+
+
+@require_POST
+@csrf_protect
+@login_required
+def api_review_submit(request: HttpRequest) -> JsonResponse:
+    """
+    UPSERT a review.
+
+    Body JSON:
+      { "restaurant_id": int, "ticket_link_id": int|null, "stars": 1..5, "comment": "..." }
+
+    Rules / behavior:
+      - auth required
+      - if ticket_link_id provided, it must belong to THIS user
+      - if a review already exists for that ticket_link, UPDATE it (no 409)
+      - Review model has NO user field; we attach restaurant, ticket_link, member
+    """
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        data = {}
+
+    rid  = int(data.get("restaurant_id") or 0)
+    tlid = int(data.get("ticket_link_id") or 0)
+    try:
+        stars = int(data.get("stars") or 0)
+    except Exception:
+        stars = 0
+    comment = (data.get("comment") or "").strip()
+
+    if not rid or not (1 <= stars <= 5):
+        return JsonResponse({"ok": False, "error": "invalid_input"}, status=400)
+
+    rp = RestaurantProfile.objects.filter(id=rid, is_active=True).first()
+    if not rp:
+        return JsonResponse({"ok": False, "error": "restaurant_not_found"}, status=404)
+
+    tl = None
+    m  = None
+
+    if tlid:
+        # Verify the ticket belongs to this user
+        tl = (
+            TicketLink.objects
+            .select_related("member", "member__customer")
+            .filter(id=tlid)
+            .first()
+        )
+        if not tl:
+            return JsonResponse({"ok": False, "error": "ticket_not_found"}, status=404)
+
+        if not tl.member or not tl.member.customer or tl.member.customer.user_id != request.user.id:
+            return JsonResponse({"ok": False, "error": "not_authorized_for_ticket"}, status=403)
+
+        m = tl.member
+        # --- UPSERT: update if exists, else create ---
+        rev = Review.objects.filter(ticket_link=tl).first()
+        if rev:
+            rev.stars   = stars
+            rev.comment = comment
+            # keep associations in sync in case anything changed
+            if not rev.restaurant_id: rev.restaurant = rp
+            if not rev.member_id:     rev.member     = m
+            rev.save(update_fields=["stars", "comment", "restaurant", "member", "updated_at"])
+            return JsonResponse({"ok": True, "id": rev.id, "updated": True})
+        else:
+            rev = Review.objects.create(
+                restaurant=rp,
+                ticket_link=tl,
+                member=m,
+                stars=stars,
+                comment=comment,
+            )
+            return JsonResponse({"ok": True, "id": rev.id, "created": True})
+    else:
+        # No ticket provided — attach the latest member for this user (optional)
+        m = (
+            Member.objects
+            .filter(customer__user=request.user)
+            .order_by("-id")
+            .first()
+        )
+        rev = Review.objects.create(
+            restaurant=rp,
+            ticket_link=None,
+            member=m,
+            stars=stars,
+            comment=comment,
+        )
+        return JsonResponse({"ok": True, "id": rev.id, "created": True})
+    return JsonResponse({"ok": True, "id": rev.id})
+# --- Reviews API -------------------------------------------------------------
+from django.views.decorators.http import require_http_methods
+from django.db.models import Q
+
+def _owned_ticketlink(request, tl_id: int):
+    """Return TicketLink if it belongs to the signed-in user, else None."""
+    if not request.user.is_authenticated:
+        return None
+    return (
+        TicketLink.objects
+        .select_related("member", "member__customer", "restaurant")
+        .filter(id=int(tl_id), member__customer__user=request.user)
+        .first()
+    )
+
+@require_GET
+@login_required
+def api_review_for_ticket(request: HttpRequest, ticket_link_id: int) -> JsonResponse:
+    """
+    Returns the current user's review for this ticket link (or null).
+    """
+    tl = (
+        TicketLink.objects
+        .select_related("member__customer", "restaurant")
+        .filter(pk=ticket_link_id, member__customer__user=request.user)
+        .first()
+    )
+    if not tl:
+        return JsonResponse({"ok": False, "error": "not_authorized_for_ticket"}, status=403)
+
+    rev = Review.objects.filter(ticket_link=tl).first()
+    return JsonResponse({"ok": True, "review": _serialize_review(rev) if rev else None})
+
+
+@ensure_csrf_cookie
+@csrf_protect
+@require_POST
+def api_review_save(request: HttpRequest) -> JsonResponse:
+    """
+    Create or update a review for a ticket (exactly one per ticket_link).
+    Body JSON:
+      - ticket_link_id (required)
+      - id (optional; when editing a previously created review)
+      - stars (1..5)
+      - comment (string)
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False, "error": "auth_required"}, status=401)
+
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        data = {}
+
+    try:
+        tl_id = int(data.get("ticket_link_id") or 0)
+    except Exception:
+        tl_id = 0
+
+    if not tl_id:
+        return JsonResponse({"ok": False, "error": "ticket_link_id_required"}, status=400)
+
+    tl = _owned_ticketlink(request, tl_id)
+    if not tl:
+        return JsonResponse({"ok": False, "error": "not_authorized_or_missing_ticket"}, status=404)
+
+    try:
+        stars = int(data.get("stars") or 0)
+    except Exception:
+        stars = 0
+    if not (1 <= stars <= 5):
+        return JsonResponse({"ok": False, "error": "stars_out_of_range"}, status=400)
+
+    comment = (data.get("comment") or "").strip()
+    rev_id = data.get("id")
+
+    # single, collision-proof upsert
+    with transaction.atomic():
+        # Prefer the current ticket's review (enforces one-per-ticket)
+        r = (Review.objects.select_for_update().filter(ticket_link=tl).first())
+
+        if not r and rev_id:
+            # If the UI sent an existing review id (e.g., fallback one), reuse it
+            r = (Review.objects
+                    .select_for_update()
+                    .filter(id=int(rev_id), member__customer__user=request.user)
+                    .first())
+
+        if not r:
+            r = Review(ticket_link=tl, restaurant=tl.restaurant, member=tl.member)
+
+        # Keep associations in sync no matter what came in
+        r.ticket_link = tl
+        r.restaurant  = tl.restaurant
+        r.member      = tl.member
+        r.stars       = stars
+        r.comment     = comment
+        r.save()
+
+    return JsonResponse({
+        "ok": True,
+        "review": {"id": r.id, "stars": r.stars, "comment": r.comment or "", "updated_at": r.updated_at.isoformat()}
+    })
+def _owned_ticketlink(request, tl_id: int):
+    """Return TicketLink if it belongs to the signed-in user, else None."""
+    if not request.user.is_authenticated:
+        return None
+    return (TicketLink.objects
+            .select_related("member", "member__customer", "restaurant")
+            .filter(id=int(tl_id), member__customer__user=request.user)
+            .first())
+
+# -------- Review helpers --------
+def _serialize_review(r: Review) -> dict:
+    return {
+        "id": r.id,
+        "ticket_link_id": r.ticket_link_id,
+        "restaurant_id": r.restaurant_id,
+        "member_id": r.member_id,
+        "stars": r.stars,
+        "comment": r.comment or "",
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+    }
+
+@require_http_methods(["POST"])
+@csrf_protect
+@login_required
+def api_review_upsert(request: HttpRequest) -> JsonResponse:
+    """
+    Create or update a review.
+
+    Body JSON:
+      {
+        "id": <optional int>,             # send to edit an existing review
+        "ticket_link_id": <required int>, # required for create (ignored on edit)
+        "stars": 1..5,                    # required
+        "comment": "..."                  # optional
+      }
+    """
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except Exception:
+        return JsonResponse({"ok": False, "error": "invalid_json"}, status=400)
+
+    review_id = data.get("id")
+    tl_id = data.get("ticket_link_id")
+    stars = data.get("stars")
+    comment = (data.get("comment") or "").strip()
+
+    # validate stars early
+    try:
+        stars = int(stars)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "invalid_stars"}, status=400)
+    if stars < 1 or stars > 5:
+        return JsonResponse({"ok": False, "error": "invalid_stars"}, status=400)
+
+    # UPDATE path (when id provided)
+    if review_id:
+        rev = (
+            Review.objects
+            .select_related("ticket_link__member__customer", "restaurant", "member")
+            .filter(pk=int(review_id))
+            .first()
+        )
+        if not rev:
+            return JsonResponse({"ok": False, "error": "review_not_found"}, status=404)
+
+        # ownership: the ticket/member on the review must belong to this user
+        owner = getattr(rev.ticket_link, "member", None)
+        if not owner or getattr(owner.customer, "user", None) != request.user:
+            return JsonResponse({"ok": False, "error": "not_authorized_for_review"}, status=403)
+
+        rev.stars = stars
+        rev.comment = comment
+        rev.save(update_fields=["stars", "comment", "updated_at"])
+        return JsonResponse({"ok": True, "review": _serialize_review(rev)})
+
+    # CREATE / UPSERT path (no id => for this ticket)
+    if not tl_id:
+        return JsonResponse({"ok": False, "error": "missing_ticket_link_id"}, status=400)
+
+    tl = (
+        TicketLink.objects
+        .select_related("member__customer", "restaurant")
+        .filter(pk=int(tl_id), member__customer__user=request.user)
+        .first()
+    )
+    if not tl:
+        return JsonResponse({"ok": False, "error": "not_authorized_for_ticket"}, status=403)
+
+    # get-or-create by unique ticket_link; if exists, we treat this as an update
+    rev, created = Review.objects.get_or_create(
+        ticket_link=tl,
+        defaults={
+            "restaurant": tl.restaurant,
+            "member": tl.member,
+            "stars": stars,
+            "comment": comment,
+        },
+    )
+    if not created:
+        rev.stars = stars
+        rev.comment = comment
+        rev.restaurant = rev.restaurant or tl.restaurant
+        rev.member = rev.member or tl.member
+        rev.save(update_fields=["stars", "comment", "restaurant", "member", "updated_at"])
+
+    return JsonResponse({"ok": True, "review": _serialize_review(rev)})

@@ -25,63 +25,56 @@
     </div>
   </div>
 
-<!-- Header -->
-<header class="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
-  <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-    <a href="/" class="flex items-center gap-3">
-      <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
-      <span class="font-semibold tracking-tight">Dine N Dash</span>
-    </a>
-
-    <!-- Desktop tabs (center) -->
-    <nav class="hidden md:flex items-center gap-1">
-      {% if user.is_authenticated and has_live_order %}
-        <button data-tab="live" class="tab px-4 py-2 rounded-2xl text-sm border">Live Order</button>
-      {% endif %}
-      <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
-      {% if user.is_authenticated %}
-        <button data-tab="txn" class="tab px-4 py-2 rounded-2xl text-sm border">Transactions</button>
-        <button data-tab="profile" class="tab px-4 py-2 rounded-2xl text-sm border">Profile</button>
-      {% endif %}
-    </nav>
-
-    <!-- Right actions -->
-    <div class="flex items-center gap-2">
-      <a href="{% url 'core:restaurant_signin' %}"
-         class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
-        Restaurant sign in
+  <!-- Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">DD</div>
+        <span class="font-semibold tracking-tight">Dine N Dash</span>
       </a>
 
-      {% if user.is_authenticated %}
-        <a href="{% url 'core:signout' %}"
-           class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
-          Sign out
-        </a>
-      {% else %}
-        <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}"
-           class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
-          Sign in
-        </a>
-      {% endif %}
+      <!-- Desktop tabs -->
+      <nav class="hidden md:flex items-center gap-1">
+        {% if user.is_authenticated and has_live_order %}
+          <button data-tab="live" class="tab px-4 py-2 rounded-2xl text-sm border">Live Order</button>
+        {% endif %}
+        <button data-tab="rec" class="tab px-4 py-2 rounded-2xl text-sm border">Recommendations</button>
+        {% if user.is_authenticated %}
+          <button data-tab="txn" class="tab px-4 py-2 rounded-2xl text-sm border">Transactions</button>
+          <button data-tab="profile" class="tab px-4 py-2 rounded-2xl text-sm border">Profile</button>
+        {% endif %}
+      </nav>
 
-      <button id="openMobile" aria-label="Open menu" class="md:hidden inline-flex rounded-xl border p-2">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
+      <!-- Right actions -->
+      <div class="flex items-center gap-2">
+        <a href="{% url 'core:restaurant_signin' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+          Restaurant sign in
+        </a>
+        {% if user.is_authenticated %}
+          <a href="{% url 'core:signout' %}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+            Sign out
+          </a>
+        {% else %}
+          <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}" class="hidden md:inline-flex rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+            Sign in
+          </a>
+        {% endif %}
+        <button id="openMobile" aria-label="Open menu" class="md:hidden inline-flex rounded-xl border p-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6"  x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
     </div>
-  </div>
-</header>
+  </header>
 
   <!-- Mobile drawer -->
   <div id="drawerWrap" class="fixed inset-0 z-40 md:hidden pointer-events-none" aria-hidden="true">
     <div id="drawerBackdrop" class="absolute inset-0 bg-black/30 opacity-0 transition-opacity"></div>
     <aside id="drawer"
-           class="absolute top-0 left-0 h-full w-80 max-w-[85%] bg-white shadow-xl border-r border-slate-200
-                  -translate-x-full transform transition-transform duration-300"
+           class="absolute top-0 left-0 h-full w-80 max-w-[85%] bg-white shadow-xl border-r border-slate-200 -translate-x-full transform transition-transform duration-300"
            role="dialog" aria-modal="true">
       <div class="flex items-center justify-between px-4 py-4 border-b">
         <div class="flex items-center gap-3">
@@ -89,10 +82,9 @@
           <span class="font-semibold">Dine N Dash</span>
         </div>
         <button id="closeMobile" aria-label="Close menu" class="rounded-xl border p-2">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
+            <line x1="6"  y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
       </div>
@@ -108,17 +100,11 @@
         {% endif %}
 
         <div class="pt-4 space-y-2">
-          <a href="{% url 'core:restaurant_signin' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
-            Restaurant sign in
-          </a>
+          <a href="{% url 'core:restaurant_signin' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">Restaurant sign in</a>
           {% if user.is_authenticated %}
-            <a href="{% url 'core:signout' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
-              Sign out
-            </a>
+            <a href="{% url 'core:signout' %}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">Sign out</a>
           {% else %}
-            <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">
-              Sign in
-            </a>
+            <a href="{% url 'core:signin' %}?next={{ request.get_full_path|urlencode }}" class="w-full rounded-xl border px-4 py-3 text-left hover:bg-slate-50">Sign in</a>
           {% endif %}
         </div>
       </div>
@@ -178,7 +164,7 @@
     </div>
   </main>
 
-  <!-- RECOMMENDATIONS -->
+  <!-- RECOMMENDATIONS (kept light; map optional) -->
   <main id="panel-rec" class="mx-auto max-w-7xl px-4 py-8 grid lg:grid-cols-12 gap-6 hidden">
     <section class="lg:col-span-8">
       <div class="flex items-start justify-between">
@@ -186,28 +172,12 @@
           <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Where everyone’s eating</h1>
           <p class="text-slate-600 mt-1">Top restaurants by transaction volume</p>
         </div>
-        <button id="infoBtn" aria-label="About this chart"
-                class="rounded-full border w-9 h-9 grid place-items-center text-slate-700 hover:bg-slate-50">?</button>
       </div>
 
-      <div id="infoBox" class="hidden mt-3 rounded-2xl border bg-white p-4 text-sm shadow-sm">
-        <p class="text-slate-700">
-          <span class="font-semibold">How rankings work:</span>
-          We aggregate anonymized transactions over the past 14 days. Bars show relative volume; tap a row to see details.
-        </p>
-      </div>
-
-      <!-- Map + city search -->
       <div class="mt-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex items-center gap-3">
-          <input id="citySearch"
-                 placeholder="Search a city (e.g., San Francisco)"
-                 class="flex-1 rounded-2xl border px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-                 type="text" autocomplete="off" />
-          <button id="clearCity"
-                  class="rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">
-            Clear
-          </button>
+          <input id="citySearch" placeholder="Search a city (e.g., San Francisco)" class="flex-1 rounded-2xl border px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300" type="text" autocomplete="off" />
+          <button id="clearCity" class="rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Clear</button>
         </div>
         <div id="map" class="mt-4 rounded-2xl" style="height: 420px;"></div>
       </div>
@@ -220,17 +190,13 @@
     <aside class="lg:col-span-4">
       <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 class="text-lg font-semibold">Details</h2>
-        <div id="detailsEmpty" class="mt-2 text-sm text-slate-600">
-          Tap any bar on the left to see more info about a restaurant.
-        </div>
+        <div id="detailsEmpty" class="mt-2 text-sm text-slate-600">Tap any bar on the left to see more info about a restaurant.</div>
         <div id="detailsBox" class="mt-4 space-y-2 hidden">
           <div class="text-sm"><span class="text-slate-500">Name:</span> <span id="dName" class="font-medium"></span></div>
           <div class="text-sm"><span class="text-slate-500">Address:</span> <span id="dAddr" class="font-medium"></span></div>
           <div class="text-sm"><span class="text-slate-500">Transactions:</span> <span id="dTx" class="font-medium"></span></div>
-          <div class="text-sm"><span class="text-slate-500">Opened:</span> <span id="dOpened" class="font-medium"></span></div>
           <div class="pt-2">
-            <a id="mapsLink" target="_blank" rel="noreferrer"
-               class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Open in Maps</a>
+            <a id="mapsLink" target="_blank" rel="noreferrer" class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Open in Maps</a>
           </div>
         </div>
       </div>
@@ -238,7 +204,7 @@
   </main>
 
   {% if user.is_authenticated %}
-  <!-- TRANSACTIONS -->
+  <!-- TRANSACTIONS (real) -->
   <main id="panel-txn" class="mx-auto max-w-7xl px-4 py-10 hidden">
     <div class="rounded-3xl border bg-white p-6">
       <div class="flex items-center justify-between flex-wrap gap-3">
@@ -255,6 +221,7 @@
               <th class="py-3 pr-4 text-right">Subtotal</th>
               <th class="py-3 pr-4 text-right">Tip</th>
               <th class="py-3 pr-4 text-right">Total</th>
+              <th class="py-3 pr-0 text-right">Actions</th>
             </tr>
           </thead>
           <tbody id="txnBody" class="divide-y"></tbody>
@@ -272,9 +239,7 @@
       <div class="mt-4 flex items-center justify-between">
         <div>
           <div class="text-sm text-slate-500">Member number</div>
-          <div id="memberNum" class="text-2xl font-bold tracking-wider">
-            {{ member_number|default:"—" }}
-          </div>
+          <div id="memberNum" class="text-2xl font-bold tracking-wider">{{ member_number|default:"—" }}</div>
         </div>
         <button id="copyBtn" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Copy</button>
       </div>
@@ -308,773 +273,494 @@
     </div>
   </footer>
 
-<script>
-  /* =========================================================
-     SERVER DATA + DEMO
-  ========================================================= */
-  window.DND_RESTAURANTS = {{ restaurants_json|default:"[]"|safe }};
-  const demoRestaurants = [
-    { name: "Kumo Izakaya", tx: 106, address: "221 Market St, San Francisco, CA, USA", opened: "2024-11-12" },
-    { name: "Café Verona",  tx: 101, address: "48 Clement Ave, San Francisco, CA, USA", opened: "2023-04-04" },
-    { name: "Spice Alley",  tx: 96,  address: "431 Palm St, San Jose, CA, USA", opened: "2024-08-18" },
-    { name: "Tide & Tonic", tx: 93,  address: "73 Beach Rd, Santa Cruz, CA, USA", opened: "2025-07-12" },
-    { name: "Morning Glory",tx: 90,  address: "10 Sunrise Ave, Oakland, CA, USA", opened: "2023-09-09" }
-  ];
-  const demoTxns = [
-    { date: "2025-08-18", restaurant: "Kumo Izakaya", city: "San Francisco", subtotal: 64.2, tipPct: 18 },
-    { date: "2025-08-12", restaurant: "Café Verona",  city: "San Francisco", subtotal: 49.9, tipPct: 20 }
-  ];
+  <script>
+    /* ===================== Server/Constants ===================== */
+    window.DND_RESTAURANTS = {{ restaurants_json|default:"[]"|safe }};
+    const REVIEW_URL = "/api/review/submit"; // already supported in your urls
+    const money = c => `$${(Number(c||0)/100).toFixed(2)}`;
 
-  /* =========================================================
-     GLOBALS / UTILITIES
-  ========================================================= */
-  const member   = document.body.dataset.member || "";
-  const hasLive  = document.body.dataset.live === "1";
-  const $  = s => document.querySelector(s);
-  const $$ = s => Array.from(document.querySelectorAll(s));
-  const money = c => `$${(Number(c||0)/100).toFixed(2)}`;
-  const REVIEW_URL = "/api/review/submit";
-
-  function showToast(msg, {title="Notice", tone="info"} = {}) {
-    $("#toastTitle").textContent = title;
-    $("#toastMsg").textContent = String(msg || "");
-    const toneCls = tone === "error"
-      ? "border-red-200 bg-red-50"
-      : tone === "success"
-        ? "border-emerald-200 bg-emerald-50"
-        : "border-slate-200 bg-white";
-    const iconCls = tone === "error" ? "bg-red-400" : tone === "success" ? "bg-emerald-400" : "bg-slate-400";
-    $("#toastBox").className = `pointer-events-auto max-w-xl w-full rounded-2xl border px-4 py-3 shadow-lg ${toneCls} text-slate-800 flex items-start gap-3`;
-    $("#toastIcon").className = `mt-[2px] h-5 w-5 rounded-full ${iconCls}`;
-    $("#toast").classList.remove("hidden");
-    $("#toastClose").onclick = () => $("#toast").classList.add("hidden");
-    setTimeout(() => $("#toast").classList.add("hidden"), 4000);
-  }
-
-  /* =========================================================
-     TABS & DRAWER
-  ========================================================= */
-  function getTabIds(){ return Array.from(new Set([...$$('[data-tab]')].map(b => b.dataset.tab))); }
-  function setTab(next){
-    const ids = getTabIds();
-    if (!ids.includes(next)) next = hasLive ? 'live' : 'rec';
-    $$(".tab").forEach(b => {
-      const active = b.dataset.tab === next;
-      b.className = "tab px-4 py-2 rounded-2xl text-sm border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
-    });
-    $$(".m-tab").forEach(b => {
-      const active = b.dataset.tab === next;
-      b.className = "m-tab w-full text-left px-4 py-3 rounded-xl text-base border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
-    });
-    ids.forEach(id => $("#panel-"+id)?.classList.toggle("hidden", id !== next));
-  }
-  $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
-  $$(".m-tab").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); openDrawer(false); }));
-
-  function openDrawer(on) {
-    const wrap = $("#drawerWrap"), drawer = $("#drawer"), backdrop = $("#drawerBackdrop");
-    wrap.classList.toggle("pointer-events-none", !on);
-    drawer.style.transform = on ? "translateX(0)" : "translateX(-100%)";
-    backdrop.style.opacity = on ? "1" : "0";
-  }
-  $("#openMobile")?.addEventListener("click", () => openDrawer(true));
-  $("#closeMobile")?.addEventListener("click", () => openDrawer(false));
-  $("#drawerBackdrop")?.addEventListener("click", () => openDrawer(false));
-
-  /* =========================================================
-     MERGE DB + DEMO
-  ========================================================= */
-  function normalizeRestaurant(rec, idxBase = 0, idx = 0) {
-    return {
-      id: rec.id ?? (idxBase + idx + 1),
-      name: rec.name || "",
-      address: rec.address || "",
-      city: rec.city || ((rec.address || "").split(",")[1] || "").trim(),
-      lat: rec.lat ?? null,
-      lng: rec.lng ?? null,
-      tx: rec.tx ?? 0,
-      opened: rec.opened || "",
-    };
-  }
-  function getCombinedRestaurants() {
-    const db   = Array.isArray(window.DND_RESTAURANTS) ? window.DND_RESTAURANTS : [];
-    const demo = Array.isArray(window.demoRestaurants) ? window.demoRestaurants :
-                 (typeof demoRestaurants !== "undefined" ? demoRestaurants : []);
-    const normDB   = db.map((r, i) => normalizeRestaurant(r, 0, i));
-    const normDemo = demo.map((r, i) => normalizeRestaurant(r, normDB.length, i));
-    const seen = new Set();
-    const merged = [];
-    for (const r of [...normDB, ...normDemo]) {
-      const key = (r.name.trim().toLowerCase() + "||" + r.address.trim().toLowerCase());
-      if (key && !seen.has(key)) { seen.add(key); merged.push(r); }
+    /* ===================== Toast ===================== */
+    function showToast(msg, {title="Notice", tone="info"} = {}) {
+      document.getElementById("toastTitle").textContent = title;
+      document.getElementById("toastMsg").textContent = String(msg || "");
+      const toneCls = tone === "error" ? "border-red-200 bg-red-50" :
+                      tone === "success" ? "border-emerald-200 bg-emerald-50" :
+                      "border-slate-200 bg-white";
+      const iconCls = tone === "error" ? "bg-red-400" : tone === "success" ? "bg-emerald-400" : "bg-slate-400";
+      const box = document.getElementById("toastBox");
+      box.className = `pointer-events-auto max-w-xl w/full rounded-2xl border px-4 py-3 shadow-lg ${toneCls} text-slate-800 flex items-start gap-3`.replace("/","/");
+      document.getElementById("toastIcon").className = `mt-[2px] h-5 w-5 rounded-full ${iconCls}`;
+      document.getElementById("toast").classList.remove("hidden");
+      document.getElementById("toastClose").onclick = () => document.getElementById("toast").classList.add("hidden");
+      setTimeout(() => document.getElementById("toast").classList.add("hidden"), 4000);
     }
-    return merged;
-  }
 
-  /* =========================================================
-     RECOMMENDATIONS LIST (bounds-aware)
-  ========================================================= */
-  function renderRecFor(items){
-    const ul = $("#rankList"); if (!ul) return;
-    ul.innerHTML = "";
-    if (!items.length) {
-      ul.innerHTML = `
-        <li class="py-6 text-center text-slate-500">
-          No restaurants in view — pan or zoom the map.
-        </li>`;
-      return;
-    }
-    const maxTx = items.reduce((m,r)=>Math.max(m, r.tx||0), 1);
-    items.forEach((r,i) => {
-      const pct = Math.round(((r.tx||0) / maxTx) * 100);
-      const li = document.createElement("li");
-      li.className = "py-3";
-      li.innerHTML = `
-        <button class="w-full text-left rounded-2xl p-3 border bg-white/70 hover:bg-white hover:shadow-sm transition"
-                data-id="${r.id}">
-          <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold bg-slate-900 text-white">${i+1}</div>
-              <div class="min-w-0">
-                <div class="font-semibold truncate">${r.name || "—"}</div>
-                <div class="text-xs text-slate-500 truncate">${r.address || ""}</div>
-              </div>
-            </div>
-            <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx||0} tx</div>
-          </div>
-          <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
-            <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
-          </div>
-        </button>`;
-      ul.appendChild(li);
-    });
+    /* ===================== Tabs & Drawer ===================== */
+    const hasLive  = (document.body.dataset.live === "1");
+    const member   = document.body.dataset.member || "";
+    const $  = s => document.querySelector(s);
+    const $$ = s => Array.from(document.querySelectorAll(s));
 
-    ul.onclick = (e) => {
-      const btn = e.target.closest("button[data-id]"); if (!btn) return;
-      const id = btn.dataset.id;
-      const m = markerById.get(String(id));
-      const r = m?.__data; if (!r) return;
-
-      $("#detailsEmpty")?.classList.add("hidden");
-      $("#detailsBox")?.classList.remove("hidden");
-      $("#dName").textContent   = r.name || "";
-      $("#dAddr").textContent   = r.address || "";
-      $("#dTx").textContent     = r.tx ?? "-";
-      $("#dOpened").textContent = r.opened || "";
-      $("#mapsLink").href       = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address||"")}`;
-
-      if (m && window.google?.maps?.Animation) {
-        m.setAnimation(google.maps.Animation.BOUNCE);
-        setTimeout(()=>m.setAnimation(null), 700);
-      }
-      if (gmap && m) gmap.panTo(m.getPosition());
-    };
-  }
-
-  /* =========================================================
-     TRANSACTIONS (demo)
-  ========================================================= */
-  function renderTxn(){
-    const body = $("#txnBody"); const count = $("#txnCount");
-    if (!body || !count) return;
-    body.innerHTML = "";
-    demoTxns.forEach(t => {
-      const tip = +(t.subtotal * (t.tipPct / 100)).toFixed(2);
-      const total = +(t.subtotal + tip).toFixed(2);
-      const tr = document.createElement("tr");
-      tr.className = "hover:bg-slate-50";
-      tr.innerHTML = `
-        <td class="py-3 pr-4">${t.date}</td>
-        <td class="py-3 pr-4">${t.restaurant}</td>
-        <td class="py-3 pr-4">${t.city}</td>
-        <td class="py-3 pr-4 text-right">$${t.subtotal.toFixed(2)}</td>
-        <td class="py-3 pr-4 text-right">${t.tipPct}% ($${tip.toFixed(2)})</td>
-        <td class="py-3 pr-4 text-right font-semibold">$${total.toFixed(2)}</td>`;
-      body.appendChild(tr);
-    });
-    count.textContent = `${demoTxns.length} total`;
-  }
-
-  /* =========================================================
-     LIVE ORDER
-  ========================================================= */
-  const POLL_MS_BASE = 8000;
-  let firstPaint = true, lastFP = null, timer = null, ctrl  = null;
-  window.__lastReceipt = null;   // keep latest receipt for close-out
-
-  function fingerprint(d){
-    const key = JSON.stringify({
-      i: (d.items||[]).map(i => [i.name, i.qty, i.cents]),
-      s: d.subtotal_cents, t: d.tax_cents, T: d.total_cents, d: d.due_cents
-    });
-    let h=0; for (let i=0;i<key.length;i++) { h = (h*31 + key.charCodeAt(i))|0; }
-    return String(h);
-  }
-  function renderLive(d){
-    // also store here, so UI-only refreshes keep it fresh
-    window.__lastReceipt = d;
-
-    $("#liveServer").textContent   = d.server || "";
-    $("#liveSubtotal").textContent = money(d.subtotal_cents);
-    $("#liveTax").textContent      = money(d.tax_cents);
-
-    const pctEl = $("#tipPct");
-    const pct   = pctEl ? Math.max(0, parseFloat(pctEl.value || "0")) : 0;
-
-    // Tip base: prefer subtotal; fall back to (total - tax)
-    const tipBase = (d.subtotal_cents && d.subtotal_cents > 0)
-      ? d.subtotal_cents
-      : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
-
-    const tip   = Math.round(tipBase * (pct/100));
-    $("#liveTipAmt").textContent = money(tip);
-    $("#liveTotal").textContent  = money((d.total_cents||0) + tip);
-
-    const dueEl = $("#liveDue"); // safe if you removed this row
-    if (dueEl) dueEl.textContent = money((d.due_cents||0) + tip);
-
-    $("#liveItems").innerHTML = (d.items||[]).map(i => `
-      <li class="flex items-center justify-between py-2">
-        <span class="truncate">${i.name || ""}</span>
-        <span class="tabular-nums text-slate-700">${i.qty} × ${money(i.cents)}</span>
-      </li>`).join("");
-  }
-  function showLiveBlocks(state){
-    const loading = $("#liveLoading"), content = $("#liveContent"), empty = $("#liveEmpty");
-    if (state === "loading-first") { loading?.classList.remove("hidden"); content?.classList.add("hidden"); empty?.classList.add("hidden"); }
-    else if (state === "show-content") { loading?.classList.add("hidden"); empty?.classList.add("hidden"); content?.classList.remove("hidden"); }
-    else if (state === "empty") { loading?.classList.add("hidden"); content?.classList.add("hidden"); empty?.classList.remove("hidden"); }
-  }
-  async function fetchReceipt({silent=false} = {}){
-    if (!member) { showLiveBlocks("empty"); return; }
-    if (ctrl) ctrl.abort();
-    ctrl = new AbortController();
-    if (firstPaint && !silent) showLiveBlocks("loading-first");
-    try {
-      const r = await fetch(`/api/member/${encodeURIComponent(member)}/receipt`, {
-        signal: ctrl.signal,
-        cache: "no-store",
-        headers: {"Accept":"application/json"}
+    function getTabIds(){ return Array.from(new Set([...$$('[data-tab]')].map(b => b.dataset.tab))); }
+    function setTab(next){
+      const ids = getTabIds();
+      if (!ids.includes(next)) next = hasLive ? 'live' : 'rec';
+      $$(".tab").forEach(b => {
+        const active = b.dataset.tab === next;
+        b.className = "tab px-4 py-2 rounded-2xl text-sm border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
       });
-      if (r.status === 404) { showLiveBlocks("empty"); scheduleNext(POLL_MS_BASE); return; }
-      const d = await r.json();
-      if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      $$(".m-tab").forEach(b => {
+        const active = b.dataset.tab === next;
+        b.className = "m-tab w-full text-left px-4 py-3 rounded-xl text-base border " + (active ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50");
+      });
+      ids.forEach(id => $("#panel-"+id)?.classList.toggle("hidden", id !== next));
+    }
+    $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+    $$(".m-tab").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); openDrawer(false); }));
 
-      // Remember latest for close-out math
+    function openDrawer(on) {
+      const wrap = $("#drawerWrap"), drawer = $("#drawer"), backdrop = $("#drawerBackdrop");
+      wrap.classList.toggle("pointer-events-none", !on);
+      drawer.style.transform = on ? "translateX(0)" : "translateX(-100%)";
+      backdrop.style.opacity = on ? "1" : "0";
+    }
+    $("#openMobile")?.addEventListener("click", () => openDrawer(true));
+    $("#closeMobile")?.addEventListener("click", () => openDrawer(false));
+    $("#drawerBackdrop")?.addEventListener("click", () => openDrawer(false));
+
+    /* ===================== Live Order (same behavior) ===================== */
+    const POLL_MS_BASE = 8000;
+    let firstPaint = true, lastFP = null, timer = null, ctrl  = null;
+    window.__lastReceipt = null;
+
+    const moneyInt = v => `$${(v/100).toFixed(2)}`;
+    function fingerprint(d){
+      const key = JSON.stringify({
+        i: (d.items||[]).map(i => [i.name, i.qty, i.cents]),
+        s: d.subtotal_cents, t: d.tax_cents, T: d.total_cents, d: d.due_cents
+      });
+      let h=0; for (let i=0;i<key.length;i++) { h = (h*31 + key.charCodeAt(i))|0; }
+      return String(h);
+    }
+    function renderLive(d){
       window.__lastReceipt = d;
+      $("#liveServer").textContent   = d.server || "";
+      $("#liveSubtotal").textContent = moneyInt(d.subtotal_cents||0);
+      $("#liveTax").textContent      = moneyInt(d.tax_cents||0);
 
-      if (firstPaint) showLiveBlocks("show-content");
-      const fp = fingerprint(d);
-      if (fp !== lastFP) { lastFP = fp; renderLive(d); }
-      firstPaint = false;
-      scheduleNext(POLL_MS_BASE);
-    } catch (err) {
-      if (err.name === "AbortError") return;
-      scheduleNext(Math.min(POLL_MS_BASE * 2, 30000));
-    }
-  }
-  function scheduleNext(ms){ clearTimeout(timer); timer = setTimeout(() => fetchReceipt({silent:true}), ms); }
-
-  // Tip % change -> recompute totals (uses latest receipt)
-  $("#tipPct")?.addEventListener("input", () => {
-    const d = window.__lastReceipt || {};
-    const pct = Math.max(0, parseFloat($("#tipPct").value || "0"));
-
-    const base = (d.subtotal_cents && d.subtotal_cents > 0)
-      ? d.subtotal_cents
-      : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
-
-    const tip = Math.round(base * (pct/100));
-    $("#liveTipAmt").textContent = money(tip);
-    $("#liveTotal").textContent  = money((d.total_cents||0) + tip);
-    const dueEl = $("#liveDue"); if (dueEl) dueEl.textContent = money((d.due_cents||0) + tip);
-  });
-
-  function getCSRFCookie(){
-    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : "";
-  }
-
-  $("#refreshLive")?.addEventListener("click", () => fetchReceipt({silent:true}));
-
-  // CLOSE OUT — sends tip_cents, includes cookies, surfaces real errors
-  $("#closeTabBtn")?.addEventListener("click", async (ev) => {
-    const btn = ev.currentTarget;
-    btn.disabled = true;
-
-    try {
-      if (!member) { showToast("No member found. Please sign in again.", {tone:"error"}); return; }
-      if (!window.__lastReceipt) { showToast("No live receipt yet. Try Refresh.", {tone:"error"}); return; }
-
-      const rec = window.__lastReceipt || {};
       const pct = Math.max(0, parseFloat($("#tipPct")?.value || "0"));
+      const tipBase = (d.subtotal_cents && d.subtotal_cents > 0)
+        ? d.subtotal_cents
+        : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
 
-      const tipBase = (rec.subtotal_cents && rec.subtotal_cents > 0)
-        ? rec.subtotal_cents
-        : Math.max((rec.total_cents || 0) - (rec.tax_cents || 0), 0);
+      const tip = Math.round(tipBase * (pct/100));
+      $("#liveTipAmt").textContent = moneyInt(tip);
+      $("#liveTotal").textContent  = moneyInt((d.total_cents||0) + tip);
+      const dueEl = $("#liveDue"); if (dueEl) dueEl.textContent = moneyInt((d.due_cents||0) + tip);
 
-      const tip_cents = Math.round(tipBase * (pct/100));
-      const payload = { tip_cents, reference: "customer-close" };
-
-      const resp = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
-        method: "POST",
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "X-CSRFToken": getCSRFCookie()
-        },
-        credentials: "same-origin",     // ensure session cookie is sent
-        body: JSON.stringify(payload)
-      });
-
-      const text = await resp.text();
-      let data = null; try { data = JSON.parse(text); } catch {}
-
-      if (!resp.ok || data?.ok === false) {
-        const msg = data?.error
-          ? data.error + (data.detail ? ` — ${data.detail}` : "")
-          : (text?.slice(0, 180) || `HTTP ${resp.status}`);
-        console.error("Close out failed", {status: resp.status, payload, server: data || text});
-        showToast(`Close out failed: ${msg}`, {tone:"error"});
-        return;
-      }
-
-      showToast("Closed out & receipt updated.", {tone:"success"});
-      firstPaint = true; lastFP = null;
-      await fetchReceipt({silent:false});
-      if (data?.review?.restaurant_id) openReviewModal(data.review);
-
-    } catch (e) {
-      console.error("Close out error:", e);
-      showToast("Network error while closing.", {tone:"error"});
-    } finally {
-      btn.disabled = false;
+      $("#liveItems").innerHTML = (d.items||[]).map(i => `
+        <li class="flex items-center justify-between py-2">
+          <span class="truncate">${i.name || ""}</span>
+          <span class="tabular-nums text-slate-700">${i.qty} × ${moneyInt(i.cents||0)}</span>
+        </li>`).join("");
     }
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { clearTimeout(timer); if (ctrl) ctrl.abort(); }
-    else { fetchReceipt({silent:true}); }
-  });
-
-  /* =========================================================
-     REVIEW MODAL (lazy-create; harmless if HTML already includes one)
-  ========================================================= */
-  function ensureReviewModal(){
-    if ($("#reviewModal")) return;  // if present in HTML, don't recreate
-    const div = document.createElement("div");
-    div.id = "reviewModal";
-    div.className = "fixed inset-0 z-[200] hidden";
-    div.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
-      <div class="absolute inset-0 grid place-items-center p-4">
-        <div class="w-full max-w-md rounded-3xl bg-white shadow-xl border border-slate-200 p-6">
-          <div class="flex items-start justify-between">
-            <h3 class="text-lg font-semibold">Rate your experience</h3>
-            <button id="rvClose" class="rounded-xl border px-2 py-1 text-sm hover:bg-slate-50">Close</button>
-          </div>
-          <div class="mt-4 text-sm text-slate-600" id="rvTitle"></div>
-          <div class="mt-5 flex items-center gap-2" id="rvStars" role="radiogroup" aria-label="Rating out of 5">
-            ${[1,2,3,4,5].map(n => `
-              <button type="button" class="rv-star w-10 h-10 rounded-full grid place-items-center border text-2xl select-none"
-                      data-star="${n}" aria-label="${n} star" aria-checked="false">★</button>
-            `).join("")}
-          </div>
-          <textarea id="rvComment" rows="4" class="mt-5 w-full rounded-2xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-            placeholder="Optional comment"></textarea>
-          <div class="mt-5 flex items-center justify-end gap-3">
-            <button id="rvSkip" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Skip</button>
-            <button id="rvSubmit" class="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm disabled:opacity-50" disabled>Submit</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(div);
-
-    let hoverStar = 0, chosenStar = 0;
-    function paintStars(n, highlight="#facc15"){
-      $$(".rv-star").forEach(btn => {
-        const val = +btn.dataset.star;
-        const on = val <= n;
-        btn.style.backgroundColor = on ? highlight : "";
-        btn.style.borderColor = on ? "#eab308" : "";
-        btn.style.color = on ? "#ffffff" : "";
-        btn.setAttribute("aria-checked", String(val === chosenStar));
-      });
-      $("#rvSubmit").disabled = !(chosenStar >= 1 && chosenStar <= 5);
+    function showLiveBlocks(state){
+      const loading = $("#liveLoading"), content = $("#liveContent"), empty = $("#liveEmpty");
+      if (state === "loading-first") { loading?.classList.remove("hidden"); content?.classList.add("hidden"); empty?.classList.add("hidden"); }
+      else if (state === "show-content") { loading?.classList.add("hidden"); empty?.classList.add("hidden"); content?.classList.remove("hidden"); }
+      else if (state === "empty") { loading?.classList.add("hidden"); content?.classList.add("hidden"); empty?.classList.remove("hidden"); }
     }
-    $("#rvStars").addEventListener("mouseover", (e) => {
-      const b = e.target.closest(".rv-star"); if (!b) return;
-      hoverStar = +b.dataset.star; paintStars(hoverStar);
-    });
-    $("#rvStars").addEventListener("mousemove", (e) => {
-      const b = e.target.closest(".rv-star"); if (!b) return;
-      const v = +b.dataset.star; if (v !== hoverStar) { hoverStar = v; paintStars(hoverStar); }
-    });
-    $("#rvStars").addEventListener("mouseleave", () => paintStars(chosenStar));
-    $("#rvStars").addEventListener("click", (e) => {
-      const b = e.target.closest(".rv-star"); if (!b) return;
-      chosenStar = +b.dataset.star; paintStars(chosenStar);
-    });
-    $("#rvClose").addEventListener("click", () => { $("#reviewModal").classList.add("hidden"); });
-    $("#rvSkip").addEventListener("click", () => { $("#reviewModal").classList.add("hidden"); });
-
-    $("#rvSubmit").addEventListener("click", async () => {
-      const payload = {
-        restaurant_id: +($("#reviewModal").dataset.restId || 0),
-        ticket_link_id: +($("#reviewModal").dataset.tlId || 0) || null,
-        stars: chosenStar,
-        comment: ($("#rvComment").value || "").trim(),
-      };
-      if (!(payload.restaurant_id && payload.stars >= 1 && payload.stars <= 5)) return;
+    async function fetchReceipt({silent=false} = {}){
+      if (!member) { showLiveBlocks("empty"); return; }
+      if (ctrl) ctrl.abort();
+      ctrl = new AbortController();
+      if (firstPaint && !silent) showLiveBlocks("loading-first");
       try {
-        const r = await fetch(REVIEW_URL, {
+        const r = await fetch(`/api/member/${encodeURIComponent(member)}/receipt`, { signal: ctrl.signal, cache: "no-store", headers: {"Accept":"application/json"} });
+        if (r.status === 404) { showLiveBlocks("empty"); scheduleNext(POLL_MS_BASE); return; }
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        window.__lastReceipt = d;
+        if (firstPaint) showLiveBlocks("show-content");
+        const fp = fingerprint(d);
+        if (fp !== lastFP) { lastFP = fp; renderLive(d); }
+        firstPaint = false;
+        scheduleNext(POLL_MS_BASE);
+      } catch { scheduleNext(Math.min(POLL_MS_BASE * 2, 30000)); }
+    }
+    function scheduleNext(ms){ clearTimeout(timer); timer = setTimeout(() => fetchReceipt({silent:true}), ms); }
+    $("#tipPct")?.addEventListener("input", () => {
+      const d = window.__lastReceipt || {};
+      const pct = Math.max(0, parseFloat($("#tipPct")?.value || "0"));
+      const base = (d.subtotal_cents && d.subtotal_cents > 0) ? d.subtotal_cents : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
+      const tip = Math.round(base * (pct/100));
+      $("#liveTipAmt").textContent = moneyInt(tip);
+      $("#liveTotal").textContent  = moneyInt((d.total_cents||0) + tip);
+      const dueEl = $("#liveDue"); if (dueEl) dueEl.textContent = moneyInt((d.due_cents||0) + tip);
+    });
+    function getCSRFCookie(){ const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; }
+    $("#refreshLive")?.addEventListener("click", () => fetchReceipt({silent:true}));
+    $("#closeTabBtn")?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget; btn.disabled = true;
+      try {
+        if (!member) { showToast("No member found. Please sign in again.", {tone:"error"}); return; }
+        if (!window.__lastReceipt) { showToast("No live receipt yet. Try Refresh.", {tone:"error"}); return; }
+        const rec = window.__lastReceipt || {};
+        const pct = Math.max(0, parseFloat($("#tipPct")?.value || "0"));
+        const tipBase = (rec.subtotal_cents && rec.subtotal_cents > 0) ? rec.subtotal_cents : Math.max((rec.total_cents || 0) - (rec.tax_cents || 0), 0);
+        const tip_cents = Math.round(tipBase * (pct/100));
+        const resp = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFCookie() },
-          body: JSON.stringify(payload)
+          headers: {"Accept":"application/json","Content-Type":"application/json","X-CSRFToken": getCSRFCookie()},
+          credentials: "same-origin",
+          body: JSON.stringify({ tip_cents, reference: "customer-close" })
         });
-        const d = await r.json().catch(()=>({}));
-        if (r.ok && d.ok) { showToast("Thanks for the review!", {tone:"success"}); $("#reviewModal").classList.add("hidden"); }
-        else { showToast(d.error || "Review failed.", {tone:"error"}); }
-      } catch { showToast("Network error submitting review.", {tone:"error"}); }
+        const text = await resp.text(); let data = null; try { data = JSON.parse(text); } catch {}
+        if (!resp.ok || data?.ok === false) { showToast(`Close out failed: ${(data?.error || text||'').toString().slice(0,180)}`, {tone:"error"}); return; }
+        showToast("Closed out & receipt updated.", {tone:"success"});
+        firstPaint = true; lastFP = null; await fetchReceipt({silent:false});
+        if (data?.review?.restaurant_id) openReviewModal(data.review);
+      } catch { showToast("Network error while closing.", {tone:"error"}); } finally { btn.disabled = false; }
     });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) { clearTimeout(timer); if (ctrl) ctrl.abort(); } else { fetchReceipt({silent:true}); } });
 
-    div.__setContext = ({restaurant_id, restaurant_name, ticket_link_id}) => {
-      $("#rvTitle").textContent = restaurant_name ? `How was ${restaurant_name}?` : "How was your order?";
-      $("#reviewModal").dataset.restId = restaurant_id || "";
-      $("#reviewModal").dataset.tlId = ticket_link_id || "";
-      $("#rvComment").value = "";
-      hoverStar = 0; chosenStar = 0; paintStars(0);
-    };
-  }
-  function openReviewModal(ctx){ ensureReviewModal(); const el = $("#reviewModal"); el.__setContext?.(ctx || {}); el.classList.remove("hidden"); }
-
-  /* =========================================================
-     INIT
-  ========================================================= */
-  document.addEventListener("DOMContentLoaded", () => {
-    const y = $("#year"); if (y) y.textContent = new Date().getFullYear();
-    setTab(hasLive ? "live" : "rec");
-    renderTxn();
-    if (hasLive) fetchReceipt({silent:false});
-  });
-
-  /* =========================================================
-     GOOGLE MAPS (bounds-aware list + geolocate + ensure-one)
-  ========================================================= */
-  let gmap, gmarkers = [], ginfo, geocoder, cityAutocomplete;
-  const markerById = new Map();
-  let allRestaurants = [];
-  let lastVisibleIdsKey = "";
-
-  async function fetchRestaurants(){ return getCombinedRestaurants(); }
-  function cacheKey(addr){ return `geo:${addr}`; }
-  async function geocodeOnce(addr){
-    const key = cacheKey(addr);
-    const cached = sessionStorage.getItem(key);
-    if (cached) return JSON.parse(cached);
-    return new Promise((resolve) => {
-      geocoder.geocode({ address: addr }, (results, status) => {
-        if (status === "OK" && results[0]) {
-          const loc = results[0].geometry.location;
-          const pt = { lat: loc.lat(), lng: loc.lng() };
-          sessionStorage.setItem(key, JSON.stringify(pt));
-          resolve(pt);
-        } else { resolve(null); }
+    /* ===================== Recommendations (bounds-aware lite) ===================== */
+    function normalizeRestaurant(rec){ return { id: rec.id, name: rec.name||"", address: rec.address||"", city: rec.city||"", tx: rec.tx||0 }; }
+    function getCombinedRestaurants(){ const db = Array.isArray(window.DND_RESTAURANTS)?window.DND_RESTAURANTS:[]; return db.map(normalizeRestaurant); }
+    function renderRecFor(items){
+      const ul = document.getElementById("rankList"); if (!ul) return; ul.innerHTML = "";
+      if (!items.length){ ul.innerHTML = `<li class="py-6 text-center text-slate-500">No restaurants in view — pan or zoom the map.</li>`; return; }
+      const maxTx = items.reduce((m,r)=>Math.max(m, r.tx||0), 1);
+      items.forEach((r,i) => {
+        const pct = Math.round(((r.tx||0)/maxTx)*100);
+        const li = document.createElement("li");
+        li.className = "py-3";
+        li.innerHTML = `
+          <div class="rounded-2xl p-3 border bg-white/70">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold bg-slate-900 text-white">${i+1}</div>
+                <div class="min-w-0">
+                  <div class="font-semibold truncate">${r.name || "—"}</div>
+                  <div class="text-xs text-slate-500 truncate">${r.address || ""}</div>
+                </div>
+              </div>
+              <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx||0} tx</div>
+            </div>
+            <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
+            </div>
+          </div>`;
+        ul.appendChild(li);
       });
-    });
-  }
-  function markerIcon(){
-    return {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 6,
-      fillColor: '#0f172a',
-      fillOpacity: 0.95,
-      strokeColor: '#0f172a',
-      strokeWeight: 1
-    };
-  }
-  function clearMarkers(){ gmarkers.forEach(m => m.setMap(null)); gmarkers = []; markerById.clear(); }
-  function addMarker(r){
-    const m = new google.maps.Marker({
-      position: {lat:r.lat, lng:r.lng},
-      map: gmap,
-      title: r.name,
-      icon: markerIcon()
-    });
-    m.__data = r;
-    m.addListener('click', () => {
-      const html = `
-        <div style="min-width:220px">
-          <div style="font-weight:600">${r.name}</div>
-          <div style="color:#64748b; font-size:12px">${r.address}</div>
-          <div style="margin-top:6px; font-size:12px">Transactions: <b>${r.tx ?? '-'}</b></div>
-          <div style="margin-top:8px">
-            <a target="_blank" rel="noreferrer"
-               href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}"
-               style="text-decoration:underline">Open in Google Maps</a>
+    }
+    let gmap; function initDndMap(){ try { gmap = new google.maps.Map(document.getElementById("map"), {center:{lat:37.7749,lng:-122.4194}, zoom:11, mapTypeControl:false, streetViewControl:false}); } catch{} renderRecFor(getCombinedRestaurants()); }
+
+    /* ===================== RECEIPT MODAL ===================== */
+    function openReceiptModal(){ document.getElementById("receiptModal").classList.remove("hidden"); }
+    function closeReceiptModal(){ document.getElementById("receiptModal").classList.add("hidden"); }
+    document.getElementById("rcptClose")?.addEventListener("click", closeReceiptModal);
+
+    async function loadReceipt(tlId){
+      document.getElementById("rcptTitle").textContent = "Receipt";
+      document.getElementById("rcptMeta").textContent = "";
+      document.getElementById("rcptLoading").classList.remove("hidden");
+      document.getElementById("rcptError").classList.add("hidden");
+      document.getElementById("rcptTable").classList.add("hidden");
+      document.getElementById("rcptTotals").classList.add("hidden");
+      document.getElementById("rcptItems").innerHTML = "";
+      openReceiptModal();
+      try{
+        const r = await fetch(`/api/tickets/${encodeURIComponent(tlId)}`, {headers: {"Accept":"application/json"}, cache:"no-store"});
+        const d = await r.json().catch(()=> ({}));
+        if(!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        document.getElementById("rcptTitle").textContent = d.restaurant || "Receipt";
+        const when = d.closed_at ? new Date(d.closed_at) : null;
+        const parts = [ d.ticket_number ? `Ticket #${d.ticket_number}` : "", d.server ? `Server: ${d.server}` : "", when ? when.toLocaleString() : "" ].filter(Boolean);
+        document.getElementById("rcptMeta").textContent = parts.join(" · ");
+        const tbody = document.getElementById("rcptItems");
+        (d.items||[]).forEach(it => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td class="py-2 pr-3">${it.name||""}</td>
+                          <td class="py-2 pr-3 text-right">${it.qty||1}</td>
+                          <td class="py-2 pr-3 text-right">${money(it.unit_cents||0)}</td>
+                          <td class="py-2 text-right font-medium">${money(it.line_total_cents||0)}</td>`;
+          tbody.appendChild(tr);
+        });
+        document.getElementById("rcptSub").textContent  = money(d.subtotal_cents||0);
+        document.getElementById("rcptTax").textContent  = money(d.tax_cents||0);
+        document.getElementById("rcptTip").textContent  = money(d.tip_cents||0);
+        document.getElementById("rcptPaid").textContent = money(d.paid_cents||0);
+        document.getElementById("rcptLoading").classList.add("hidden");
+        document.getElementById("rcptTable").classList.remove("hidden");
+        document.getElementById("rcptTotals").classList.remove("hidden");
+      } catch(e){
+        document.getElementById("rcptLoading").classList.add("hidden");
+        const err = document.getElementById("rcptError");
+        err.textContent = "Could not load receipt.";
+        err.classList.remove("hidden");
+      }
+    }
+
+    /* ===================== REVIEW MODAL (single implementation) ===================== */
+    function ensureReviewModal(){
+      if (document.getElementById("reviewModal")) return;
+      const div = document.createElement("div");
+      div.id = "reviewModal";
+      div.className = "fixed inset-0 z-[200] hidden";
+      div.innerHTML = `
+        <div class="absolute inset-0 bg-black/40"></div>
+        <div class="absolute inset-0 grid place-items-center p-4">
+          <div class="w-full max-w-md rounded-3xl bg-white shadow-xl border border-slate-200 p-6">
+            <div class="flex items-start justify-between">
+              <h3 class="text-lg font-semibold">Rate your experience</h3>
+              <button id="rvClose" class="rounded-xl border px-2 py-1 text-sm hover:bg-slate-50">Close</button>
+            </div>
+            <div class="mt-1 text-sm text-slate-600" id="rvTitle"></div>
+            <div class="mt-5 flex items-center gap-2" id="rvStars" role="radiogroup" aria-label="Rating out of 5">
+              ${[1,2,3,4,5].map(n => `
+                <button type="button" class="rv-star w-10 h-10 rounded-full grid place-items-center border text-2xl select-none"
+                        data-star="${n}" aria-label="${n} star" aria-checked="false">★</button>`).join("")}
+            </div>
+            <textarea id="rvComment" rows="4" class="mt-5 w-full rounded-2xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300" placeholder="Optional comment"></textarea>
+            <div class="mt-5 flex items-center justify-end gap-3">
+              <button id="rvSkip" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Skip</button>
+              <button id="rvSubmit" class="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm disabled:opacity-50" disabled>Submit</button>
+            </div>
           </div>
         </div>`;
-      if (!ginfo) ginfo = new google.maps.InfoWindow();
-      ginfo.setContent(html);
-      ginfo.open(gmap, m);
+      document.body.appendChild(div);
 
-      $("#detailsEmpty")?.classList.add("hidden");
-      $("#detailsBox")?.classList.remove("hidden");
-      $("#dName").textContent = r.name;
-      $("#dAddr").textContent = r.address;
-      $("#dTx").textContent = r.tx ?? "-";
-      $("#dOpened").textContent = "";
-      $("#mapsLink").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}`;
-    });
-    gmarkers.push(m);
-    markerById.set(String(r.id), m);
-  }
-  async function buildMarkers(items){
-    geocoder = new google.maps.Geocoder();
-    const withGeo = await Promise.all(items.map(async r => {
-      if (r.lat && r.lng) return r;
-      const pt = await geocodeOnce(r.address);
-      if (pt) { r.lat = pt.lat; r.lng = pt.lng; }
-      return r;
-    }));
-    allRestaurants = withGeo.filter(r => r.lat && r.lng);
-    clearMarkers();
-    allRestaurants.forEach(addMarker);
-  }
-
-  function getVisibleRestaurants(){
-    const b = gmap?.getBounds(); if (!b) return [];
-    const visible = [];
-    for (const m of gmarkers) {
-      if (m.getVisible() !== false && b.contains(m.getPosition())) visible.push(m.__data);
-    }
-    visible.sort((a,b) => (b.tx||0) - (a.tx||0) || a.name.localeCompare(b.name));
-    return visible;
-  }
-  function syncListWithMapBounds(){
-    const vis = getVisibleRestaurants();
-    const key = vis.map(r => r.id).join(",");
-    if (key === lastVisibleIdsKey) return;
-    lastVisibleIdsKey = key;
-    renderRecFor(vis);
-  }
-
-  function ensureAtLeastOneRestaurantInView(){
-    const vis = getVisibleRestaurants();
-    if (vis.length) return;
-    if (!allRestaurants.length) return;
-
-    const c = gmap.getCenter();
-    const nearest = allRestaurants
-      .map(r => ({ r, d: google.maps.geometry ?
-        google.maps.geometry.spherical.computeDistanceBetween(
-          c, new google.maps.LatLng(r.lat, r.lng)
-        ) : Math.hypot(r.lat - c.lat(), r.lng - c.lng()) }))
-      .sort((a,b) => a.d - b.d)[0]?.r;
-
-    if (nearest) {
-      const padDeg = 0.03;
-      const bounds = new google.maps.LatLngBounds(
-        new google.maps.LatLng(nearest.lat - padDeg, nearest.lng - padDeg),
-        new google.maps.LatLng(nearest.lat + padDeg, nearest.lng + padDeg)
-      );
-      gmap.fitBounds(bounds);
-    }
-  }
-
-  function setupPlacesAutocomplete(){
-    const input = $("#citySearch");
-    cityAutocomplete = new google.maps.places.Autocomplete(input, { types: ["(cities)"] });
-    cityAutocomplete.addListener("place_changed", () => {
-      const place = cityAutocomplete.getPlace();
-      let city = "";
-      if (place && place.address_components) {
-        const comp = place.address_components.find(c => c.types.includes("locality")) ||
-                     place.address_components.find(c => c.types.includes("postal_town")) ||
-                     place.address_components.find(c => c.types.includes("administrative_area_level_3"));
-        city = comp ? comp.long_name : (place.name || "");
-      } else { city = input.value.trim(); }
-
-      if (place && place.geometry) {
-        if (place.geometry.viewport) gmap.fitBounds(place.geometry.viewport);
-        else if (place.geometry.location) { gmap.setCenter(place.geometry.location); gmap.setZoom(12); }
+      let hoverStar = 0, chosenStar = 0;
+      function paintStars(n, highlight="#facc15"){
+        $$(".rv-star").forEach(btn => {
+          const val = +btn.dataset.star;
+          const on = val <= n;
+          btn.style.backgroundColor = on ? highlight : "";
+          btn.style.borderColor = on ? "#eab308" : "";
+          btn.style.color = on ? "#ffffff" : "";
+          btn.setAttribute("aria-checked", String(val === chosenStar));
+        });
+        $("#rvSubmit").disabled = !(chosenStar >= 1 && chosenStar <= 5);
       }
-      syncListWithMapBounds();
-    });
+      $("#rvStars").addEventListener("mouseover", (e) => { const b = e.target.closest(".rv-star"); if (!b) return; hoverStar = +b.dataset.star; paintStars(hoverStar); });
+      $("#rvStars").addEventListener("mousemove", (e) => { const b = e.target.closest(".rv-star"); if (!b) return; const v = +b.dataset.star; if (v !== hoverStar) { hoverStar = v; paintStars(hoverStar); } });
+      $("#rvStars").addEventListener("mouseleave", () => paintStars(chosenStar));
+      $("#rvStars").addEventListener("click", (e) => { const b = e.target.closest(".rv-star"); if (!b) return; chosenStar = +b.dataset.star; paintStars(chosenStar); });
+      $("#rvClose").addEventListener("click", () => { $("#reviewModal").classList.add("hidden"); });
+      $("#rvSkip").addEventListener("click", () => { $("#reviewModal").classList.add("hidden"); });
 
-    $("#clearCity")?.addEventListener("click", () => {
-      $("#citySearch").value = "";
-      syncListWithMapBounds();
-    });
-  }
+      $("#rvSubmit").addEventListener("click", async () => {
+        const payload = {
+          restaurant_id: +($("#reviewModal").dataset.restId || 0),
+          ticket_link_id: +($("#reviewModal").dataset.tlId || 0) || null,
+          stars: chosenStar,
+          comment: ($("#rvComment").value || "").trim(),
+        };
+        if (!(payload.restaurant_id && payload.stars >= 1 && payload.stars <= 5)) return;
+        try {
+          const r = await fetch(REVIEW_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFCookie() },
+            body: JSON.stringify(payload)
+          });
+          const d = await r.json().catch(()=>({}));
+          if (r.ok && d.ok) { showToast("Thanks for the review!", {tone:"success"}); $("#reviewModal").classList.add("hidden"); }
+          else { showToast(d.error || "Review failed.", {tone:"error"}); }
+        } catch { showToast("Network error submitting review.", {tone:"error"}); }
+      });
 
-  // Init Map
-  window.initDndMap = async function initDndMap(){
-    gmap = new google.maps.Map(document.getElementById("map"), {
-      center: { lat: 39.5, lng: -98.35 },
-      zoom: 4,
-      minZoom: 3,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: true,
-    });
+      div.__setContext = ({restaurant_id, restaurant_name, ticket_link_id}) => {
+        $("#rvTitle").textContent = restaurant_name ? `How was ${restaurant_name}?` : "How was your order?";
+        $("#reviewModal").dataset.restId = restaurant_id || "";
+        $("#reviewModal").dataset.tlId = ticket_link_id || "";
+        $("#rvComment").value = "";
+        hoverStar = 0; chosenStar = 0; paintStars(0);
+      };
+    }
+    function openReviewModal(ctx){ ensureReviewModal(); const el = $("#reviewModal"); el.__setContext?.(ctx || {}); el.classList.remove("hidden"); }
 
-    setupPlacesAutocomplete();
+    /* ===================== TRANSACTIONS: real data + actions ===================== */
+    const fmtDate = iso => { if (!iso) return "—"; try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; } catch { return "—"; } };
 
-    const items = await fetchRestaurants();
-    await buildMarkers(items);
+    async function renderTxn(){
+      const body  = document.getElementById("txnBody");
+      const count = document.getElementById("txnCount");
+      if (!body || !count) return;
+      body.innerHTML = ""; count.textContent = "";
 
-    syncListWithMapBounds();
-    centerNearUserThenEnsure();
-    gmap.addListener("idle", () => { syncListWithMapBounds(); });
-  };
+      try {
+        const r = await fetch("/api/me/transactions", {headers: {"Accept":"application/json"}, cache:"no-store"});
+        const data = await r.json().catch(()=> ({}));
+        if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
 
-  // Geolocate user and center; if none visible afterward, ensure nearest.
-  function centerNearUserThenEnsure(){
-    if (!navigator.geolocation) { ensureAtLeastOneRestaurantInView(); return; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const here = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-        gmap.setCenter(here);
-        gmap.setZoom(12);
-        setTimeout(() => { ensureAtLeastOneRestaurantInView(); syncListWithMapBounds(); }, 0);
-      },
-      () => { ensureAtLeastOneRestaurantInView(); syncListWithMapBounds(); },
-      { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
-    );
-  }
-</script>
+        const rows = data.results || [];
+        rows.forEach(t => {
+          const subtotal = t.subtotal_cents || 0;
+          const tip      = t.tip_cents || 0;
+          const paid     = t.paid_cents || (t.total_cents||0) + tip;
+          const tipPct   = subtotal > 0 ? Math.round((tip / subtotal) * 100) : null;
 
+          const tr = document.createElement("tr");
+          tr.className = "hover:bg-slate-50";
+          tr.innerHTML = `
+            <td class="py-3 pr-4">${fmtDate(t.closed_at)}</td>
+            <td class="py-3 pr-4">${t.restaurant_name}</td>
+            <td class="py-3 pr-4">${t.restaurant_city || ""}</td>
+            <td class="py-3 pr-4 text-right">${money(subtotal)}</td>
+            <td class="py-3 pr-4 text-right">${tipPct !== null ? `${tipPct}% (`+money(tip)+`)` : money(tip)}</td>
+            <td class="py-3 pr-4 text-right font-semibold">${money(paid)}</td>
+            <td class="py-3 pr-0 text-right">
+              <button class="btn-receipt rounded-xl border px-3 py-1.5 text-xs hover:bg-slate-50" data-tl="${t.ticket_link_id}">Receipt</button>
+              <button class="btn-review rounded-xl border px-3 py-1.5 text-xs hover:bg-slate-50 ml-2"
+                      data-tl="${t.ticket_link_id}" data-rid="${t.restaurant_id}" data-rname="${t.restaurant_name}">
+                Review
+              </button>
+            </td>`;
+          body.appendChild(tr);
+        });
+        count.textContent = `${rows.length} total`;
+      } catch (e) {
+        count.textContent = "0 total";
+      }
 
+      // actions
+      body.onclick = async (ev) => {
+        const rBtn = ev.target.closest(".btn-receipt");
+        const vBtn = ev.target.closest(".btn-review");
+        if (rBtn) {
+          loadReceipt(rBtn.dataset.tl);
+        } else if (vBtn) {
+          const tlId  = +vBtn.dataset.tl;
+          const rid   = +vBtn.dataset.rid;
+          const rname = vBtn.dataset.rname || "";
 
- <!-- Review Modal -->
-  <div id="reviewModal" class="fixed inset-0 z-[120] hidden">
-    <div class="absolute inset-0 bg-black/40"></div>
-    <div class="absolute inset-0 grid place-items-center px-4">
-      <div class="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-xl p-6">
-        <div class="flex items-start justify-between">
-          <h3 class="text-xl font-semibold">How was your visit?</h3>
-          <button id="revClose" class="rounded-xl border p-2 hover:bg-slate-50" aria-label="Close">✕</button>
+          // Try to prefill existing review
+          try {
+            const resp = await fetch(`/api/reviews/for-ticket/${encodeURIComponent(tlId)}`, {cache:"no-store"});
+            const js = await resp.json().catch(()=> ({}));
+            openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
+            if (resp.ok && js.ok && js.review) {
+              const txt = document.getElementById("rvComment");
+              if (txt) txt.value = js.review.comment || "";
+              const starBtn = document.querySelector(`.rv-star[data-star="${js.review.stars|0}"]`);
+              if (starBtn) starBtn.click();
+            } else {
+              openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
+            }
+          } catch {
+            openReviewModal({ restaurant_id: rid, restaurant_name: rname, ticket_link_id: tlId });
+          }
+        }
+      };
+    }
+
+    /* ===================== Receipt Modal HTML (static) ===================== */
+  </script>
+
+  <!-- Receipt Modal (static, simple) -->
+<div id="receiptModal"
+     class="fixed inset-0 z-[190] hidden"
+     role="dialog" aria-modal="true" aria-labelledby="rcptTitle">
+  <!-- backdrop -->
+  <div id="rcptBackdrop" class="absolute inset-0 bg-black/40"></div>
+
+  <div class="absolute inset-0 grid place-items-center p-4">
+    <div class="w-full max-w-xl rounded-3xl bg-white border border-slate-200 shadow-xl p-6">
+      <div class="flex items-start justify-between">
+        <div>
+          <h3 id="rcptTitle" class="text-lg font-semibold">Receipt</h3>
+          <p id="rcptMeta" class="text-sm text-slate-500 mt-1"></p>
         </div>
-        <p id="revSubtitle" class="mt-1 text-sm text-slate-500"></p>
+        <button id="rcptClose"
+                type="button"
+                class="rounded-xl border px-2 py-1 text-sm hover:bg-slate-50"
+                aria-label="Close receipt">
+          Close
+        </button>
+      </div>
 
-        <div class="mt-4">
-          <div id="revStars" class="flex gap-2">
-            <!-- Stars start grey; JS paints yellow on hover/click -->
-            <button type="button" tabindex="0" aria-label="1 star"
-              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
-            <button type="button" tabindex="0" aria-label="2 stars"
-              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
-            <button type="button" tabindex="0" aria-label="3 stars"
-              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
-            <button type="button" tabindex="0" aria-label="4 stars"
-              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
-            <button type="button" tabindex="0" aria-label="5 stars"
-              class="rev-star w-10 h-10 rounded-full border border-slate-300 grid place-items-center text-lg text-slate-400">★</button>
+      <div id="rcptBody" class="mt-4">
+        <div id="rcptLoading" class="text-slate-600">Loading…</div>
+        <div id="rcptError" class="hidden text-red-600 text-sm"></div>
+
+        <table id="rcptTable" class="hidden min-w-full text-sm">
+          <thead class="text-slate-500 border-b">
+            <tr>
+              <th class="py-2 text-left">Item</th>
+              <th class="py-2 text-right">Qty</th>
+              <th class="py-2 text-right">Price</th>
+              <th class="py-2 text-right">Line</th>
+            </tr>
+          </thead>
+          <tbody id="rcptItems" class="divide-y"></tbody>
+        </table>
+
+        <div id="rcptTotals" class="hidden mt-4 grid gap-1 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Subtotal</span>
+            <span id="rcptSub" class="font-medium">$0.00</span>
           </div>
-          <textarea id="revComment" rows="4"
-            placeholder="Leave a comment (optional)…"
-            class="mt-4 w-full rounded-2xl border px-3 py-2 text-sm"></textarea>
-        </div>
-
-        <div class="mt-6 flex items-center justify-end gap-3">
-          <button id="revSkip" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Skip</button>
-          <button id="revSubmit" class="rounded-2xl bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800">Submit</button>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Tax</span>
+            <span id="rcptTax" class="font-medium">$0.00</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Tip</span>
+            <span id="rcptTip" class="font-medium">$0.00</span>
+          </div>
+          <div class="flex items-center justify-between border-t pt-2">
+            <span class="text-slate-700 font-semibold">Paid</span>
+            <span id="rcptPaid" class="text-lg font-semibold">$0.00</span>
+          </div>
         </div>
       </div>
     </div>
   </div>
+</div>
+<script>
+/* Bind close behavior AFTER the modal exists */
+(function () {
+  const modal    = document.getElementById('receiptModal');
+  const closeBtn = document.getElementById('rcptClose');
+  const backdrop = document.getElementById('rcptBackdrop');
 
-  <!-- Star widget JS (must be after modal HTML) -->
+  // Fallback-safe close/open (won't overwrite if already defined elsewhere)
+  const close = window.closeReceiptModal || function () {
+    modal.classList.add('hidden');
+  };
+  const open = window.openReceiptModal || function () {
+    modal.classList.remove('hidden');
+    // focus the close button for accessibility
+    closeBtn?.focus({ preventScroll: true });
+  };
+
+  window.closeReceiptModal = close;
+  window.openReceiptModal  = open;
+
+  closeBtn?.addEventListener('click', close);
+  backdrop?.addEventListener('click', close);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
+  });
+})();
+</script>
   <script>
-    let REVIEW_CTX = null;      // { restaurant_id, restaurant_name, ticket_link_id }
-    let REVIEW_STARS = 0;
-
-    function openReviewModal(ctx){
-      REVIEW_CTX = ctx || null;
-      REVIEW_STARS = 0;
-      document.getElementById("revSubtitle").textContent =
-        ctx?.restaurant_name ? `for ${ctx.restaurant_name}` : "";
-      document.getElementById("revComment").value = "";
-      paintStars(0);
-      document.getElementById("reviewModal").classList.remove("hidden");
-    }
-    function closeReviewModal(){
-      document.getElementById("reviewModal").classList.add("hidden");
-    }
-
-    function paintStars(n){
-      const stars = document.querySelectorAll("#revStars .rev-star");
-      stars.forEach((el, i) => {
-        const on = i < n;
-        el.classList.toggle("text-yellow-400", on);
-        el.classList.toggle("text-slate-400", !on);
-        el.classList.toggle("bg-yellow-50", on);
-        el.classList.toggle("border-yellow-300", on);
-        el.classList.toggle("border-slate-300", !on);
+    /* ===================== Init ===================== */
+    document.addEventListener("DOMContentLoaded", () => {
+      const y = document.getElementById("year"); if (y) y.textContent = new Date().getFullYear();
+      setTab(hasLive ? "live" : "rec");
+      renderTxn();
+      if (hasLive) fetchReceipt({silent:false});
+      // copy member number
+      document.getElementById("copyBtn")?.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(document.getElementById("memberNum")?.textContent?.trim() || ""); showToast("Copied!", {tone:"success"}); } catch { showToast("Could not copy.", {tone:"error"}); }
       });
-    }
-
-    function initReviewStars(){
-      const stars = document.querySelectorAll("#revStars .rev-star");
-      paintStars(0);
-      stars.forEach((btn, idx) => {
-        btn.addEventListener("mouseenter", () => paintStars(idx + 1));
-        btn.addEventListener("focus", () => paintStars(idx + 1));
-        btn.addEventListener("mouseleave", () => paintStars(REVIEW_STARS));
-        btn.addEventListener("blur", () => paintStars(REVIEW_STARS));
-        btn.addEventListener("click", () => { REVIEW_STARS = idx + 1; paintStars(REVIEW_STARS); });
-        btn.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); REVIEW_STARS = idx + 1; paintStars(REVIEW_STARS); }
-        });
-      });
-
-      document.getElementById("revClose")?.addEventListener("click", closeReviewModal);
-      document.getElementById("revSkip")?.addEventListener("click", closeReviewModal);
-      document.getElementById("revSubmit")?.addEventListener("click", submitReview);
-    }
-
-    async function submitReview(){
-      if (!REVIEW_CTX) { closeReviewModal(); return; }
-      if (!(REVIEW_STARS >= 1 && REVIEW_STARS <= 5)) {
-        showToast("Please select stars (1–5).", {tone:"error"}); return;
-      }
-      const payload = {
-        restaurant_id: REVIEW_CTX.restaurant_id,
-        ticket_link_id: REVIEW_CTX.ticket_link_id || null,
-        stars: REVIEW_STARS,
-        comment: (document.getElementById("revComment").value || "").trim(),
-      };
-      try {
-        const r = await fetch("/api/reviews", {
-          method: "POST",
-          headers: {"Content-Type": "application/json", "X-CSRFToken": (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)||[])[1]||""},
-          body: JSON.stringify(payload),
-        });
-        const d = await r.json().catch(()=>({}));
-        if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
-        showToast("Thanks for your feedback!", {tone:"success"});
-      } catch {
-        showToast("Couldn't save review.", {tone:"error"});
-      } finally {
-        closeReviewModal();
-      }
-    }
-
-    // Ensure listeners attach after DOM is ready
-    document.addEventListener("DOMContentLoaded", initReviewStars);
-
-    // Expose opener so close-out handler can trigger it
-    window.openReviewModal = openReviewModal;
+    });
   </script>
 
 
-
-
-  <!-- Google Maps loader -->
-  <script async
-    src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places&callback=initDndMap">
-  </script>
+  <!-- Google Maps loader (optional; safe no-op if key missing) -->
+  <script async src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places&callback=initDndMap"></script>
 </body>
 </html>
-
