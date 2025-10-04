@@ -246,5 +246,114 @@ def save_pin_finalize(request):
     login(request, user)
     return JsonResponse({"ok": True, "redirect": next_url})
 
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.hashers import check_password
+
+# ---------- UPDATE CARD (existing users) ----------
+
+# core/views_payments.py
+@ensure_csrf_cookie
+@login_required
+def update_card(request):
+    user = request.user
+    cp, _ = CustomerProfile.objects.get_or_create(user=user)
+
+    customer_id = cp.stripe_customer_id
+    if not customer_id:
+        customer_id = ensure_stripe_customer_by_email(user.email)
+        cp.stripe_customer_id = customer_id
+        cp.save(update_fields=["stripe_customer_id"])
+
+    si = create_setup_intent_for_customer(customer_id)
+
+    return render(request, "core/update_card.html", {
+        "pk": config('STRIPE_PK'),
+        "client_secret": si.client_secret,
+        "next": request.GET.get("next") or "/profile",
+    })
+
+
+
+@ensure_csrf_cookie
+@login_required
+def update_card_confirm_pin(request):
+    """
+    Enter EXISTING 4-digit PIN to confirm card update.
+    Stores the SetupIntent id from ?si=... in session (separate key from signup).
+    """
+    si = (request.GET.get("si") or "").strip()
+    if not si:
+        return redirect("/profile")
+
+    ss = request.session.get(CUSTOMER_SSR, {})
+    ss["pending_update_setup_intent_id"] = si
+    request.session[CUSTOMER_SSR] = ss
+    request.session.modified = True
+
+    return render(request, "core/confirm_pin.html", {
+        "next": request.GET.get("next") or "/profile",
+    })
+
+
+@require_POST
+@login_required
+def finalize_card_update(request):
+    """
+    Verify the entered PIN, confirm the saved payment method from the SetupIntent,
+    then set it as default both locally and at Stripe.
+    """
+    import json
+    data = json.loads(request.body.decode() or "{}")
+    pin   = (data.get("pin") or "").strip()
+    next_url = (data.get("next") or "/profile").strip()
+
+    if not (pin.isdigit() and len(pin) == 4):
+        return JsonResponse({"ok": False, "error": "Enter your 4-digit PIN."}, status=400)
+
+    cp = CustomerProfile.objects.filter(user=request.user).first()
+    if not cp or not cp.pin_hash:
+        return JsonResponse({"ok": False, "error": "No PIN on file."}, status=400)
+    if not check_password(pin, cp.pin_hash):
+        return JsonResponse({"ok": False, "error": "Incorrect PIN."}, status=400)
+
+    ss = request.session.get(CUSTOMER_SSR, {})
+    si_id = ss.get("pending_update_setup_intent_id")
+    if not si_id:
+        return JsonResponse({"ok": False, "error": "Missing saved card reference."}, status=400)
+
+    # Validate the SetupIntent
+    try:
+        si = stripe.SetupIntent.retrieve(si_id)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Stripe error: {e}"}, status=400)
+
+    if si.get("status") != "succeeded":
+        return JsonResponse({"ok": False, "error": "Card was not saved."}, status=400)
+
+    pm_id = si.get("payment_method")
+    customer_id = si.get("customer") or cp.stripe_customer_id
+    if not (pm_id and customer_id):
+        return JsonResponse({"ok": False, "error": "Payment method missing."}, status=400)
+
+    # Update default payment method locally
+    updates = ["default_payment_method"]
+    cp.default_payment_method = pm_id
+    if not cp.stripe_customer_id and customer_id:
+        cp.stripe_customer_id = customer_id
+        updates.append("stripe_customer_id")
+    cp.save(update_fields=updates)
+
+    # And at Stripe
+    try:
+        stripe.Customer.modify(customer_id, invoice_settings={"default_payment_method": pm_id})
+    except Exception:
+        pass  # non-fatal
+
+    # Cleanup
+    ss.pop("pending_update_setup_intent_id", None)
+    request.session[CUSTOMER_SSR] = ss
+    request.session.modified = True
+
+    return JsonResponse({"ok": True, "redirect": next_url})
 
 

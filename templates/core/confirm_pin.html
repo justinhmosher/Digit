@@ -1,0 +1,105 @@
+<!-- templates/core/confirm_pin_update.html -->
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Confirm PIN — Dine N Dash</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 grid place-items-center p-6 text-slate-900">
+  <main class="w-full max-w-sm rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+    <h1 class="text-xl font-semibold">Confirm your PIN</h1>
+    <p class="text-sm text-slate-600 mt-1">Enter your 4-digit PIN to finish updating your card.</p>
+
+    <form id="pinForm" class="mt-4" novalidate>
+      {% csrf_token %}
+      <label for="pin" class="sr-only">4-digit PIN</label>
+      <input id="pin"
+             type="password"
+             inputmode="numeric"
+             pattern="[0-9]*"
+             maxlength="4"
+             autocomplete="one-time-code"
+             placeholder="••••"
+             class="w-full h-12 rounded-xl border border-slate-300 px-4 text-center tracking-[0.35em] text-lg outline-none focus:ring-2 focus:ring-slate-300"
+             autofocus />
+
+      <button id="submitBtn"
+              type="submit"
+              class="mt-4 w-full h-11 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300 disabled:opacity-60 disabled:cursor-not-allowed">
+        Confirm
+      </button>
+
+      <p id="err" class="mt-3 text-sm text-red-600 hidden"></p>
+    </form>
+  </main>
+
+  <script>
+    (function () {
+      const nextUrl   = "{{ next|default:'/profile'|escapejs }}";
+      const finalizeU = "{% url 'core:finalize_card_update' %}";
+      const form      = document.getElementById('pinForm');
+      const pinInput  = document.getElementById('pin');
+      const errEl     = document.getElementById('err');
+      const btn       = document.getElementById('submitBtn');
+
+      // Only allow digits
+      pinInput.addEventListener('input', () => {
+        pinInput.value = pinInput.value.replace(/\D+/g, '').slice(0, 4);
+      });
+
+      function getCSRF() {
+        const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : '';
+      }
+
+      async function submitPin(ev) {
+        ev.preventDefault();
+        errEl.classList.add('hidden');
+        errEl.textContent = '';
+
+        const pin = (pinInput.value || '').trim();
+        if (!/^\d{4}$/.test(pin)) {
+          errEl.textContent = 'Please enter your 4-digit PIN.';
+          errEl.classList.remove('hidden');
+          pinInput.focus();
+          return;
+        }
+
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = 'Confirming…';
+
+        try {
+          const r = await fetch(finalizeU, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCSRF()
+            },
+            body: JSON.stringify({ pin, next: nextUrl })
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok && d.ok) {
+            window.location.assign(d.redirect || nextUrl);
+            return;
+          }
+          errEl.textContent = d.error || 'Could not confirm PIN.';
+          errEl.classList.remove('hidden');
+        } catch {
+          errEl.textContent = 'Network error. Please try again.';
+          errEl.classList.remove('hidden');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      }
+
+      form.addEventListener('submit', submitPin);
+      pinInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitPin(e); });
+    })();
+  </script>
+</body>
+</html>

@@ -23,7 +23,7 @@ urlpatterns = [
     path("restaurants/connect/start",  views_restaurants.connect_onboard_start,  name="connect_onboard_start"),
     path("restaurants/connect/return", views_restaurants.connect_onboard_return, name="connect_onboard_return"),
     path("restaurants/connect/dashboard", views_restaurants.connect_dashboard_login, name="connect_dashboard_login"),
-    path("api/reviews", views_home.api_submit_review, name="core:api_submit_review"),
+    path("api/reviews", views_home.api_submit_review, name="api_submit_review"),
     # dashboards
     # OWNER (standard, JSON-only)
     path("owner/signup", views.owner_signup, name="owner_signup"),        # renders HTML shell
@@ -105,10 +105,13 @@ urlpatterns = [
     path("owner/api/menu-item-ratings/", views_owner.owner_api_menu_item_ratings, name="owner_api_menu_item_ratings"),
     path("owner/api/staff-ratings/", views_owner.owner_api_staff_ratings, name="owner_api_staff_ratings"),
     path("owner_api_staff_ratings_debug", views_owner.owner_api_staff_ratings_debug, name="owner_api_staff_ratings_debug"),
-    path("api/me/transactions", views_home.api_me_transactions, name="core:api_me_transactions"),
-    path("api/tickets/<int:tl_id>", views_home.api_ticket_link_receipt, name="core:api_ticket_link_receipt"),
-    path("api/reviews", views_home.api_review_submit, name="core:api_review_submit"),
-    path("api/review/submit", views_home.api_review_submit, name="core:api_review_submit_legacy"),  # supports both URLs used in JS
+    path("api/me/transactions", views_home.api_me_transactions, name="api_me_transactions"),
+    path("api/tickets/<int:tl_id>", views_home.api_ticket_link_receipt, name="api_ticket_link_receipt"),
+    path("api/reviews", views_home.api_review_submit, name="api_review_submit"),
+    path("api/review/submit", views_home.api_review_submit, name="api_review_submit_legacy"),  # supports both URLs used in JS
     path("api/reviews/for-ticket/<int:ticket_link_id>", views_home.api_review_for_ticket, name="api_review_for_ticket"),
     path("api/reviews", views_home.api_review_save, name="api_review_save"),  # POST create/update
+    path("payments/update", views_payments.update_card, name="update_card"),
+    path("payments/update/confirm-pin", views_payments.update_card_confirm_pin, name="update_card_confirm_pin"),
+    path("payments/update/finalize", views_payments.finalize_card_update, name="finalize_card_update"),
 ]

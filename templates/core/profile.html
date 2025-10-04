@@ -231,6 +231,7 @@
   </main>
   {% endif %}
 
+
   {% if user.is_authenticated %}
   <!-- PROFILE -->
   <main id="panel-profile" class="mx-auto max-w-3xl px-4 py-10 grid gap-6 hidden">
@@ -259,8 +260,10 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Update</button>
-          <button class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Remove</button>
+          <div class="flex items-center gap-2">
+  <a href="{% url 'core:update_card' %}?next=/profile"
+     class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Update</a>
+</div>
         </div>
       </div>
     </section>
@@ -424,83 +427,261 @@
     });
     document.addEventListener("visibilitychange", () => { if (document.hidden) { clearTimeout(timer); if (ctrl) ctrl.abort(); } else { fetchReceipt({silent:true}); } });
 
-    /* ===================== Recommendations (bounds-aware lite) ===================== */
-    function normalizeRestaurant(rec){ return { id: rec.id, name: rec.name||"", address: rec.address||"", city: rec.city||"", tx: rec.tx||0 }; }
-    function getCombinedRestaurants(){ const db = Array.isArray(window.DND_RESTAURANTS)?window.DND_RESTAURANTS:[]; return db.map(normalizeRestaurant); }
-    function renderRecFor(items){
-      const ul = document.getElementById("rankList"); if (!ul) return; ul.innerHTML = "";
-      if (!items.length){ ul.innerHTML = `<li class="py-6 text-center text-slate-500">No restaurants in view — pan or zoom the map.</li>`; return; }
-      const maxTx = items.reduce((m,r)=>Math.max(m, r.tx||0), 1);
-      items.forEach((r,i) => {
-        const pct = Math.round(((r.tx||0)/maxTx)*100);
-        const li = document.createElement("li");
-        li.className = "py-3";
-        li.innerHTML = `
-          <div class="rounded-2xl p-3 border bg-white/70">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold bg-slate-900 text-white">${i+1}</div>
-                <div class="min-w-0">
-                  <div class="font-semibold truncate">${r.name || "—"}</div>
-                  <div class="text-xs text-slate-500 truncate">${r.address || ""}</div>
-                </div>
-              </div>
-              <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx||0} tx</div>
-            </div>
-            <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
-            </div>
-          </div>`;
-        ul.appendChild(li);
+ /* ===================== Recommendations (markers + bounds + city search) ===================== */
+(function () {
+  const markerById = new Map();
+  let gmap, geocoder, infoWin;
+  let markers = [];
+
+  // Normalize each restaurant object
+  function normalizeRestaurant(rec, i = 0) {
+    const lat = rec.lat ?? rec.latitude ?? null;
+    const lng = rec.lng ?? rec.longitude ?? null;
+    return {
+      id: rec.id ?? i + 1,
+      name: rec.name || "",
+      address: rec.address || "",
+      city: rec.city || "",
+      tx: rec.tx ?? 0,
+      lat, lng,
+    };
+  }
+
+  function getCombinedRestaurants() {
+    const db = Array.isArray(window.DND_RESTAURANTS) ? window.DND_RESTAURANTS : [];
+    return db.map(normalizeRestaurant);
+  }
+
+  // Simple cache wrapper for geocodes
+  function cacheKey(addr) { return `geo:${addr}`; }
+  async function geocodeAddress(addr) {
+    return new Promise((resolve) => {
+      geocoder.geocode({ address: addr }, (results, status) => {
+        if (status === "OK" && results[0]) {
+          const loc = results[0].geometry.location;
+          resolve({ lat: loc.lat(), lng: loc.lng() });
+        } else {
+          resolve(null);
+        }
       });
+    });
+  }
+  async function ensureLatLng(r) {
+    if (r.lat != null && r.lng != null) return r;
+    if (!r.address) return r;
+    const key = cacheKey(r.address);
+    const cached = sessionStorage.getItem(key);
+    if (cached) {
+      try { const pt = JSON.parse(cached); r.lat = pt.lat; r.lng = pt.lng; return r; } catch {}
     }
-    let gmap; function initDndMap(){ try { gmap = new google.maps.Map(document.getElementById("map"), {center:{lat:37.7749,lng:-122.4194}, zoom:11, mapTypeControl:false, streetViewControl:false}); } catch{} renderRecFor(getCombinedRestaurants()); }
+    const pt = await geocodeAddress(r.address);
+    if (pt) { r.lat = pt.lat; r.lng = pt.lng; try { sessionStorage.setItem(key, JSON.stringify(pt)); } catch {} }
+    return r;
+  }
 
-    /* ===================== RECEIPT MODAL ===================== */
-    function openReceiptModal(){ document.getElementById("receiptModal").classList.remove("hidden"); }
-    function closeReceiptModal(){ document.getElementById("receiptModal").classList.add("hidden"); }
-    document.getElementById("rcptClose")?.addEventListener("click", closeReceiptModal);
+  function clearMarkers() {
+    markers.forEach(m => m.setMap(null));
+    markers = [];
+    markerById.clear();
+  }
 
-    async function loadReceipt(tlId){
-      document.getElementById("rcptTitle").textContent = "Receipt";
-      document.getElementById("rcptMeta").textContent = "";
-      document.getElementById("rcptLoading").classList.remove("hidden");
-      document.getElementById("rcptError").classList.add("hidden");
-      document.getElementById("rcptTable").classList.add("hidden");
-      document.getElementById("rcptTotals").classList.add("hidden");
-      document.getElementById("rcptItems").innerHTML = "";
-      openReceiptModal();
-      try{
-        const r = await fetch(`/api/tickets/${encodeURIComponent(tlId)}`, {headers: {"Accept":"application/json"}, cache:"no-store"});
-        const d = await r.json().catch(()=> ({}));
-        if(!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
-        document.getElementById("rcptTitle").textContent = d.restaurant || "Receipt";
-        const when = d.closed_at ? new Date(d.closed_at) : null;
-        const parts = [ d.ticket_number ? `Ticket #${d.ticket_number}` : "", d.server ? `Server: ${d.server}` : "", when ? when.toLocaleString() : "" ].filter(Boolean);
-        document.getElementById("rcptMeta").textContent = parts.join(" · ");
-        const tbody = document.getElementById("rcptItems");
-        (d.items||[]).forEach(it => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `<td class="py-2 pr-3">${it.name||""}</td>
-                          <td class="py-2 pr-3 text-right">${it.qty||1}</td>
-                          <td class="py-2 pr-3 text-right">${money(it.unit_cents||0)}</td>
-                          <td class="py-2 text-right font-medium">${money(it.line_total_cents||0)}</td>`;
-          tbody.appendChild(tr);
-        });
-        document.getElementById("rcptSub").textContent  = money(d.subtotal_cents||0);
-        document.getElementById("rcptTax").textContent  = money(d.tax_cents||0);
-        document.getElementById("rcptTip").textContent  = money(d.tip_cents||0);
-        document.getElementById("rcptPaid").textContent = money(d.paid_cents||0);
-        document.getElementById("rcptLoading").classList.add("hidden");
-        document.getElementById("rcptTable").classList.remove("hidden");
-        document.getElementById("rcptTotals").classList.remove("hidden");
-      } catch(e){
-        document.getElementById("rcptLoading").classList.add("hidden");
-        const err = document.getElementById("rcptError");
-        err.textContent = "Could not load receipt.";
-        err.classList.remove("hidden");
+  function addMarker(r) {
+    const m = new google.maps.Marker({
+      map: gmap,
+      position: { lat: r.lat, lng: r.lng },
+      title: r.name || "",
+    });
+    m.__data = r;
+    markers.push(m);
+    markerById.set(String(r.id), m);
+
+    m.addListener("click", () => {
+      const html = `
+        <div style="min-width:220px">
+          <div style="font-weight:600">${r.name || ""}</div>
+          <div style="color:#64748b;font-size:12px">${r.address || ""}</div>
+          <div style="margin-top:6px;font-size:12px">Transactions: <b>${r.tx ?? "-"}</b></div>
+          <div style="margin-top:8px">
+            <a target="_blank" rel="noreferrer"
+               href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address||"")}"
+               style="text-decoration:underline">Open in Google Maps</a>
+          </div>
+        </div>`;
+      if (!infoWin) infoWin = new google.maps.InfoWindow();
+      infoWin.setContent(html);
+      infoWin.open(gmap, m);
+
+      // Fill the Details panel on the right
+      document.getElementById("detailsEmpty")?.classList.add("hidden");
+      document.getElementById("detailsBox")?.classList.remove("hidden");
+      document.getElementById("dName").textContent = r.name || "";
+      document.getElementById("dAddr").textContent = r.address || "";
+      document.getElementById("dTx").textContent   = r.tx ?? "-";
+      document.getElementById("mapsLink").href     = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address||"")}`;
+    });
+  }
+
+  // Fit bounds but cap the resulting zoom so it never starts too close
+  function fitBoundsCapped(bounds, maxZoom = 12) {
+    google.maps.event.addListenerOnce(gmap, "idle", () => {
+      if (gmap.getZoom() > maxZoom) gmap.setZoom(maxZoom);
+    });
+    gmap.fitBounds(bounds);
+  }
+
+  async function buildMarkers(list) {
+    clearMarkers();
+    const bounds = new google.maps.LatLngBounds();
+    for (let r of list) {
+      r = await ensureLatLng(r);
+      if (r.lat == null || r.lng == null) continue;
+      addMarker(r);
+      bounds.extend({ lat: r.lat, lng: r.lng });
+    }
+    if (!bounds.isEmpty()) fitBoundsCapped(bounds, 12);
+  }
+
+  function getVisibleRestaurants() {
+    const b = gmap?.getBounds(); if (!b) return [];
+    const visible = [];
+    for (const m of markers) if (b.contains(m.getPosition())) visible.push(m.__data);
+    visible.sort((a,b) => (b.tx||0) - (a.tx||0) || a.name.localeCompare(b.name));
+    return visible;
+  }
+
+  function renderRecFor(items) {
+    const ul = document.getElementById("rankList"); if (!ul) return;
+    ul.innerHTML = "";
+    if (!items.length) {
+      ul.innerHTML = `<li class="py-6 text-center text-slate-500">No restaurants in view — pan or zoom the map.</li>`;
+      return;
+    }
+    const maxTx = items.reduce((m,r)=>Math.max(m, r.tx||0), 1);
+    items.forEach((r,i) => {
+      const pct = Math.round(((r.tx||0)/maxTx)*100);
+      const li = document.createElement("li");
+      li.className = "py-3";
+      li.innerHTML = `
+        <button class="w-full text-left rounded-2xl p-3 border bg-white/70 hover:bg-white hover:shadow-sm transition"
+                data-id="${r.id}">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-bold bg-slate-900 text-white">${i+1}</div>
+              <div class="min-w-0">
+                <div class="font-semibold truncate">${r.name || "—"}</div>
+                <div class="text-xs text-slate-500 truncate">${r.address || ""}</div>
+              </div>
+            </div>
+            <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx||0} tx</div>
+          </div>
+          <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
+          </div>
+        </button>`;
+      ul.appendChild(li);
+    });
+
+    // Clicking a list row focuses the corresponding marker
+    ul.onclick = (e) => {
+      const btn = e.target.closest("button[data-id]"); if (!btn) return;
+      const m = markerById.get(String(btn.dataset.id)); if (!m) return;
+      google.maps.event.trigger(m, "click");
+      gmap.panTo(m.getPosition());
+    };
+  }
+
+  function syncListWithMap() { renderRecFor(getVisibleRestaurants()); }
+
+  function setupPlacesAutocomplete() {
+    const input = document.getElementById("citySearch");
+    if (!input || !google.maps.places) return;
+    const ac = new google.maps.places.Autocomplete(input, { types: ["(cities)"] });
+    ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (place?.geometry?.viewport) {
+        fitBoundsCapped(place.geometry.viewport, 12); // cap zoom after city fit
+      } else if (place?.geometry?.location) {
+        gmap.setCenter(place.geometry.location);
+        gmap.setZoom(12);
       }
-    }
+    });
+    document.getElementById("clearCity")?.addEventListener("click", () => { input.value = ""; syncListWithMap(); });
+  }
+
+  // Google callback (called by the loader tag)
+  window.initDndMap = async function initDndMap() {
+    if (!window.google || !google.maps) { renderRecFor(getCombinedRestaurants()); return; }
+    geocoder = new google.maps.Geocoder();
+    gmap = new google.maps.Map(document.getElementById("map"), {
+      center: { lat: 39.5, lng: -98.35 }, // USA
+      zoom: 4,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+    });
+
+    setupPlacesAutocomplete();
+
+    const items = getCombinedRestaurants();
+    await buildMarkers(items);      // geocodes as needed + adds markers + fits bounds (capped)
+    syncListWithMap();
+    gmap.addListener("idle", syncListWithMap);
+  };
+})();
+// ===================== Receipt loader (restored) =====================
+async function loadReceipt(tlId){
+  document.getElementById("rcptTitle").textContent = "Receipt";
+  document.getElementById("rcptMeta").textContent = "";
+  document.getElementById("rcptLoading").classList.remove("hidden");
+  document.getElementById("rcptError").classList.add("hidden");
+  document.getElementById("rcptTable").classList.add("hidden");
+  document.getElementById("rcptTotals").classList.add("hidden");
+  document.getElementById("rcptItems").innerHTML = "";
+  openReceiptModal();
+
+  try {
+    const r = await fetch(`/api/tickets/${encodeURIComponent(tlId)}`, {
+      headers: { "Accept": "application/json" },
+      cache: "no-store"
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+
+    document.getElementById("rcptTitle").textContent = d.restaurant || "Receipt";
+    const when = d.closed_at ? new Date(d.closed_at) : null;
+    const parts = [
+      d.ticket_number ? `Ticket #${d.ticket_number}` : "",
+      d.server ? `Server: ${d.server}` : "",
+      when ? when.toLocaleString() : ""
+    ].filter(Boolean);
+    document.getElementById("rcptMeta").textContent = parts.join(" · ");
+
+    const tbody = document.getElementById("rcptItems");
+    (d.items || []).forEach(it => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="py-2 pr-3">${it.name || ""}</td>
+        <td class="py-2 pr-3 text-right">${it.qty || 1}</td>
+        <td class="py-2 pr-3 text-right">${money(it.unit_cents || 0)}</td>
+        <td class="py-2 text-right font-medium">${money(it.line_total_cents || 0)}</td>`;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById("rcptSub").textContent  = money(d.subtotal_cents || 0);
+    document.getElementById("rcptTax").textContent  = money(d.tax_cents || 0);
+    document.getElementById("rcptTip").textContent  = money(d.tip_cents || 0);
+    document.getElementById("rcptPaid").textContent = money(d.paid_cents || 0);
+
+    document.getElementById("rcptLoading").classList.add("hidden");
+    document.getElementById("rcptTable").classList.remove("hidden");
+    document.getElementById("rcptTotals").classList.remove("hidden");
+  } catch {
+    document.getElementById("rcptLoading").classList.add("hidden");
+    const err = document.getElementById("rcptError");
+    err.textContent = "Could not load receipt.";
+    err.classList.remove("hidden");
+  }
+}
 
     /* ===================== REVIEW MODAL (single implementation) ===================== */
     function ensureReviewModal(){
