@@ -318,17 +318,13 @@ _PLATFORM_FEE_PCT = Decimal(config("PLATFORM_FEE_PCT", default="0"))  # e.g. "5"
 def api_staff_close_ticket(request: HttpRequest):
     """
     Body: { ticket_id, reference? }
-
-    Stripe Connect flow (destination charges):
-      - We charge the CUSTOMER (on the platform), using their saved PM.
-      - We include transfer_data.destination = restaurant's connected account.
-      - Optionally include application_fee_amount if your platform takes a fee.
-      - If posting to the POS fails, we auto-refund the PaymentIntent.
-
-    Returns: { ok, paid_cents, auto_tip_cents, payment_intent }
-    HTTP 402 if the card is declined / authentication required.
+    Mirrors customer close:
+      - base_due = subtotal + tax
+      - auto tip = AUTO_TIP_PCT * base_due
+      - Stripe destination charge for base+tip
+      - POS post (amount=base, tip=tip) with fallback to (amount=base+tip, tip=0)
+      - Snapshot normalized items + totals into all open TicketLinks
     """
-    # ---------- parse ----------
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
@@ -339,7 +335,7 @@ def api_staff_close_ticket(request: HttpRequest):
     if not ticket_id:
         return JsonResponse({"ok": False, "error": "missing_ticket_id"}, status=400)
 
-    # ---------- gather links ----------
+    # Gather all open links for this ticket
     links = list(
         TicketLink.objects
         .select_related("restaurant", "member", "member__customer")
@@ -351,7 +347,6 @@ def api_staff_close_ticket(request: HttpRequest):
 
     rp: RestaurantProfile = links[0].restaurant
 
-    # Stripe CONNECT account is required to route funds to the restaurant.
     if not getattr(rp, "stripe_account_id", ""):
         return JsonResponse({"ok": False, "error": "restaurant_missing_stripe_connect_account"}, status=400)
 
@@ -359,62 +354,58 @@ def api_staff_close_ticket(request: HttpRequest):
     if not location_id:
         return JsonResponse({"ok": False, "error": "restaurant_missing_location_id"}, status=500)
 
-    # ---------- fresh totals from POS ----------
+    # Fresh ticket JSON
     try:
-        t = get_ticket(location_id, ticket_id)
+        ticket_json = get_ticket(location_id, ticket_id) or {}
     except Exception:
-        t = {}
+        ticket_json = {}
 
-    totals    = (t or {}).get("totals") or {}
-    subtotal  = int(totals.get("sub_total") or 0)
-    tax       = int(totals.get("tax") or 0)
-    base_amt  = int(totals.get("due") if totals.get("due") is not None else totals.get("total", 0)) or 0
+    # Authoritative base = subtotal + tax
+    base_due = _compute_base_due(ticket_json)
 
-    if base_amt <= 0:
-        base_amt = max([int(l.last_total_cents or 0) for l in links] or [0])
-    if base_amt <= 0:
+    if base_due <= 0:
+        base_due = max([int(l.last_total_cents or 0) for l in links] or [0])
+    if base_due <= 0:
         return JsonResponse({"ok": False, "error": "nothing_due"}, status=400)
 
-    # ---------- tip & gross ----------
-    tip_cents  = int(round((AUTO_TIP_PCT / 100.0) * base_amt))
-    paid_gross = base_amt + tip_cents
+    # Auto tip (18% default) on the base_due
+    tip_cents = int(round((AUTO_TIP_PCT / 100.0) * base_due))
+    gross_cents = base_due + tip_cents
 
-    # ---------- locate billable customer ----------
+    # Billable customer (take the first link with a member->customer)
     member = next((lk.member for lk in links if getattr(lk, "member", None)), None)
-    customer_profile: CustomerProfile | None = getattr(member, "customer", None) if member else None
+    customer_profile = getattr(member, "customer", None) if member else None
     if not customer_profile:
         return JsonResponse({"ok": False, "error": "no_customer_for_ticket"}, status=400)
-
     if not customer_profile.stripe_customer_id or not customer_profile.default_payment_method:
         return JsonResponse({"ok": False, "error": "customer_missing_payment_method"}, status=400)
 
-    # ---------- compute optional application fee ----------
-    # Destination charges: money goes to the connected account; platform can optionally take a fee.
-    # application_fee_amount must be in cents (integer).
+    # Optional platform fee
     app_fee_cents = 0
     if _PLATFORM_FEE_PCT > 0:
-        app_fee_cents = int((Decimal(paid_gross) * _PLATFORM_FEE_PCT / Decimal(100)).quantize(Decimal("1")))
+        app_fee_cents = int((Decimal(gross_cents) * _PLATFORM_FEE_PCT / Decimal(100)).quantize(Decimal("1")))
 
-    # ---------- build PaymentIntent payload ----------
     description = f"Dine N Dash — Ticket {ticket_id} ({rp.display_name()})"
     metadata = {
         "ticket_id": ticket_id,
         "restaurant_id": str(rp.id),
         "customer_profile_id": str(customer_profile.id),
+        "source": "staff_close",
+        "auto_tip_pct": str(AUTO_TIP_PCT),
     }
 
-    # Include deterministic fields in the idempotency key to prevent double charges
-    idem_key = build_idem_key("close",
-                              {"ticket_id": ticket_id,
-                               "restaurant": rp.id,
-                               "gross": paid_gross,
-                               "tip": tip_cents,
-                               "pm": customer_profile.default_payment_method})
+    idem_key = build_idem_key("staff_close", {
+        "ticket_id": ticket_id,
+        "restaurant": rp.id,
+        "gross": gross_cents,
+        "tip": tip_cents,
+        "pm": customer_profile.default_payment_method,
+    })
 
-    # ---------- CHARGE (Stripe Connect: destination charge) ----------
+    # Charge (destination charge)
     try:
         intent = stripe.PaymentIntent.create(
-            amount=int(paid_gross),
+            amount=int(gross_cents),
             currency="usd",
             customer=customer_profile.stripe_customer_id,
             payment_method=customer_profile.default_payment_method,
@@ -423,13 +414,12 @@ def api_staff_close_ticket(request: HttpRequest):
             off_session=True,
             description=description,
             metadata=metadata,
-            transfer_data={"destination": rp.stripe_account_id},  # ← funds go to restaurant
-            application_fee_amount=app_fee_cents or None,         # ← optional platform fee
-            on_behalf_of=rp.stripe_account_id,                    # improves interchange in some cases
+            transfer_data={"destination": rp.stripe_account_id},
+            application_fee_amount=app_fee_cents or None,
+            on_behalf_of=rp.stripe_account_id,
             idempotency_key=idem_key,
         )
     except stripe.error.CardError as e:
-        # Card-specific error (decline, auth needed, etc.)
         err = e.error
         return JsonResponse({
             "ok": False,
@@ -440,25 +430,30 @@ def api_staff_close_ticket(request: HttpRequest):
             "payment_intent": (getattr(err, "payment_intent", {}) or {}).get("id"),
         }, status=402)
     except stripe.error.StripeError as e:
-        # Other Stripe API errors
-        return JsonResponse({
-            "ok": False,
-            "error": "stripe_api_error",
-            "detail": str(e),
-        }, status=502)
+        return JsonResponse({"ok": False, "error": "stripe_api_error", "detail": str(e)}, status=502)
 
-    # ---------- POST TO POS; refund if POS write fails ----------
+    # POS post with fallback (amount=base, tip=tip) → else (amount=base+tip, tip=0)
     try:
-        create_payment_with_tender_type(
-            location_id=location_id,
-            ticket_id=ticket_id,
-            amount_cents=base_amt,
-            tender_type_id=None,   # adapter ignores
-            reference=reference,   # adapter ignores; for our logs only
-            tip_cents=tip_cents,
-        )
+        try:
+            create_payment_with_tender_type(
+                location_id=location_id,
+                ticket_id=ticket_id,
+                amount_cents=base_due,
+                tender_type_id=None,
+                reference=reference,
+                tip_cents=tip_cents,
+            )
+        except Exception:
+            create_payment_with_tender_type(
+                location_id=location_id,
+                ticket_id=ticket_id,
+                amount_cents=base_due + tip_cents,
+                tender_type_id=None,
+                reference=reference,
+                tip_cents=0,
+            )
     except Exception as pos_err:
-        # Refund to avoid charging the guest without POS close.
+        # Refund if POS write failed
         try:
             if getattr(intent, "id", None):
                 stripe.Refund.create(payment_intent=intent.id, reason="requested_by_customer")
@@ -470,7 +465,6 @@ def api_staff_close_ticket(request: HttpRequest):
                 "refund_detail": str(refund_err),
                 "payment_intent": getattr(intent, "id", None),
             }, status=502)
-
         return JsonResponse({
             "ok": False,
             "error": "omnivore_payment_failed_refunded",
@@ -478,31 +472,57 @@ def api_staff_close_ticket(request: HttpRequest):
             "payment_intent": getattr(intent, "id", None),
         }, status=502)
 
-    # ---------- CLOSE LOCALLY & snapshot ----------
+    # Snapshot items & totals like customer flow
+    try:
+        normalized_items = _normalize_line_items(ticket_json) if ticket_json else []
+    except Exception:
+        normalized_items = []
+
+    try:
+        totals_from_pos = _totals_from_ticket(ticket_json) if ticket_json else {}
+    except Exception:
+        totals_from_pos = {}
+
     now = timezone.now()
-    for tl in links:
-        tl.status = "closed"
-        tl.closed_at = now
-        tl.subtotal_cents = subtotal
-        tl.tax_cents = tax
-        tl.total_cents = base_amt
-        tl.tip_cents = tip_cents
-        tl.paid_cents = paid_gross
-        tl.pos_ref = reference
-        tl.save(update_fields=[
-            "status","closed_at",
-            "subtotal_cents","tax_cents","total_cents",
-            "tip_cents","paid_cents","pos_ref",
-        ])
+    update_fields = [
+        "status", "closed_at",
+        "total_cents", "tip_cents", "paid_cents",
+        "discounts_cents", "subtotal_cents", "tax_cents",
+        "items_json", "raw_ticket_json", "pos_ref",
+        "merchant_name","merchant_addr1","merchant_addr2",
+        "merchant_city","merchant_state","merchant_zip","merchant_phone",
+    ]
+
+    for link in links:
+        _fill_merchant_snapshot(link, rp)
+        link.status         = "closed"
+        link.closed_at      = now
+        link.subtotal_cents = int(totals_from_pos.get("subtotal_cents") or 0)
+        link.tax_cents      = int(totals_from_pos.get("tax_cents") or 0)
+        link.discounts_cents= int(totals_from_pos.get("discounts_cents") or 0)
+
+        # Authoritative amounts
+        link.total_cents    = int(base_due)         # base (subtotal + tax)
+        link.tip_cents      = int(tip_cents or 0)
+        link.paid_cents     = int(gross_cents or 0)
+
+        # Preserve the items + raw for receipts
+        link.items_json      = normalized_items or link.items_json or []
+        link.raw_ticket_json = ticket_json or link.raw_ticket_json or {}
+
+        link.pos_ref = reference
+        link.save(update_fields=update_fields)
 
     return JsonResponse({
         "ok": True,
-        "paid_cents": paid_gross,
+        "paid_cents": gross_cents,
         "auto_tip_cents": tip_cents,
+        "base_due_cents": base_due,
         "payment_intent": getattr(intent, "id", None),
         "destination_account": rp.stripe_account_id,
         "application_fee_cents": app_fee_cents,
     })
+
 
 
 
@@ -554,3 +574,99 @@ def api_ticket_receipt(request, member):
         "total_cents": total,
         "due_cents": due,
     })
+
+# ---- Normalizers to mirror customer close-out ----
+def _get_embedded_list(obj: dict, key: str) -> list:
+    if not obj:
+        return []
+    emb = obj.get("_embedded") or {}
+    if isinstance(emb, dict) and isinstance(emb.get(key), list):
+        return emb.get(key) or []
+    if isinstance(obj.get(key), list):
+        return obj.get(key) or []
+    return []
+
+def _normalize_modifiers(line_item: dict) -> list:
+    mods = []
+    for bucket in ("modifiers", "options", "applied_modifiers"):
+        for m in _get_embedded_list(line_item, bucket):
+            mods.append({
+                "id":          str(m.get("id") or m.get("modifier_id") or m.get("pos_id") or ""),
+                "name":        m.get("name") or "",
+                "qty":         int(m.get("quantity") or 1),
+                "price_cents": int(m.get("price") or m.get("price_per_unit") or 0),
+                "raw":         m,
+            })
+    return mods
+
+def _normalize_line_items(ticket_json: dict) -> list:
+    items = []
+    line_items = _get_embedded_list(ticket_json, "items") or _get_embedded_list(ticket_json, "line_items")
+    for li in line_items:
+        mi_val = li.get("menu_item")
+        if isinstance(mi_val, dict):
+            menu_item_id = str(mi_val.get("id") or mi_val.get("pos_id") or "")
+            menu_item_name = mi_val.get("name") or li.get("name") or ""
+        else:
+            menu_item_id = str(mi_val or li.get("menu_item_id") or li.get("pos_id") or "")
+            menu_item_name = li.get("name") or ""
+        items.append({
+            "menu_item_id": menu_item_id,
+            "name":         menu_item_name,
+            "qty":          int(li.get("quantity") or 1),
+            "seat":         li.get("seat"),
+            "price_level":  str(li.get("price_level") or li.get("price_level_id")) if li.get("price_level") or li.get("price_level_id") else None,
+            "price_cents":  int(li.get("price") or li.get("price_per_unit") or li.get("unit_price") or 0),
+            "total_cents":  int(li.get("total") or li.get("extended_price") or 0),
+            "voided":       bool(li.get("void") or li.get("voided") or False),
+            "mods":         _normalize_modifiers(li),
+            "raw":          li,
+        })
+    return items
+
+def _totals_from_ticket(ticket_json: dict) -> dict:
+    totals = (ticket_json or {}).get("totals") or {}
+    to_int = lambda v: int(v) if v not in (None, "") else 0
+    sub_val = totals.get("subtotal", totals.get("sub_total", 0))
+    return {
+        "subtotal_cents":        to_int(sub_val),
+        "tax_cents":             to_int(totals.get("tax")),
+        "discounts_cents":       to_int(totals.get("discounts") or totals.get("discount") or 0),
+        "total_cents":           to_int(totals.get("total")),
+        "due_cents":             to_int(totals.get("due")),
+        "service_charge_cents":  to_int(totals.get("service_charge") or totals.get("svc_charge") or 0),
+    }
+
+def _compute_base_due(ticket_json: dict) -> int:
+    """Base = subtotal + tax. If missing, sum items."""
+    to_int = lambda v: int(v) if v not in (None, "") else 0
+    totals = (ticket_json or {}).get("totals") or {}
+    sub = to_int(totals.get("sub_total", totals.get("subtotal", 0)))
+    tax = to_int(totals.get("tax"))
+    if sub <= 0:
+        sub_calc = 0
+        for li in _get_embedded_list(ticket_json, "items") or _get_embedded_list(ticket_json, "line_items"):
+            qty  = int(li.get("quantity") or 1)
+            unit = int(li.get("price") or li.get("price_per_unit") or li.get("unit_price") or 0)
+            if unit:
+                sub_calc += qty * unit
+            else:
+                sub_calc += int(li.get("total") or 0)
+        sub = sub_calc
+    return max(sub + tax, 0)
+
+def _fill_merchant_snapshot(link: TicketLink, rp: RestaurantProfile):
+    if not link.merchant_name:
+        link.merchant_name = rp.display_name() or (getattr(rp, "legal_name", "") or "")
+    if not link.merchant_addr1:
+        link.merchant_addr1 = getattr(rp, "address1", "") or ""
+    if not link.merchant_addr2:
+        link.merchant_addr2 = getattr(rp, "address2", "") or ""
+    if not link.merchant_city:
+        link.merchant_city = getattr(rp, "city", "") or ""
+    if not link.merchant_state:
+        link.merchant_state = getattr(rp, "state", "") or ""
+    if not link.merchant_zip:
+        link.merchant_zip = getattr(rp, "zipcode", "") or ""
+    if not link.merchant_phone:
+        link.merchant_phone = getattr(rp, "phone", "") or ""
