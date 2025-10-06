@@ -114,4 +114,8 @@ urlpatterns = [
     path("payments/update", views_payments.update_card, name="update_card"),
     path("payments/update/confirm-pin", views_payments.update_card_confirm_pin, name="update_card_confirm_pin"),
     path("payments/update/finalize", views_payments.finalize_card_update, name="finalize_card_update"),
+    # Manager analytics
+    path("manager/api/menu-item-ratings", views_manager.manager_api_menu_item_ratings, name="manager_api_menu_item_ratings"),
+    path("manager/api/staff-ratings", views_manager.manager_api_staff_ratings, name="manager_api_staff_ratings"),
+    path("manager/ticket/<int:ticket_link_id>/review.json",views_manager.manager_ticket_review_json,name="manager_ticket_review_json"),
 ]

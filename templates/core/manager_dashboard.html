@@ -17,6 +17,7 @@
         <h1 class="font-semibold">Manager Dashboard</h1>
       </div>
       <div class="flex items-center gap-2">
+        <button id="openAnalytics" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">Analytics</button>
         <button id="openInvite" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm">Invite staff</button>
         <a href="{% url 'core:signout' %}" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">Sign out</a>
       </div>
@@ -42,41 +43,17 @@
       {% endif %}
     </section>
 
-    <!-- Staff Access (name only) -->
-    <section class="bg-white border border-slate-200 rounded-2xl p-6">
-      <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold">Staff access</h3>
-        <button id="staffRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
-      </div>
-      <div class="mt-3 overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="text-left text-slate-500">
-            <tr>
-              <th class="py-2 pr-4">Name</th>
-              <th class="py-2 pr-0 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="staffBody" class="divide-y"></tbody>
-        </table>
-      </div>
-      <div id="staffEmpty" class="text-slate-600 text-sm mt-2 hidden">No active staff yet.</div>
-    </section>
+    <!-- MAIN TABS -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-4">
+      <div class="flex items-center justify-between flex-wrap gap-3 px-2">
+        <div class="inline-flex rounded-xl border p-1 text-sm" role="tablist" aria-label="Main tabs">
+          <button id="tabAccess" class="px-3 py-1.5 rounded-lg hover:bg-slate-50" data-pane="access">Access</button>
+          <button id="tabOpen"   class="px-3 py-1.5 rounded-lg hover:bg-slate-50" data-pane="open">Open tickets</button>
+          <button id="tabOrders" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white" data-pane="orders">Recent orders</button>
+        </div>
 
-    <!-- Open Tickets -->
-    <section class="bg-white border border-slate-200 rounded-2xl p-6">
-      <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold">Open tickets</h3>
-        <button id="openRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
-      </div>
-      <div id="openEmpty" class="text-slate-600 text-sm mt-2 hidden">No open tickets.</div>
-      <ul id="openList" class="mt-3 grid gap-2"></ul>
-    </section>
-
-    <!-- Recent Orders -->
-    <section class="bg-white border border-slate-200 rounded-2xl p-6">
-      <div class="flex items-center justify-between flex-wrap gap-3">
-        <h3 class="text-lg font-semibold">Recent orders</h3>
-        <div class="flex items-center gap-2">
+        <!-- For convenience, replicate Orders filters when Orders tab is active (kept as-is) -->
+        <div id="ordersControls" class="flex items-center gap-2">
           <label class="text-sm text-slate-600">From</label>
           <input id="startDate" type="date" class="h-10 rounded-xl border px-3 text-sm" />
           <label class="text-sm text-slate-600">To</label>
@@ -85,22 +62,59 @@
           <button id="ordersRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
           <button id="exportBtn" class="rounded-xl bg-slate-900 text-white px-3 py-2 text-sm">Export to Excel</button>
         </div>
+
+        <!-- Small per-tab controls -->
+        <div id="openControls" class="hidden">
+          <button id="openRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+        </div>
+        <div id="accessControls" class="hidden">
+          <button id="staffRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+        </div>
       </div>
-      <div id="ordersEmpty" class="text-slate-600 text-sm mt-2 hidden">Nothing closed recently.</div>
-      <div class="mt-3 overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="text-left text-slate-500">
-            <tr>
-              <th class="py-2 pr-4">Closed</th>
-              <th class="py-2 pr-4">Ticket</th>
-              <th class="py-2 pr-4">Member</th>
-              <th class="py-2 pr-4">Server</th>
-              <th class="py-2 pr-4 text-right">Total</th>
-              <th class="py-2 pr-0 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="ordersBody" class="divide-y"></tbody>
-        </table>
+
+      <!-- PANES -->
+      <div class="pt-4">
+        <!-- Access Pane -->
+        <div id="paneAccess" role="tabpanel" aria-labelledby="tabAccess" class="">
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="text-left text-slate-500">
+                <tr>
+                  <th class="py-2 pr-4">Name</th>
+                  <th class="py-2 pr-0 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="staffBody" class="divide-y"></tbody>
+            </table>
+          </div>
+          <div id="staffEmpty" class="text-slate-600 text-sm mt-2 hidden">No active staff yet.</div>
+        </div>
+
+        <!-- Open Tickets Pane -->
+        <div id="paneOpen" role="tabpanel" aria-labelledby="tabOpen" class="hidden">
+          <div id="openEmpty" class="text-slate-600 text-sm mt-2 hidden">No open tickets.</div>
+          <ul id="openList" class="mt-3 grid gap-2"></ul>
+        </div>
+
+        <!-- Orders Pane -->
+        <div id="paneOrders" role="tabpanel" aria-labelledby="tabOrders" class="hidden">
+          <div id="ordersEmpty" class="text-slate-600 text-sm mt-2 hidden">Nothing closed recently.</div>
+          <div class="mt-3 overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="text-left text-slate-500">
+                <tr>
+                  <th class="py-2 pr-4">Closed</th>
+                  <th class="py-2 pr-4">Ticket</th>
+                  <th class="py-2 pr-4">Member</th>
+                  <th class="py-2 pr-4">Server</th>
+                  <th class="py-2 pr-4 text-right">Total</th>
+                  <th class="py-2 pr-0 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ordersBody" class="divide-y"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -123,6 +137,18 @@
           <div class="flex items-center justify-between border-t pt-2"><span class="text-slate-700 font-semibold">Total</span><span id="dTotal" class="font-semibold">$0.00</span></div>
         </div>
       </div>
+    </aside>
+  </div>
+
+  <!-- Review Drawer -->
+  <div id="reviewWrap" class="fixed inset-0 z-50 hidden">
+    <div id="reviewBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="reviewDrawer" class="absolute right-0 top-0 h-full w-[520px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold" id="rvTitle">Review</div>
+        <button id="reviewClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5 space-y-4" id="rvBody"></div>
     </aside>
   </div>
 
@@ -158,205 +184,483 @@
     </aside>
   </div>
 
-  <script>
-    // helpers
-    const $ = s => document.querySelector(s);
-    const $$ = s => Array.from(document.querySelectorAll(s));
-    const money = c => `$${(c/100).toFixed(2)}`;
-    function getCSRFCookie() {
-      const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
-      return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || '');
-    }
-    function toast(msg, ok=true) {
-      const el = document.createElement('div');
-      el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-xl shadow border ' +
-        (ok ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900');
-      el.textContent = msg;
-      document.body.appendChild(el);
-      setTimeout(()=>el.remove(), 3000);
-    }
-
-    // data
-    async function loadState(q='', start='', end='') {
-      const url = new URL("{% url 'core:manager_api_state' %}", window.location.origin);
-      if (q) url.searchParams.set('q', q);
-      if (start) url.searchParams.set('start', start);
-      if (end) url.searchParams.set('end', end);
-      const resp = await fetch(url, {credentials:'same-origin'});
-      const data = await resp.json().catch(()=>({}));
-      if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to load');
-      return data;
-    }
-
-    function renderStaff(list){
-      const tb = $('#staffBody'); tb.innerHTML = '';
-      $('#staffEmpty').classList.toggle('hidden', list.length !== 0);
-      list.forEach(s => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="py-2 pr-4">${s.name || '—'}</td>
-          <td class="py-2 pr-0 text-right">
-            <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-id="${s.id}">Remove</button>
-          </td>`;
-        tb.appendChild(tr);
-      });
-      $$('#staffBody [data-id]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Remove this staff member from the restaurant?')) return;
-          const resp = await fetch("{% url 'core:manager_api_remove_staff' %}", {
-            method:'POST',
-            headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
-            credentials:'same-origin',
-            body: JSON.stringify({staff_id: btn.dataset.id})
-          });
-          const data = await resp.json().catch(()=>({}));
-          if (!resp.ok || !data.ok) return toast(data.error || 'Failed to remove', false);
-          toast('Removed', true);
-          refreshAll();
-        });
-      });
-    }
-
-    function renderOpen(list){
-      const ul = $('#openList'); ul.innerHTML = '';
-      $('#openEmpty').classList.toggle('hidden', list.length !== 0);
-      list.forEach(o => {
-        const li = document.createElement('li');
-        li.className = 'rounded-xl border p-3 flex items-center justify-between';
-        const members = (o.members || []).join(', ');
-        li.innerHTML = `
-          <div class="min-w-0">
-            <div class="font-medium">Ticket ${o.ticket_number || o.ticket_id}</div>
-            <div class="text-sm text-slate-600">Server: ${o.server || '—'} · Members: ${members || '—'}</div>
+  <!-- Analytics Drawer (unchanged from your working version) -->
+  <div id="analyticsWrap" class="fixed inset-0 z-50 hidden">
+    <div id="analyticsBackdrop" class="absolute inset-0 bg-black/30"></div>
+    <aside id="analyticsDrawer" class="absolute right-0 top-0 h-full w-[760px] max-w-[92%] bg-white shadow-2xl border-l border-slate-200 transform translate-x-full transition-transform duration-300">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="font-semibold">Analytics</div>
+        <button id="analyticsClose" class="rounded-xl border px-3 py-1 text-sm">Close</button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div class="inline-flex rounded-xl border p-1 text-sm" role="tablist" aria-label="Analytics tabs">
+            <button id="tabMenu"  class="px-3 py-1.5 rounded-lg bg-slate-900 text-white" data-pane="menu">Menu items</button>
+            <button id="tabStaffA" class="px-3 py-1.5 rounded-lg hover:bg-slate-50" data-pane="staff">Staff</button>
           </div>
           <div class="flex items-center gap-2">
-            <div class="text-sm font-semibold">${money(o.due_cents || 0)}</div>
-            <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">View</button>
-          </div>`;
-        ul.appendChild(li);
+            <label class="text-sm text-slate-600">From</label>
+            <input id="anStart" type="date" class="h-10 rounded-xl border px-3 text-sm" />
+            <label class="text-sm text-slate-600">To</label>
+            <input id="anEnd" type="date" class="h-10 rounded-xl border px-3 text-sm" />
+            <button id="anRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+            <button id="anExport" class="rounded-xl bg-slate-900 text-white px-3 py-2 text-sm">Export CSV</button>
+          </div>
+        </div>
+
+        <!-- Menu Items Pane -->
+        <div id="paneMenu" role="tabpanel" aria-labelledby="tabMenu">
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="text-left text-slate-500">
+                <tr>
+                  <th class="py-2 px-3 cursor-pointer" data-sort="name">Item</th>
+                  <th class="py-2 px-3 cursor-pointer" data-sort="category">Category</th>
+                  <th class="py-2 px-3 text-right cursor-pointer" data-sort="price_cents">Price</th>
+                  <th class="py-2 px-3 text-right cursor-pointer" data-sort="avg_rating">Avg rating</th>
+                  <th class="py-2 px-3 text-right cursor-pointer" data-sort="num_rated_tickets"># rated tickets</th>
+                  <th class="py-2 px-3 text-right cursor-pointer" data-sort="total_qty_on_rated_tickets">Qty on rated</th>
+                  <th class="py-2 px-3">Trend</th>
+                </tr>
+              </thead>
+              <tbody id="menuBody" class="divide-y"></tbody>
+            </table>
+          </div>
+          <div id="menuEmpty" class="text-slate-600 text-sm mt-2 hidden">No menu-item ratings in this range.</div>
+        </div>
+
+        <!-- Staff Pane (analytics) -->
+        <div id="paneStaffA" class="hidden" role="tabpanel" aria-labelledby="tabStaffA">
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="text-left text-slate-500">
+                <tr>
+                  <th class="py-2 px-3 cursor-pointer" data-sort="name">Staff</th>
+                  <th class="py-2 px-3 text-right cursor-pointer" data-sort="avg_rating">Avg rating</th>
+                  <th class="py-2 px-3 text-right cursor-pointer" data-sort="num_rated_tickets"># rated tickets</th>
+                  <th class="py-2 px-3">Trend</th>
+                </tr>
+              </thead>
+              <tbody id="staffABody" class="divide-y"></tbody>
+            </table>
+          </div>
+          <div id="staffAEmpty" class="text-slate-600 text-sm mt-2 hidden">No staff ratings in this range.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+  // ========== helpers ==========
+  const $  = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const money = c => `$${(Number(c||0)/100).toFixed(2)}`;
+
+  function getCSRFCookie() {
+    const m = document.cookie.match(/(?:^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || '');
+  }
+  function toast(msg, ok=true) {
+    const el = document.createElement('div');
+    el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-xl shadow border ' +
+      (ok ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), 3000);
+  }
+  const postJSON = async (url, body) => {
+    const resp = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie() },
+      credentials:'same-origin',
+      body: JSON.stringify(body || {})
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok || data.ok === false) throw new Error(data.error || 'Request failed');
+    return data;
+  };
+
+  // ========== MAIN TABS ==========
+  function setMainTab(which){
+    const tabs = {access:'#paneAccess', open:'#paneOpen', orders:'#paneOrders'};
+    Object.entries(tabs).forEach(([key, paneSel])=>{
+      const active = (key===which);
+      const btn = key==='access' ? '#tabAccess' : key==='open' ? '#tabOpen' : '#tabOrders';
+      $(paneSel)?.classList.toggle('hidden', !active);
+
+      $(btn)?.classList.toggle('bg-slate-900', active);
+      $(btn)?.classList.toggle('text-white', active);
+      $(btn)?.classList.toggle('hover:bg-slate-50', !active);
+    });
+
+    // toggle controls row per pane
+    $('#ordersControls').classList.toggle('hidden', which!=='orders');
+    $('#openControls').classList.toggle('hidden', which!=='open');
+    $('#accessControls').classList.toggle('hidden', which!=='access');
+  }
+  $('#tabAccess')?.addEventListener('click', ()=> setMainTab('access'));
+  $('#tabOpen')?.addEventListener('click',   ()=> setMainTab('open'));
+  $('#tabOrders')?.addEventListener('click', ()=> setMainTab('orders'));
+
+  // ========== data ==========
+  async function loadState(q='', start='', end='') {
+    const url = new URL("{% url 'core:manager_api_state' %}", window.location.origin);
+    if (q) url.searchParams.set('q', q);
+    if (start) url.searchParams.set('start', start);
+    if (end) url.searchParams.set('end', end);
+    const resp = await fetch(url, {credentials:'same-origin'});
+    const data = await resp.json().catch(()=>({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to load');
+    return data;
+  }
+
+  function renderStaff(list){
+    const tb = $('#staffBody'); tb.innerHTML = '';
+    $('#staffEmpty').classList.toggle('hidden', list.length !== 0);
+    list.forEach(s => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2 pr-4">${s.name || '—'}</td>
+        <td class="py-2 pr-0 text-right">
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-id="${s.id}">Remove</button>
+        </td>`;
+      tb.appendChild(tr);
+    });
+    $$('#staffBody [data-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Remove this staff member from the restaurant?')) return;
+        try{
+          await postJSON("{% url 'core:manager_api_remove_staff' %}", {staff_id: btn.dataset.id});
+          toast('Removed', true);
+          refreshAll();
+        }catch(e){ toast(e.message, false); }
       });
-      $$('#openList [data-ticket]').forEach(btn => {
-        btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
-      });
-    }
+    });
+  }
 
-    function renderOrders(list){
-      const tb = $('#ordersBody'); tb.innerHTML = '';
-      $('#ordersEmpty').classList.toggle('hidden', list.length !== 0);
-      list.forEach(o => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="py-2 pr-4">${o.closed_at || '—'}</td>
-          <td class="py-2 pr-4">${o.ticket_number || o.ticket_id}</td>
-          <td class="py-2 pr-4">${o.member || '—'}</td>
-          <td class="py-2 pr-4">${o.server || '—'}</td>
-          <td class="py-2 pr-4 text-right font-semibold">${money(o.total_cents || 0)}</td>
-          <td class="py-2 pr-0 text-right">
-            <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">Receipt</button>
-          </td>`;
-        tb.appendChild(tr);
-      });
-      $$('#ordersBody [data-ticket]').forEach(btn => {
-        btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
-      });
-    }
+  function renderOpen(list){
+    const ul = $('#openList'); ul.innerHTML = '';
+    $('#openEmpty').classList.toggle('hidden', list.length !== 0);
+    list.forEach(o => {
+      const li = document.createElement('li');
+      li.className = 'rounded-xl border p-3 flex items-center justify-between';
+      const members = (o.members || []).join(', ');
+      li.innerHTML = `
+        <div class="min-w-0">
+          <div class="font-medium">Ticket ${o.ticket_number || o.ticket_id}</div>
+          <div class="text-sm text-slate-600">Server: ${o.server || '—'} · Members: ${members || '—'}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="text-sm font-semibold">${money(o.due_cents || 0)}</div>
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">View</button>
+        </div>`;
+      ul.appendChild(li);
+    });
+    $$('#openList [data-ticket]').forEach(btn => {
+      btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
+    });
+  }
 
-    async function refreshAll(){
-      try {
-        const q = ($('#ordersQ').value || '').trim();
-        const start = $('#startDate').value || '';
-        const end = $('#endDate').value || '';
-        const data = await loadState(q, start, end);
-        renderStaff(data.staff || []);
-        renderOpen(data.open || []);
-        renderOrders(data.recent || []);
-      } catch (e) {
-        toast(e.message || 'Failed to load', false);
-      }
-    }
+  function renderOrders(list){
+    const tb = $('#ordersBody'); tb.innerHTML = '';
+    $('#ordersEmpty').classList.toggle('hidden', list.length !== 0);
+    list.forEach(o => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2 pr-4">${o.closed_at || '—'}</td>
+        <td class="py-2 pr-4">${o.ticket_number || o.ticket_id}</td>
+        <td class="py-2 pr-4">${o.member || '—'}</td>
+        <td class="py-2 pr-4">${o.server || '—'}</td>
+        <td class="py-2 pr-4 text-right font-semibold">${money(o.total_cents || 0)}</td>
+        <td class="py-2 pr-0 text-right flex items-center justify-end gap-2">
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-review-id="${o.ticket_link_id}">Review</button>
+          <button class="px-3 py-1 rounded-xl border hover:bg-slate-50 text-sm" data-ticket="${o.ticket_id}">Receipt</button>
+        </td>`;
+      tb.appendChild(tr);
+    });
+    $$('#ordersBody [data-ticket]').forEach(btn => {
+      btn.addEventListener('click', () => openReceipt(btn.dataset.ticket));
+    });
+    $$('#ordersBody [data-review-id]').forEach(btn => {
+      btn.addEventListener('click', () => openReview(btn.dataset.reviewId || btn.getAttribute('data-review-id')));
+    });
+  }
 
-    // Receipt drawer
-    function toggleDrawer(on){
-      $('#drawerWrap').classList.toggle('hidden', !on);
-      $('#drawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
-    }
-    $('#drawerClose').addEventListener('click', () => toggleDrawer(false));
-    $('#drawerBackdrop').addEventListener('click', () => toggleDrawer(false));
-
-    async function openReceipt(ticketId){
-      const url = "{% url 'core:manager_api_ticket_detail' 'TKT' %}".replace('TKT', encodeURIComponent(ticketId));
-      const resp = await fetch(url, {credentials:'same-origin'});
-      const data = await resp.json().catch(()=>({}));
-      if (!resp.ok || !data.ok) return toast(data.error || 'Failed to load receipt', false);
-
-      $('#dTicketNo').textContent = data.ticket_number || ticketId;
-      $('#dMeta').textContent = (data.server ? `Server: ${data.server}` : '') + (data.member ? ` · Member: ${data.member}` : '');
-      const ul = $('#dItems'); ul.innerHTML = '';
-      (data.items || []).forEach(r => {
-        const li = document.createElement('li');
-        li.className = 'py-2 flex items-center justify-between';
-        li.innerHTML = `<div class="truncate">${r.qty}× ${r.name}</div><div class="ml-3">${money((r.cents||0) * (r.qty||1))}</div>`;
-        ul.appendChild(li);
-      });
-      // <- Use fields exactly as delivered by API (no recompute here)
-      $('#dSub').textContent   = money(data.subtotal_cents || 0);
-      $('#dTax').textContent   = money(data.tax_cents || 0);
-      $('#dTip').textContent   = money(data.tip_cents || 0);
-      $('#dTotal').textContent = money(data.total_cents || 0);
-
-      toggleDrawer(true);
-    }
-
-    // date filter + export + refresh
-    $('#ordersRefresh')?.addEventListener('click', refreshAll);
-    $('#openRefresh')?.addEventListener('click', refreshAll);
-    $('#staffRefresh')?.addEventListener('click', refreshAll);
-    $('#ordersQ')?.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); refreshAll(); }});
-    $('#exportBtn')?.addEventListener('click', () => {
-      const url = new URL("{% url 'core:manager_export' %}", window.location.origin);
+  async function refreshAll(){
+    try {
       const q = ($('#ordersQ').value || '').trim();
       const start = $('#startDate').value || '';
       const end = $('#endDate').value || '';
-      if (q) url.searchParams.set('q', q);
-      if (start) url.searchParams.set('start', start);
-      if (end) url.searchParams.set('end', end);
-      window.location = url.toString();
+      const data = await loadState(q, start, end);
+      renderStaff(data.staff || []);
+      renderOpen(data.open || []);
+      renderOrders(data.recent || []);
+    } catch (e) {
+      toast(e.message || 'Failed to load', false);
+    }
+  }
+
+  // Receipt drawer
+  function toggleDrawer(on){
+    $('#drawerWrap').classList.toggle('hidden', !on);
+    $('#drawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+  }
+  $('#drawerClose').addEventListener('click', () => toggleDrawer(false));
+  $('#drawerBackdrop').addEventListener('click', () => toggleDrawer(false));
+
+  async function openReceipt(ticketId){
+    const url = "{% url 'core:manager_api_ticket_detail' 'TKT' %}".replace('TKT', encodeURIComponent(ticketId));
+    const resp = await fetch(url, {credentials:'same-origin'});
+    const data = await resp.json().catch(()=>({}));
+    if (!resp.ok || data.ok === false) return toast(data.error || 'Failed to load receipt', false);
+
+    $('#dTicketNo').textContent = data.ticket_number || ticketId;
+    $('#dMeta').textContent = (data.server ? `Server: ${data.server}` : '') + (data.member ? ` · Member: ${data.member}` : '');
+    const ul = $('#dItems'); ul.innerHTML = '';
+    (data.items || []).forEach(r => {
+      const qty  = r.qty || 1;
+      const unit = (r.unit_cents != null ? r.unit_cents : r.cents) || 0;
+      const line = (r.line_total_cents != null ? r.line_total_cents : unit * qty);
+      const li = document.createElement('li');
+      li.className = 'py-2 flex items-center justify-between';
+      li.innerHTML = `
+        <div class="min-w-0">
+          <div class="truncate">${qty}× ${r.name}</div>
+          <div class="text-xs text-slate-500">@ ${money(unit)} ea</div>
+        </div>
+        <div class="ml-3 font-medium">${money(line)}</div>`;
+      ul.appendChild(li);
     });
+    $('#dSub').textContent   = money(data.subtotal_cents || 0);
+    $('#dTax').textContent   = money(data.tax_cents || 0);
+    $('#dTip').textContent   = money(data.tip_cents || 0);
+    $('#dTotal').textContent = money(data.total_cents || 0);
 
-    // Invite drawer (7-day expiry baked in)
-    function toggleInvite(on){
-      $('#inviteWrap').classList.toggle('hidden', !on);
-      $('#inviteDrawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+    toggleDrawer(true);
+  }
+
+  // Review drawer
+  function toggleReview(on){
+    $('#reviewWrap').classList.toggle('hidden', !on);
+    $('#reviewDrawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+  }
+  $('#reviewClose').addEventListener('click', ()=> toggleReview(false));
+  $('#reviewBackdrop').addEventListener('click', ()=> toggleReview(false));
+
+  async function openReview(ticketLinkId){
+    const url = "{% url 'core:manager_ticket_review_json' 1 %}".replace('1', encodeURIComponent(ticketLinkId));
+    const resp = await fetch(url, {credentials:'same-origin'});
+    const data = await resp.json().catch(()=>({}));
+    if (!resp.ok || data.ok === false) return toast(data.error || 'Failed to load review', false);
+
+    const body = $('#rvBody');
+    $('#rvTitle').textContent = `Ticket ${data.ticket_id} — Review`;
+
+    if (!data.has_review){
+      body.innerHTML = `<div class="text-sm text-slate-600">No review was submitted for this ticket.</div>`;
+      return toggleReview(true);
     }
-    $('#openInvite').addEventListener('click', ()=> toggleInvite(true));
-    $('#inviteClose').addEventListener('click', ()=> toggleInvite(false));
-    $('#inviteBackdrop').addEventListener('click', ()=> toggleInvite(false));
 
-    function showInviteAlert(msg, ok=false){
-      const el = $('#inviteAlert');
-      el.className = 'rounded-lg px-3 py-2 text-sm ' + (ok ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900');
-      el.textContent = msg;
-      el.classList.remove('hidden');
-    }
+    const r = data.review || {};
+    const val = Math.max(0, Math.min(5, Number(r.stars ?? r.rating ?? 0)));
+    const whole = Math.round(val);
+    const starLine = '★'.repeat(whole) + '☆'.repeat(Math.max(0, 5 - whole));
+    const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+    const who  = (r.reviewer_name || r.reviewer_email || 'Anonymous');
 
-    $('#inviteSend').addEventListener('click', async () => {
-      const email = ($('#inviteEmail').value || '').trim();
-      if (!email) return showInviteAlert('Please enter an email.');
-      let resp, data={};
-      try{
-        resp = await fetch("{% url 'core:manager_invite_staff' %}", {
-          method:'POST',
-          headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
-          credentials:'same-origin',
-          body: JSON.stringify({ email, expires_minutes: 7*24*60 }) // 7 days
-        });
-        data = await resp.json().catch(()=>({}));
-      }catch{
-        return showInviteAlert('Network error sending invite.');
-      }
-      if(!resp.ok || !data.ok){
-        return showInviteAlert(data.error || 'Invite failed.');
-      }
+    body.innerHTML = `
+      <div class="text-sm text-slate-600 space-y-1">
+        <div><span class="font-medium">Member:</span> ${data.member || '—'}</div>
+        <div><span class="font-medium">When:</span> ${when}</div>
+        <div><span class="font-medium">By:</span> ${who}</div>
+      </div>
+
+      <div class="mt-3">
+        <div class="text-base font-medium mb-1">Rating</div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-700 text-sm">${val.toFixed(2)}</span>
+          <span class="text-amber-500 text-lg" aria-label="${val} out of 5">${starLine}</span>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <div class="text-base font-medium mb-1">Comment</div>
+        <div class="rounded-xl border p-3 bg-slate-50 text-sm whitespace-pre-wrap">${
+          (r.comment || '').replace(/</g,'&lt;')
+        }</div>
+      </div>
+    `;
+
+    toggleReview(true);
+  }
+
+  // ========== Analytics (unchanged from before) ==========
+  let ANALYTICS = { menu: [], staff: [], sort: { pane: 'menu', key: 'avg_rating', dir: 'desc' } };
+  function starBar(avg){ const v=Math.max(0,Math.min(5,parseFloat(avg??0))); const pct=(v/5)*100; return `
+    <div class="relative group inline-flex items-center" aria-label="${v.toFixed(2)} out of 5">
+      <div class="relative inline-block leading-none">
+        <div class="text-slate-300 select-none">★★★★★</div>
+        <div class="absolute inset-0 overflow-hidden" style="width:${pct}%">
+          <div class="text-amber-500 select-none">★★★★★</div>
+        </div>
+      </div>
+      <div class="absolute left-1/2 -translate-x-1/2 -top-8 hidden group-hover:block">
+        <div class="px-2 py-1 rounded-md text-xs bg-slate-900 text-white shadow">${v.toFixed(2)} / 5</div>
+      </div>
+    </div>`; }
+  function trendBarFromAvg(avg){ const v=Math.max(0,Math.min(5,parseFloat(avg??0))); const pct=(v/5)*100; return `
+    <div class="relative group inline-block w-40 h-2 bg-slate-200 rounded-full overflow-hidden">
+      <div class="h-full bg-emerald-500" style="width:${pct}%"></div>
+      <div class="absolute left-1/2 -translate-x-1/2 -top-8 hidden group-hover:block">
+        <div class="px-2 py-1 rounded-md text-xs bg-slate-900 text-white shadow">${v.toFixed(2)} / 5</div>
+      </div>
+    </div>`; }
+  function setAnTab(which){
+    const panes=['menu','staff'];
+    panes.forEach(p=>{
+      const btn=p==='menu'?'#tabMenu':'#tabStaffA';
+      const paneId=p==='menu'?'#paneMenu':'#paneStaffA';
+      $(btn)?.classList.toggle('bg-slate-900', p===which);
+      $(btn)?.classList.toggle('text-white', p===which);
+      $(btn)?.classList.toggle('hover:bg-slate-50', p!==which);
+      $(paneId)?.classList.toggle('hidden', p!==which);
+    });
+    ANALYTICS.sort.pane=which; renderAnalytics();
+  }
+  $('#tabMenu')?.addEventListener('click', ()=> setAnTab('menu'));
+  $('#tabStaffA')?.addEventListener('click', ()=> setAnTab('staff'));
+  async function fetchMenuRatings(){
+    const url = new URL("{% url 'core:manager_api_menu_item_ratings' %}", window.location.origin);
+    const s=$('#anStart').value||''; const e=$('#anEnd').value||'';
+    if(s) url.searchParams.set('start', s); if(e) url.searchParams.set('end', e);
+    const resp=await fetch(url,{credentials:'same-origin'}); const data=await resp.json().catch(()=>({}));
+    if(!resp.ok||data.ok===false) throw new Error(data.error||'Failed to load menu analytics');
+    return data.items||[];
+  }
+  async function fetchStaffRatings(){
+    const url = new URL("{% url 'core:manager_api_staff_ratings' %}", window.location.origin);
+    const s=$('#anStart').value||''; const e=$('#anEnd').value||'';
+    if(s) url.searchParams.set('start', s); if(e) url.searchParams.set('end', e);
+    const resp=await fetch(url,{credentials:'same-origin'}); const data=await resp.json().catch(()=>({}));
+    if(!resp.ok||data.ok===false) throw new Error(data.error||'Failed to load staff analytics');
+    return data.staff||[];
+  }
+  function sortData(arr,key,dir){ const mult=dir==='desc'?-1:1; return arr.slice().sort((a,b)=>{
+    const va=(a[key]??''); const vb=(b[key]??'');
+    if(typeof va==='number'&&typeof vb==='number') return (va-vb)*mult;
+    return (''+va).localeCompare(''+vb)*mult; }); }
+  function attachSortHandlers(headSel,pane){
+    $$(headSel+' [data-sort]').forEach(th=>{
+      th.addEventListener('click', ()=>{ const key=th.getAttribute('data-sort');
+        const cur=ANALYTICS.sort; let dir='asc';
+        if(cur.pane===pane && cur.key===key && cur.dir==='asc') dir='desc';
+        ANALYTICS.sort={pane,key,dir}; renderAnalytics(); });
+    });
+  }
+  function renderMenu(){
+    const body=$('#menuBody'); const empty=$('#menuEmpty');
+    let rows=ANALYTICS.menu; const {key,dir}=(ANALYTICS.sort.pane==='menu'?ANALYTICS.sort:{key:'avg_rating',dir:'desc'});
+    rows=sortData(rows,key,dir); body.innerHTML=''; if(!rows.length) empty.classList.remove('hidden'); else empty.classList.add('hidden');
+    rows.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`
+      <td class="py-2 px-3">${r.name||'Unknown item'}</td>
+      <td class="py-2 px-3">${r.category||''}</td>
+      <td class="py-2 px-3 text-right">${money(r.price_cents||0)}</td>
+      <td class="py-2 px-3 text-right">
+        <div class="flex items-center justify-end gap-2">
+          <span class="hidden sm:inline text-slate-500">${Number(r.avg_rating||0).toFixed(2)}</span>
+          ${starBar(r.avg_rating)}
+        </div>
+      </td>
+      <td class="py-2 px-3 text-right">${r.num_rated_tickets||0}</td>
+      <td class="py-2 px-3 text-right">${r.total_qty_on_rated_tickets||0}</td>
+      <td class="py-2 px-3">${trendBarFromAvg(r.avg_rating)}</td>`; body.appendChild(tr); });
+  }
+  function renderStaffA(){
+    const body=$('#staffABody'); const empty=$('#staffAEmpty');
+    let rows=ANALYTICS.staff; const {key,dir}=(ANALYTICS.sort.pane==='staff'?ANALYTICS.sort:{key:'avg_rating',dir:'desc'});
+    rows=sortData(rows,key,dir); body.innerHTML=''; if(!rows.length) empty.classList.remove('hidden'); else empty.classList.add('hidden');
+    rows.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`
+      <td class="py-2 px-3">${r.name||'—'}</td>
+      <td class="py-2 px-3 text-right">
+        <div class="flex items-center justify-end gap-2">
+          <span class="hidden sm:inline text-slate-500">${Number(r.avg_rating||0).toFixed(2)}</span>
+          ${starBar(r.avg_rating)}
+        </div>
+      </td>
+      <td class="py-2 px-3 text-right">${r.num_rated_tickets||0}</td>
+      <td class="py-2 px-3">${trendBarFromAvg(r.avg_rating)}</td>`; body.appendChild(tr); });
+  }
+  function renderAnalytics(){ if(ANALYTICS.sort.pane==='menu') renderMenu(); else renderStaffA(); }
+  async function refreshAnalytics(){ try{
+    const [menu, staff]=await Promise.all([fetchMenuRatings(), fetchStaffRatings()]);
+    ANALYTICS.menu=menu; ANALYTICS.staff=staff; renderAnalytics();
+  }catch(e){ toast(e.message||'Failed to load analytics', false); } }
+  function exportCSV(){
+    const pane=ANALYTICS.sort.pane; const rows=pane==='menu'?ANALYTICS.menu:ANALYTICS.staff;
+    const headers=pane==='menu'
+      ?['menu_item_id','name','category','price_cents','avg_rating','num_rated_tickets','total_qty_on_rated_tickets']
+      :['staff_key','name','avg_rating','num_rated_tickets'];
+    const lines=[headers.join(',')];
+    rows.forEach(r=>{ const vals=headers.map(h=>{ let v=r[h];
+      if(typeof v==='string'&&(v.includes(',')||v.includes('"'))) v=`"${v.replace(/"/g,'""')}"`;
+      return v??''; }); lines.push(vals.join(',')); });
+    const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a');
+    const s=$('#anStart').value||'all'; const e=$('#anEnd').value||'all';
+    a.href=URL.createObjectURL(blob); a.download=`analytics_${pane}_${s}_${e}.csv`; document.body.appendChild(a); a.click(); a.remove();
+  }
+  function openAnalytics(){ 
+    // show drawer and load
+    document.querySelector('#analyticsWrap').classList.remove('hidden');
+    document.querySelector('#analyticsDrawer').style.transform='translateX(0)';
+    setAnTab('menu'); refreshAnalytics();
+  }
+  $('#openAnalytics')?.addEventListener('click', openAnalytics);
+  $('#analyticsClose')?.addEventListener('click', ()=> { document.querySelector('#analyticsDrawer').style.transform='translateX(100%)'; document.querySelector('#analyticsWrap').classList.add('hidden'); });
+  $('#analyticsBackdrop')?.addEventListener('click', ()=> { document.querySelector('#analyticsDrawer').style.transform='translateX(100%)'; document.querySelector('#analyticsWrap').classList.add('hidden'); });
+  $('#anRefresh')?.addEventListener('click', refreshAnalytics);
+  $('#anExport')?.addEventListener('click', exportCSV);
+  attachSortHandlers('#paneMenu thead', 'menu');
+  attachSortHandlers('#paneStaffA thead', 'staff');
+  $('#anStart')?.addEventListener('change', refreshAnalytics);
+  $('#anEnd')?.addEventListener('change', refreshAnalytics);
+
+  // Orders/export controls
+  $('#ordersRefresh')?.addEventListener('click', refreshAll);
+  $('#openRefresh')?.addEventListener('click', refreshAll);
+  $('#staffRefresh')?.addEventListener('click', refreshAll);
+  $('#ordersQ')?.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); refreshAll(); }});
+  $('#exportBtn')?.addEventListener('click', () => {
+    const url = new URL("{% url 'core:manager_export' %}", window.location.origin);
+    const q=($('#ordersQ').value||'').trim(); const start=$('#startDate').value||''; const end=$('#endDate').value||'';
+    if(q) url.searchParams.set('q', q); if(start) url.searchParams.set('start', start); if(end) url.searchParams.set('end', end);
+    window.location = url.toString();
+  });
+
+  // Invite drawer
+  function toggleInvite(on){
+    $('#inviteWrap').classList.toggle('hidden', !on);
+    $('#inviteDrawer').style.transform = on ? 'translateX(0)' : 'translateX(100%)';
+  }
+  $('#openInvite').addEventListener('click', ()=> toggleInvite(true));
+  $('#inviteClose').addEventListener('click', ()=> toggleInvite(false));
+  $('#inviteBackdrop').addEventListener('click', ()=> toggleInvite(false));
+  function showInviteAlert(msg, ok=false){
+    const el=$('#inviteAlert');
+    el.className='rounded-lg px-3 py-2 text-sm '+(ok?'bg-emerald-100 text-emerald-900':'bg-red-100 text-red-900');
+    el.textContent=msg; el.classList.remove('hidden');
+  }
+  $('#inviteSend').addEventListener('click', async () => {
+    const email = ($('#inviteEmail').value || '').trim();
+    if (!email) return showInviteAlert('Please enter an email.');
+    try{
+      const resp = await fetch("{% url 'core:manager_invite_staff' %}", {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+        credentials:'same-origin',
+        body: JSON.stringify({ email, expires_minutes: 7*24*60 })
+      });
+      const data = await resp.json().catch(()=>({}));
+      if(!resp.ok || data.ok === false) return showInviteAlert(data.error || 'Invite failed.');
       showInviteAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
       if (data.invite?.link) {
         $('#inviteLinkWrap').classList.remove('hidden');
@@ -368,10 +672,12 @@
         };
       }
       $('#inviteEmail').value = '';
-    });
+    }catch { showInviteAlert('Network error sending invite.'); }
+  });
 
-    // Initial load
-    refreshAll();
-  </script>
+  // Initial
+  setMainTab('orders');  // default visible tab
+  refreshAll();
+</script>
 </body>
 </html>
