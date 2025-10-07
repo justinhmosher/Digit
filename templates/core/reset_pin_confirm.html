@@ -1,0 +1,73 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Reset PIN — Dine N Dash</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-50 grid place-items-center p-6 text-slate-900">
+  <main class="w-full max-w-sm rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+    <h1 class="text-xl font-semibold">Set a new PIN</h1>
+    <p class="text-sm text-slate-600 mt-1">Enter and confirm your new 4-digit PIN.</p>
+
+    <form id="pinForm" class="mt-4" method="post" novalidate>
+      {% csrf_token %}
+
+      <label for="pin" class="block text-sm font-medium text-slate-700">New 4-digit PIN</label>
+      <input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+             autocomplete="one-time-code" placeholder="••••"
+             class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-4 text-center tracking-[0.35em] text-lg outline-none focus:ring-2 focus:ring-slate-300"
+             required autofocus />
+
+      <label for="pin_confirm" class="block text-sm font-medium text-slate-700 mt-4">Confirm PIN</label>
+      <input id="pin_confirm" name="pin_confirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+             autocomplete="one-time-code" placeholder="••••"
+             class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-4 text-center tracking-[0.35em] text-lg outline-none focus:ring-2 focus:ring-slate-300"
+             required />
+
+      <button id="submitBtn" type="submit"
+              class="mt-4 w-full h-11 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300 disabled:opacity-60 disabled:cursor-not-allowed">
+        Save PIN
+      </button>
+
+      {% if messages %}
+        {% for message in messages %}
+          <p class="mt-3 text-sm {% if message.tags == 'error' %}text-red-600{% else %}text-slate-600{% endif %}">
+            {{ message }}
+          </p>
+        {% endfor %}
+      {% endif %}
+      <p id="err" class="mt-3 text-sm text-red-600 hidden"></p>
+    </form>
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById('pinForm');
+      const pin = document.getElementById('pin');
+      const pin2 = document.getElementById('pin_confirm');
+      const errEl = document.getElementById('err');
+      const btn = document.getElementById('submitBtn');
+
+      function sanitize(el) { el.value = el.value.replace(/\D+/g, '').slice(0, 4); }
+      pin.addEventListener('input', () => sanitize(pin));
+      pin2.addEventListener('input', () => sanitize(pin2));
+
+      function validate() {
+        errEl.classList.add('hidden'); errEl.textContent = '';
+        if (!/^\d{4}$/.test(pin.value)) errEl.textContent = 'PIN must be exactly 4 digits.';
+        else if (pin.value !== pin2.value) errEl.textContent = 'PINs do not match.';
+        if (errEl.textContent) { errEl.classList.remove('hidden'); return false; }
+        return true;
+      }
+
+      form.addEventListener('submit', (e) => {
+        if (!validate()) { e.preventDefault(); return; }
+        btn.disabled = true;
+      });
+    })();
+  </script>
+</body>
+</html>

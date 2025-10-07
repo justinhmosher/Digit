@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path,include
 from django.views.generic import RedirectView
-from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager, views_owner, views_restaurants, views_auth_reset
+from . import views, views_staff, views_home, veiws_verify, views_payments, views_add_staff, views_manager, views_owner,views_resetpin, views_restaurants, views_auth_reset
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -118,4 +118,5 @@ urlpatterns = [
     path("manager/api/menu-item-ratings", views_manager.manager_api_menu_item_ratings, name="manager_api_menu_item_ratings"),
     path("manager/api/staff-ratings", views_manager.manager_api_staff_ratings, name="manager_api_staff_ratings"),
     path("manager/ticket/<int:ticket_link_id>/review.json",views_manager.manager_ticket_review_json,name="manager_ticket_review_json"),
+    path("reset-pin/<str:token>/", views_resetpin.reset_pin_confirm, name="reset_pin_confirm"),
 ]

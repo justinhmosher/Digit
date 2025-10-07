@@ -260,6 +260,19 @@ class Review(models.Model):
         who = self.member_id or "anon"
         return f"Review({self.stars}★) for {self.restaurant_id} by {who}"
 
+class PinResetToken(models.Model):
+    customer = models.ForeignKey('CustomerProfile', on_delete=models.CASCADE, related_name='pin_reset_tokens')
+    token_hash = models.CharField(max_length=128, unique=True)  # sha256 hex
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    def is_valid(self) -> bool:
+        return (not self.used) and timezone.now() < self.expires_at
+
+    def __str__(self):
+        return f"PIN Reset Token for Customer {self.customer_id} (used={self.used})"
+
 
 
 

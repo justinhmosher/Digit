@@ -227,3 +227,43 @@ def send_staff_invite_email(to_email: str, invite_link: str, restaurant_name: st
     # Non-2xx? raise with details so you see why
     if not (200 <= resp.status_code < 300):
         raise RuntimeError(f"SendGrid failed: {resp.status_code} {resp.body}")
+
+def send_customer_pin_reset_email(
+    to_email: str,
+    reset_link: str,
+    customer_name: str,
+    expires_at,
+) -> None:
+    """
+    Minimal, production-safe SendGrid send for PIN reset.
+    Raises on errors so caller can decide response behavior.
+    """
+    if not API_SENDGRID:
+        raise RuntimeError("Missing API_SENDGRID")
+    if not FROM_EMAIL:
+        raise RuntimeError("Missing FROM_EMAIL")
+
+    subject = "Reset your Dyne PIN"
+    html = f"""
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5;color:#0f172a">
+      <h2 style="margin:0 0 12px">Reset your PIN</h2>
+      <p>Hi {customer_name},</p>
+      <p>We received a request to reset your Dyne PIN. Click the button below to set a new PIN.
+         This link expires on <strong>{expires_at:%Y-%m-%d %H:%M}</strong>.</p>
+      <p style="margin:20px 0">
+        <a href="{reset_link}" style="background:#0f172a;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none;display:inline-block">
+          Reset PIN
+        </a>
+      </p>
+      <p>If the button doesn’t work, paste this URL into your browser:<br>
+      <a href="{reset_link}">{reset_link}</a></p>
+      <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+      <p style="font-size:12px;color:#64748b">If you didn’t request this, you can ignore this email.</p>
+    </div>
+    """
+
+    sg = SendGridAPIClient(API_SENDGRID)
+    msg = Mail(from_email=FROM_EMAIL, to_emails=to_email, subject=subject, html_content=html)
+    resp = sg.send(msg)
+    if not (200 <= resp.status_code < 300):
+        raise RuntimeError(f"SendGrid failed: {resp.status_code} {resp.body}")
