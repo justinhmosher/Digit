@@ -63,7 +63,7 @@ def send_manager_invite_email(to_email: str, invite_link: str, restaurant_name: 
     html = f"""
     <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5;color:#0f172a">
       <h2 style="margin:0 0 12px">You’re invited as a manager</h2>
-      <p>You’ve been invited to manage <strong>{restaurant_name}</strong> on Dine N Dash.</p>
+      <p>You’ve been invited to manage <strong>{restaurant_name}</strong> on Dyne.</p>
       <p>
         Click the button below to accept and set your password. This link expires on
         <strong>{expires_at:%Y-%m-%d %H:%M}</strong>.
@@ -99,7 +99,7 @@ def send_owner_invite_email(to_email: str, invite_link: str, restaurant_name: st
     html = f"""
     <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5;color:#0f172a">
       <h2 style="margin:0 0 12px">You’re invited as a manager</h2>
-      <p>You’ve been invited to manage <strong>{restaurant_name}</strong> on Dine N Dash.</p>
+      <p>You’ve been invited to manage <strong>{restaurant_name}</strong> on Dyne.</p>
       <p>
         Click the button below to accept and set your password. This link expires on
         <strong>{expires_at:%Y-%m-%d %H:%M}</strong>.
@@ -204,7 +204,7 @@ def send_staff_invite_email(to_email: str, invite_link: str, restaurant_name: st
     html = f"""
     <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5;color:#0f172a">
       <h2 style="margin:0 0 12px">You’re invited as a manager</h2>
-      <p>You’ve been invited to <strong>{restaurant_name}</strong> on Dine N Dash.</p>
+      <p>You’ve been invited to <strong>{restaurant_name}</strong> on Dyne.</p>
       <p>
         Click the button below to accept and set your password. This link expires on
         <strong>{expires_at:%Y-%m-%d %H:%M}</strong>.

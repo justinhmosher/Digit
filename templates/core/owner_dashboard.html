@@ -254,7 +254,6 @@
       <div class="p-5 space-y-3">
         <p class="text-sm text-slate-600">Sends an email invite for the selected restaurant.</p>
         <input id="inviteEmail" type="email" class="h-11 w-full rounded-xl border px-3" placeholder="manager@example.com" />
-        <input id="inviteMins" type="number" min="30" step="30" value="10080" class="h-11 w-full rounded-xl border px-3" placeholder="Expires (minutes, default 7 days)" />
         <button id="inviteSend" class="h-11 w-full rounded-xl bg-slate-900 text-white">Send invite</button>
         <div id="inviteAlert" class="hidden rounded-lg px-3 py-2 text-sm"></div>
         <div id="inviteLinkWrap" class="hidden mt-2 text-sm">
@@ -281,7 +280,6 @@
       <div class="p-5 space-y-3">
         <p class="text-sm text-slate-600">Sends an invite to the staff console for the selected restaurant.</p>
         <input id="inviteStaffEmail" type="email" class="h-11 w-full rounded-xl border px-3" placeholder="staff@example.com" />
-        <input id="inviteStaffMins" type="number" min="30" step="30" value="10080" class="h-11 w-full rounded-xl border px-3" placeholder="Expires (minutes, default 7 days)" />
         <button id="inviteStaffSend" class="h-11 w-full rounded-xl bg-slate-900 text-white">Send invite</button>
         <div id="inviteStaffAlert" class="hidden rounded-lg px-3 py-2 text-sm"></div>
         <div id="inviteStaffLinkWrap" class="hidden mt-2 text-sm">
@@ -756,32 +754,39 @@
     el.textContent = msg;
     el.classList.remove('hidden');
   }
-  $('#inviteSend')?.addEventListener('click', async () => {
-    const email = ($('#inviteEmail').value || '').trim();
-    const mins  = parseInt($('#inviteMins').value || '10080', 10);
-    if (!email) return showInviteAlert('Please enter an email.');
-    try{
-      const resp = await fetch("{% url 'core:owner_invite_manager' %}", {
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
-        credentials:'same-origin',
-        body: JSON.stringify({ email, expires_minutes: mins })
-      });
-      const data = await resp.json().catch(()=>({}));
-      if(!resp.ok || data.ok === false) return showInviteAlert(data.error || 'Invite failed.');
-      showInviteAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
-      if (data.invite?.link) {
-        $('#inviteLinkWrap').classList.remove('hidden');
-        $('#inviteLink').href = data.invite.link;
-        $('#inviteLink').textContent = data.invite.link;
-        $('#inviteCopy').onclick = async ()=> {
-          try { await navigator.clipboard.writeText(data.invite.link); showInviteAlert('Link copied.', true); }
-          catch { showInviteAlert('Could not copy link, copy it manually.'); }
-        };
-      }
-      $('#inviteEmail').value = '';
-    }catch { showInviteAlert('Network error sending invite.'); }
-  });
+// MANAGER INVITE
+$('#inviteSend')?.addEventListener('click', async () => {
+  const email = ($('#inviteEmail').value || '').trim();
+
+  // null-safe read; omit field if not present
+  const minsEl = document.getElementById('inviteMins');
+  const minsVal = minsEl?.value?.trim();
+  const body = minsVal ? { email, expires_minutes: parseInt(minsVal, 10) } : { email };
+
+  if (!email) return showInviteAlert('Please enter an email.');
+  try{
+    const resp = await fetch("{% url 'core:owner_invite_manager' %}", {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+      credentials:'same-origin',
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok || data.ok === false) return showInviteAlert(data.error || 'Invite failed.');
+    showInviteAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
+    if (data.invite?.link) {
+      $('#inviteLinkWrap').classList.remove('hidden');
+      $('#inviteLink').href = data.invite.link;
+      $('#inviteLink').textContent = data.invite.link;
+      $('#inviteCopy').onclick = async ()=> {
+        try { await navigator.clipboard.writeText(data.invite.link); showInviteAlert('Link copied.', true); }
+        catch { showInviteAlert('Could not copy link, copy it manually.'); }
+      };
+    }
+    $('#inviteEmail').value = '';
+  }catch { showInviteAlert('Network error sending invite.'); }
+});
+
 
   function showInviteStaffAlert(msg, ok=false){
     const el = $('#inviteStaffAlert');
@@ -789,32 +794,38 @@
     el.textContent = msg;
     el.classList.remove('hidden');
   }
-  $('#inviteStaffSend')?.addEventListener('click', async () => {
-    const email = ($('#inviteStaffEmail').value || '').trim();
-    const mins  = parseInt($('#inviteStaffMins').value || '10080', 10);
-    if (!email) return showInviteStaffAlert('Please enter an email.');
-    try{
-      const resp = await fetch("{% url 'core:owner_invite_staff' %}", {
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
-        credentials:'same-origin',
-        body: JSON.stringify({ email, expires_minutes: mins })
-      });
-      const data = await resp.json().catch(()=>({}));
-      if(!resp.ok || data.ok === false) return showInviteStaffAlert(data.error || 'Invite failed.');
-      showInviteStaffAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
-      if (data.invite?.link) {
-        $('#inviteStaffLinkWrap').classList.remove('hidden');
-        $('#inviteStaffLink').href = data.invite.link;
-        $('#inviteStaffLink').textContent = data.invite.link;
-        $('#inviteStaffCopy').onclick = async ()=> {
-          try { await navigator.clipboard.writeText(data.invite.link); showInviteStaffAlert('Link copied.', true); }
-          catch { showInviteStaffAlert('Could not copy link, copy it manually.'); }
-        };
-      }
-      $('#inviteStaffEmail').value = '';
-    }catch { showInviteStaffAlert('Network error sending invite.'); }
-  });
+// STAFF INVITE
+$('#inviteStaffSend')?.addEventListener('click', async () => {
+  const email = ($('#inviteStaffEmail').value || '').trim();
+
+  const minsEl = document.getElementById('inviteStaffMins');
+  const minsVal = minsEl?.value?.trim();
+  const body = minsVal ? { email, expires_minutes: parseInt(minsVal, 10) } : { email };
+
+  if (!email) return showInviteStaffAlert('Please enter an email.');
+  try{
+    const resp = await fetch("{% url 'core:owner_invite_staff' %}", {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': getCSRFCookie()},
+      credentials:'same-origin',
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json().catch(()=>({}));
+    if(!resp.ok || data.ok === false) return showInviteStaffAlert(data.error || 'Invite failed.');
+    showInviteStaffAlert('Invite sent to ' + (data.invite?.email || email) + '.', true);
+    if (data.invite?.link) {
+      $('#inviteStaffLinkWrap').classList.remove('hidden');
+      $('#inviteStaffLink').href = data.invite.link;
+      $('#inviteStaffLink').textContent = data.invite.link;
+      $('#inviteStaffCopy').onclick = async ()=> {
+        try { await navigator.clipboard.writeText(data.invite.link); showInviteStaffAlert('Link copied.', true); }
+        catch { showInviteStaffAlert('Could not copy link, copy it manually.'); }
+      };
+    }
+    $('#inviteStaffEmail').value = '';
+  }catch { showInviteStaffAlert('Network error sending invite.'); }
+});
+
 
   // ========== orders search / export ==========
   $('#ordersRefresh')?.addEventListener('click', () => { refreshAll(); });
