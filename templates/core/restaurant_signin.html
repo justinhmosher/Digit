@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Restaurant Sign In — Dine N Dash</title>
+  <title>Restaurant Sign In — Dyne</title>
   <meta name="csrf-token" content="{{ csrf_token }}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -24,7 +24,7 @@
   <header class="border-b border-slate-200 bg-white/80 backdrop-blur">
     <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">DD</div>
+        <div class="h-9 w-9 rounded-2xl bg-brand text-white grid place-items-center font-semibold">D</div>
       </a>
       <div class="flex items-center gap-2">
         <a href="{% url 'core:signin' %}"
@@ -206,11 +206,11 @@
       <p><a href="/terms" class="hover:underline">Terms and Conditions</a> ·
          <a href="/privacy" class="hover:underline">Privacy Policy</a> ·
          <a href="mailto:commissioner@thechosenfg.com" class="hover:underline">Contact Us</a></p>
-      <p class="mt-2">&copy; <script>document.write(new Date().getFullYear())</script> Dine N Dash</p>
+      <p class="mt-2">&copy; <script>document.write(new Date().getFullYear())</script> Dyne</p>
     </div>
   </footer>
 
-  <!-- Forgot Password Modal (universal endpoints) -->
+  <!-- Forgot Password Modal (NO PIN for restaurant) -->
   <div id="fpWrap" class="fixed inset-0 z-50 hidden">
     <div id="fpBackdrop" class="absolute inset-0 bg-black/40"></div>
     <div class="absolute inset-0 grid place-items-center p-4">
@@ -223,7 +223,7 @@
         <div class="p-5 space-y-5">
           <div id="fpAlert" class="hidden rounded-md px-3 py-2 text-sm"></div>
 
-          <!-- Step 1 -->
+          <!-- Step 1: identifier -->
           <div id="stepIdent" class="space-y-3">
             <label class="text-sm font-medium text-slate-700">Email or phone</label>
             <input id="fpIdent" class="w-full h-11 rounded-xl border px-3" placeholder="owner@restaurant.com or +15551234567">
@@ -231,7 +231,7 @@
             <p class="text-xs text-slate-500">We’ll send a 6-digit code via email or SMS.</p>
           </div>
 
-          <!-- Step 2 -->
+          <!-- Step 2: OTP -->
           <div id="stepOtp" class="space-y-3 hidden">
             <label class="text-sm font-medium text-slate-700">Enter the 6-digit code</label>
             <input id="fpOtp" class="w-full h-11 rounded-xl border px-3" inputmode="numeric" maxlength="10" placeholder="123456">
@@ -239,15 +239,7 @@
             <button id="fpBack1" class="w-full h-10 rounded-xl border">Back</button>
           </div>
 
-          <!-- Step 3 -->
-          <div id="stepPin" class="space-y-3 hidden">
-            <label class="text-sm font-medium text-slate-700">Enter your 4-digit PIN</label>
-            <input id="fpPin" class="w-full h-11 rounded-xl border px-3" inputmode="numeric" maxlength="10" placeholder="••••" type="password">
-            <button id="fpPinBtn" class="w-full h-11 rounded-xl bg-slate-900 text-white">Continue</button>
-            <button id="fpBack2" class="w-full h-10 rounded-xl border">Back</button>
-          </div>
-
-          <!-- Step 4 -->
+          <!-- Step 3: New password (final) -->
           <div id="stepNew" class="space-y-3 hidden">
             <label class="text-sm font-medium text-slate-700">New password</label>
             <input id="fpP1" class="w-full h-11 rounded-xl border px-3" type="password" placeholder="New password (min 8)">
@@ -261,7 +253,7 @@
   </div>
 
 <script>
-  // ======= existing tab/sign-in logic (unchanged) =======
+  // ======= tabs =======
   const tabOwner   = document.getElementById('tabOwner');
   const tabManager = document.getElementById('tabManager');
   const tabStaff   = document.getElementById('tabStaff');
@@ -278,11 +270,9 @@
     const isOwner = which === 'owner';
     const isMgr   = which === 'manager';
     const isStaff = which === 'staff';
-
     panelOwner.classList.toggle('hidden', !isOwner);
     panelMgr.classList.toggle('hidden',   !isMgr);
     panelStaff.classList.toggle('hidden', !isStaff);
-
     tabOwner.className   = btnCls(isOwner);
     tabManager.className = btnCls(isMgr);
     tabStaff.className   = btnCls(isStaff);
@@ -297,6 +287,7 @@
   else if (t === 'staff')   activate('staff');
   else                      activate('owner');
 
+  // ======= JSON sign-in =======
   function showAlert(msg, ok=false) {
     const el = document.getElementById('alert');
     el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok
@@ -306,7 +297,7 @@
     el.classList.remove('hidden');
   }
   function getCSRF() {
-    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
     return m ? m[1] : "";
   }
   async function handleJSONSignin(formId) {
@@ -348,10 +339,12 @@
   handleJSONSignin("managerSignInForm");
   handleJSONSignin("staffSignInForm");
 
-  // ======= Forgot Password (universal endpoints) =======
+  // ======= Forgot Password (restaurant only; NO PIN) =======
   const $$ = (sel)=>Array.from(document.querySelectorAll(sel));
+  const RESET_CONTEXT = 'restaurant';
+
   function getCSRFCookie() {
-    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    const m = document.cookie.match(/(?:^|;\\s*)csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : (document.querySelector('meta[name="csrf-token"]')?.content || '');
   }
   function fpAlert(msg, ok=false){
@@ -362,7 +355,7 @@
   }
   function fpHideAlert(){ document.getElementById('fpAlert').classList.add('hidden'); }
   function fpStep(id){
-    ['stepIdent','stepOtp','stepPin','stepNew'].forEach(s => document.getElementById(s).classList.add('hidden'));
+    ['stepIdent','stepOtp','stepNew'].forEach(s => document.getElementById(s).classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
     fpHideAlert();
   }
@@ -388,18 +381,18 @@
   document.getElementById('fpClose').addEventListener('click', () => document.getElementById('fpWrap').classList.add('hidden'));
   document.getElementById('fpBackdrop').addEventListener('click', () => document.getElementById('fpWrap').classList.add('hidden'));
 
-  // Step 1
+  // Step 1: send code
   document.getElementById('fpSend').addEventListener('click', async () => {
     const ident = (document.getElementById('fpIdent').value || '').trim();
     if(!ident) return fpAlert('Enter your email or phone.');
     try{
-      await postForm("{% url 'core:auth_reset_start' %}", {identifier: ident});
+      await postForm("{% url 'core:auth_reset_start' %}", {identifier: ident, context: RESET_CONTEXT});
       fpAlert('Code sent. Check your email/SMS.', true);
       fpStep('stepOtp');
     }catch(e){ fpAlert('Could not send code. Try again.'); }
   });
 
-  // Step 2
+  // Step 2: verify code
   document.getElementById('fpBack1').addEventListener('click', ()=> fpStep('stepIdent'));
   document.getElementById('fpVerify').addEventListener('click', async () => {
     const otp = (document.getElementById('fpOtp').value || '').trim();
@@ -407,24 +400,12 @@
     try{
       await postForm("{% url 'core:auth_reset_verify' %}", {otp});
       fpAlert('Code verified.', true);
-      fpStep('stepPin');
+      fpStep('stepNew'); // go straight to new password (no PIN step)
     }catch(e){ fpAlert('Invalid code. Please try again.'); }
   });
 
-  // Step 3
-  document.getElementById('fpBack2').addEventListener('click', ()=> fpStep('stepOtp'));
-  document.getElementById('fpPinBtn').addEventListener('click', async () => {
-    const pin = (document.getElementById('fpPin').value || '').trim();
-    if(!pin) return fpAlert('Enter your PIN.');
-    try{
-      await postForm("{% url 'core:auth_reset_pin' %}", {pin});
-      fpAlert('PIN accepted.', true);
-      fpStep('stepNew');
-    }catch(e){ fpAlert('Incorrect PIN.'); }
-  });
-
-  // Step 4
-  document.getElementById('fpBack3').addEventListener('click', ()=> fpStep('stepPin'));
+  // Step 3: set new password
+  document.getElementById('fpBack3').addEventListener('click', ()=> fpStep('stepOtp'));
   document.getElementById('fpSet').addEventListener('click', async () => {
     const p1 = (document.getElementById('fpP1').value || '');
     const p2 = (document.getElementById('fpP2').value || '');

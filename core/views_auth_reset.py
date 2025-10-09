@@ -65,26 +65,34 @@ def reset_start(request: HttpRequest) -> JsonResponse:
 
     user = _find_user_by_identifier(identifier)
 
-    # Save only what we need for subsequent steps.
-    # Don't reveal whether the account exists.
-    _sess_set(request, pwd_reset_ident=identifier, pwd_reset_user_id=(user.id if user else None))
-    _sess_set(request, pwd_reset_otp_ok=False, pwd_reset_pin_ok=False)
+    # NEW: read context and decide if PIN is required
+    ctx = (request.POST.get("context") or "").strip().lower()
+    require_pin = ctx != "restaurant"    # only customers need PIN
 
-    # Kick off Twilio Verify to email or phone
+    _sess_set(
+        request,
+        pwd_reset_ident=identifier,
+        pwd_reset_user_id=(user.id if user else None),
+        pwd_reset_otp_ok=False,
+        pwd_reset_pin_ok=False,
+        pwd_reset_require_pin=require_pin,   # <-- NEW
+        pwd_reset_context=ctx,               # optional, for debugging
+    )
+
     try:
         if _is_email(identifier):
             send_email_otp(identifier)
         else:
             phone_e164 = to_e164_us(identifier)
             if not phone_e164:
-                # Still respond generic success to avoid leaking; client will fail at verify.
                 return JsonResponse({"ok": True})
             send_sms_otp(phone_e164)
     except Exception as e:
-        # Still return generic OK to avoid enumeration; log on server if needed.
         print("[reset_start] Twilio send error:", e)
 
     return JsonResponse({"ok": True})
+
+
 
 
 # ---------- 2) verify OTP ----------
@@ -123,9 +131,12 @@ def reset_pin(request: HttpRequest) -> JsonResponse:
     if not _sess_get(request, "pwd_reset_otp_ok"):
         return JsonResponse({"ok": False, "error": "sequence_error"}, status=400)
 
+    # NEW: if this flow doesn't require a PIN, don't allow this endpoint
+    if not _sess_get(request, "pwd_reset_require_pin", True):
+        return JsonResponse({"ok": False, "error": "pin_not_required"}, status=400)
+
     user_id = _sess_get(request, "pwd_reset_user_id")
     if not user_id:
-        # identifier didn’t map to a user in start()
         return JsonResponse({"ok": False, "error": "unknown_account"}, status=400)
 
     pin = (request.POST.get("pin") or "").strip()
@@ -140,11 +151,17 @@ def reset_pin(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"ok": True})
 
 
+
+
 # ---------- 4) finalize (set new password) ----------
 @csrf_protect
 @require_POST
 def reset_finalize(request: HttpRequest) -> JsonResponse:
-    if not _sess_get(request, "pwd_reset_pin_ok"):
+    if not _sess_get(request, "pwd_reset_otp_ok"):
+        return JsonResponse({"ok": False, "error": "sequence_error"}, status=400)
+
+    # NEW: gate the PIN requirement
+    if _sess_get(request, "pwd_reset_require_pin", True) and not _sess_get(request, "pwd_reset_pin_ok"):
         return JsonResponse({"ok": False, "error": "sequence_error"}, status=400)
 
     user_id = _sess_get(request, "pwd_reset_user_id")
@@ -160,9 +177,10 @@ def reset_finalize(request: HttpRequest) -> JsonResponse:
     user.set_password(p1)
     user.save(update_fields=["password"])
 
-    # clean up session
-    for k in ("pwd_reset_ident", "pwd_reset_user_id", "pwd_reset_otp_ok", "pwd_reset_pin_ok"):
+    # clean up session (NEW: also clear require_pin/context)
+    for k in ("pwd_reset_ident","pwd_reset_user_id","pwd_reset_otp_ok","pwd_reset_pin_ok","pwd_reset_require_pin","pwd_reset_context"):
         request.session.pop(k, None)
     request.session.modified = True
 
     return JsonResponse({"ok": True})
+

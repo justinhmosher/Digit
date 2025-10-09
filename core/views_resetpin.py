@@ -15,6 +15,8 @@ from django.views.decorators.http import require_http_methods
 from .utils import send_customer_pin_reset_email
 from .models import CustomerProfile, PinResetToken
 from django.contrib import messages
+from django.contrib.auth.hashers import make_password
+
 
 
 # =========================
@@ -89,7 +91,7 @@ def reset_pin_confirm(request, token: str):
             return render(request, "core/reset_pin_confirm.html", {"customer": prt.customer})
 
         # Save hashed PIN on the CustomerProfile
-        prt.customer.pin_hash = _hash_pin(new_pin)
+        prt.customer.pin_hash = make_password(new_pin)
         prt.customer.save(update_fields=["pin_hash"])
 
         # Consume token
