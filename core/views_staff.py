@@ -237,7 +237,7 @@ def api_link_member_to_ticket(request: HttpRequest):
     phone = getattr(getattr(m, "customer", None), "phone", "") or ""
     if not phone:
         return JsonResponse({"ok": False, "error": "member_has_no_phone"}, status=400)
-    body = "Dine N Dash: Tap to verify your visit, then enter your 4-digit PIN.\n" + verify_url
+    body = "Dyne: Tap to verify your visit, then enter your 4-digit PIN.\n" + verify_url
     sent = send_sms(phone, body)
 
     # 5) create / ensure PENDING row appears

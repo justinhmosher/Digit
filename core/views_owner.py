@@ -85,17 +85,15 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
     """
     Owner dashboard data:
       - restaurants list + current selection
-      - owners (emails)
-      - managers (names)
-      - staff (names)
-      - open tickets summary
-      - recent closed tickets with optional filters
+      - owners, managers, staff
+      - open tickets summary (computed: items + tax, no tip)
+      - recent closed tickets
     """
     op = _get_owner_profile(request.user)
     if not op:
         return JsonResponse({"ok": False, "error": "Not an owner."}, status=403)
 
-    # Restaurants this owner controls
+    # --- Restaurants this owner controls ---
     rqs = _owner_restaurants(op).order_by("created_at")
     restaurants = [
         {
@@ -110,63 +108,50 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
     current = _get_current_restaurant(request, op)
     current_id = current.id if current else None
 
-    # Query params for orders
     q = (request.GET.get("q") or "").strip().lower()
     start = (request.GET.get("start") or "").strip()
     end   = (request.GET.get("end") or "").strip()
 
-    # Owners (via Ownership -> OwnerProfile.user.email)
-    owners = []
+    # --- Owners ---
+    owners, managers, staff = [], [], []
     if current:
-        links = (
-            Ownership.objects
-            .select_related("owner", "owner__user")
-            .filter(restaurant=current)
-        )
-        for lk in links:
+        # owners
+        for lk in Ownership.objects.select_related("owner", "owner__user").filter(restaurant=current):
             u = getattr(lk.owner, "user", None)
-            owners.append({"id": lk.owner_id, "email": (u.email if u else "")})
+            owners.append({"id": lk.owner_id, "email": u.email if u else ""})
 
-    # Managers (names)
-    managers = []
-    if current:
-        mqs = (
-            ManagerProfile.objects
-            .select_related("user")
+        # managers
+        for m in (
+            ManagerProfile.objects.select_related("user")
             .filter(restaurant=current)
             .order_by("user__email")
-        )
-        for m in mqs:
+        ):
             u = getattr(m, "user", None)
             email = (u.email if u else "")
             name = (u.get_full_name() if u else "") or (email.split("@")[0] if email else "")
             managers.append({"id": m.id, "name": name})
 
-    # Staff (names)
-    staff = []
-    if current:
-        from .models import StaffProfile  # ensure available
-        sqs = (
-            StaffProfile.objects
-            .select_related("user")
+        # staff
+        for s in (
+            StaffProfile.objects.select_related("user")
             .filter(restaurant=current)
             .order_by("user__email")
-        )
-        for s in sqs:
+        ):
             u = getattr(s, "user", None)
             email = (u.email if u else "")
             name = (u.get_full_name() if u else "") or (email.split("@")[0] if email else "")
             staff.append({"id": s.id, "name": name})
 
-    # Open tickets (group by ticket_id)
+    # --- Open tickets ---
     open_map = {}
     if current:
         open_qs = (
-            TicketLink.objects
-            .select_related("member")
+            TicketLink.objects.select_related("member")
             .filter(restaurant=current, status="open")
             .order_by("-opened_at")[:400]
         )
+        has_pos = bool((current.omnivore_location_id or "").strip())
+
         for tl in open_qs:
             entry = open_map.setdefault(tl.ticket_id, {
                 "ticket_id": tl.ticket_id,
@@ -176,23 +161,52 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
                 "due_cents": 0,
             })
             entry["members"].append(tl.member.number if tl.member else "")
-            entry["due_cents"] = max(entry["due_cents"], tl.last_total_cents or 0)
+
+            due_live = None
+            if has_pos:
+                try:
+                    t = get_ticket(current.omnivore_location_id, tl.ticket_id)
+                    items = get_ticket_items(current.omnivore_location_id, tl.ticket_id)
+                    subtotal = 0
+                    for it in items:
+                        qty = int(it.get("quantity", 1) or 1)
+                        unit = int(it.get("price", 0) or 0)
+                        subtotal += qty * unit
+                    tax = int((t.get("totals") or {}).get("tax", 0) or 0)
+                    due_live = subtotal + tax
+                except Exception:
+                    due_live = None
+
+            if due_live is None and tl.items_json:
+                try:
+                    subtotal = 0
+                    for it in (tl.items_json or []):
+                        qty = int(it.get("qty") or it.get("quantity") or 1)
+                        unit = int(it.get("price_cents") or it.get("unit_cents") or it.get("cents") or it.get("price") or 0)
+                        line = int(it.get("total_cents") or it.get("line_total_cents") or (unit * qty))
+                        subtotal += line
+                    tax = int(tl.tax_cents or 0)
+                    due_live = subtotal + tax
+                except Exception:
+                    due_live = None
+
+            if due_live is None:
+                due_live = int(tl.last_total_cents or tl.total_cents or 0)
+
+            entry["due_cents"] = max(int(entry["due_cents"] or 0), int(due_live or 0))
+
     open_list = list(open_map.values())
 
-    # Recent closed
+    # --- Recent closed ---
     recent = []
     if current:
         recent_qs = TicketLink.objects.select_related("member").filter(restaurant=current, status="closed")
         if start:
-            try:
-                recent_qs = recent_qs.filter(closed_at__date__gte=start)
-            except Exception:
-                pass
+            try: recent_qs = recent_qs.filter(closed_at__date__gte=start)
+            except Exception: pass
         if end:
-            try:
-                recent_qs = recent_qs.filter(closed_at__date__lte=end)
-            except Exception:
-                pass
+            try: recent_qs = recent_qs.filter(closed_at__date__lte=end)
+            except Exception: pass
 
         for tl in recent_qs.order_by("-closed_at")[:500]:
             row = {
@@ -202,7 +216,7 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
                 "server": tl.server_name or "",
                 "closed_at": tl.closed_at.strftime("%Y-%m-%d %H:%M") if tl.closed_at else "",
                 "total_cents": (tl.paid_cents or tl.total_cents or tl.last_total_cents or 0),
-                "ticket_link_id": tl.id,  # NEW: used by Review button
+                "ticket_link_id": tl.id,
             }
             if q:
                 hay = f'{row["ticket_number"] or ""} {row["member"] or ""}'.lower()
@@ -220,8 +234,6 @@ def owner_api_state(request: HttpRequest) -> JsonResponse:
         "open": open_list,
         "recent": recent,
     })
-
-
 
 
 @login_required
@@ -587,55 +599,68 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
     if not tl:
         return JsonResponse({"ok": False, "error": "Ticket not found."}, status=404)
 
-    # OPEN (live pull): Subtotal = Total display; include per-item unit price
+    # ---------- OPEN (live pull) ----------
     if tl.status == "open" and (rp.omnivore_location_id or "").strip():
         try:
-            t = get_ticket(rp.omnivore_location_id, tl.ticket_id)
-            items = get_ticket_items(rp.omnivore_location_id, tl.ticket_id)
+            t = get_ticket(rp.omnivore_location_id, tl.ticket_id) or {}
+            items = get_ticket_items(rp.omnivore_location_id, tl.ticket_id) or []
         except Exception as e:
             return JsonResponse({"ok": False, "error": f"POS error: {e}"}, status=502)
 
+        # Build rows with explicit unit + line totals
         rows = []
+        items_sum = 0
         for it in items:
-            qty   = int(it.get("quantity", 1) or 1)
-            unit  = int(it.get("price", 0) or 0)   # per-unit price in cents from Omnivore
-            line  = unit * qty
+            qty  = int(it.get("quantity", 1) or 1)
+            unit = int(it.get("price", 0) or 0)         # Omnivore per-unit cents
+            line = unit * qty
+            items_sum += line
             rows.append({
-                "name": it.get("name"),
+                "name": it.get("name") or "Item",
                 "qty": qty,
                 "unit_cents": unit,
                 "line_total_cents": line,
                 "cents": unit,  # back-compat for older UI
             })
 
-        totals = (t or {}).get("totals") or {}
+        # Totals from POS
+        totals = (t.get("totals") or {})
         tax = int(totals.get("tax", 0) or 0)
         tip = int(totals.get("tip", 0) or 0)
 
-        try:
-            due_val = totals.get("due")
-            total = int(due_val) if due_val is not None else int(totals.get("total", 0) or 0)
-        except Exception:
-            total = 0
-        if total <= 0:
-            line_sum = sum(int(r["line_total_cents"]) for r in rows)
-            total = line_sum + tax + tip
+        # Fallbacks if POS gave us a subtotal number but no item prices
+        if items_sum == 0:
+            # Many POSes expose "subtotal" as pre-tax; use it if present
+            try:
+                items_sum = int(totals.get("subtotal", 0) or 0)
+            except Exception:
+                items_sum = 0
+
+        # DISPLAY RULES:
+        #   Subtotal  = items + tax  (NO TIP)  -> matches open list card
+        #   Total     = Subtotal + tip
+        display_subtotal = items_sum + tax
+        display_total = display_subtotal + tip
 
         return JsonResponse({
             "ok": True,
             "ticket_id": tl.ticket_id,
-            "ticket_number": tl.ticket_number or (t.get("ticket_number") or t.get("number") or tl.ticket_id),
+            "ticket_number": tl.ticket_number
+                               or t.get("ticket_number")
+                               or t.get("number")
+                               or tl.ticket_id,
             "member": tl.member.number if tl.member else "",
-            "server": tl.server_name or ((t.get("_embedded") or {}).get("employee") or {}).get("check_name", ""),
+            "server": tl.server_name
+                      or ((t.get("_embedded") or {}).get("employee") or {}).get("check_name", ""),
             "items": rows,
-            "subtotal_cents": total,  # display rule
-            "tax_cents": tax,
-            "tip_cents": tip,
-            "total_cents": total,
+            "subtotal_cents": int(display_subtotal),
+            "tax_cents": int(tax),
+            "tip_cents": int(tip),
+            "total_cents": int(display_total),
             "is_open": True,
         })
 
-    # CLOSED: use snapshot captured at close; expose unit + line totals
+    # ---------- CLOSED (snapshot) ----------
     rows = []
     for it in (tl.items_json or []):
         name  = it.get("name") or it.get("label") or "Item"
@@ -657,7 +682,7 @@ def owner_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespons
         "member": tl.member.number if tl.member else "",
         "server": tl.server_name or "",
         "items": rows,
-        "subtotal_cents": int(tl.total_cents or 0),  # per your mapping
+        "subtotal_cents": int(tl.total_cents or 0),  # your snapshot mapping (pre-tax)
         "tax_cents": int(tl.tax_cents or 0),
         "tip_cents": int(tl.tip_cents or 0),
         "total_cents": int(tl.paid_cents or (tl.total_cents or 0) + (tl.tax_cents or 0) + (tl.tip_cents or 0)),

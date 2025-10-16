@@ -152,7 +152,7 @@ def manager_api_state(request: HttpRequest) -> JsonResponse:
     """
     Dashboard data for manager:
       - staff list (name only + ids for Remove)
-      - open tickets summary
+      - open tickets summary  (due = sum(items) + tax, NO TIP)
       - recent closed tickets within optional date range
     """
     mp, rp = _require_manager(request)
@@ -163,7 +163,7 @@ def manager_api_state(request: HttpRequest) -> JsonResponse:
     start = (request.GET.get("start") or "").strip()
     end   = (request.GET.get("end") or "").strip()
 
-    # Staff (derive a simple name from the user)
+    # ---------- Staff ----------
     staff = []
     staff_qs = (
         StaffProfile.objects
@@ -177,7 +177,9 @@ def manager_api_state(request: HttpRequest) -> JsonResponse:
         name = (u.get_full_name() if u else "") or (email.split("@")[0] if email else "")
         staff.append({"id": s.id, "name": name})
 
-    # Open tickets, group by ticket id
+    # ---------- Open tickets (grouped) ----------
+    # We compute "due_cents" as: sum(item line totals) + tax (NO TIP).
+    # Prefer a live POS read; fall back to our snapshots.
     open_map = {}
     open_qs = (
         TicketLink.objects
@@ -185,6 +187,8 @@ def manager_api_state(request: HttpRequest) -> JsonResponse:
         .filter(restaurant=rp, status="open")
         .order_by("-opened_at")[:400]
     )
+    has_pos = bool((rp.omnivore_location_id or "").strip())
+
     for tl in open_qs:
         entry = open_map.setdefault(tl.ticket_id, {
             "ticket_id": tl.ticket_id,
@@ -194,21 +198,55 @@ def manager_api_state(request: HttpRequest) -> JsonResponse:
             "due_cents": 0,
         })
         entry["members"].append(tl.member.number if tl.member else "")
-        entry["due_cents"] = max(entry["due_cents"], tl.last_total_cents or 0)
+
+        due_live = None
+
+        # Try live POS (Omnivore) first
+        if has_pos:
+            try:
+                t = get_ticket(rp.omnivore_location_id, tl.ticket_id)
+                items = get_ticket_items(rp.omnivore_location_id, tl.ticket_id)
+                subtotal = 0
+                for it in items:
+                    qty  = int(it.get("quantity", 1) or 1)
+                    unit = int(it.get("price", 0) or 0)  # per-unit cents
+                    subtotal += qty * unit
+                tax = int((t.get("totals") or {}).get("tax", 0) or 0)
+                due_live = subtotal + tax  # NO TIP
+            except Exception:
+                due_live = None  # fall back below
+
+        # Fallback #1: compute from our saved items_json + tax_cents (if available)
+        if due_live is None and tl.items_json:
+            try:
+                subtotal = 0
+                for it in (tl.items_json or []):
+                    qty = int(it.get("qty") or it.get("quantity") or 1)
+                    unit = int(it.get("price_cents") or it.get("unit_cents") or it.get("cents") or it.get("price") or 0)
+                    line = int(it.get("total_cents") or it.get("line_total_cents") or (unit * qty))
+                    subtotal += line
+                tax = int(tl.tax_cents or 0)
+                due_live = subtotal + tax  # NO TIP
+            except Exception:
+                due_live = None
+
+        # Fallback #2: last known totals snapshot
+        if due_live is None:
+            due_live = int(tl.last_total_cents or tl.total_cents or 0)
+
+        # Keep the max in case there are multiple rows for the same ticket_id
+        entry["due_cents"] = max(int(entry["due_cents"] or 0), int(due_live or 0))
+
     open_list = list(open_map.values())
 
-    # Date window for "recent"
+    # ---------- Recent closed tickets ----------
     recent_qs = TicketLink.objects.select_related("member").filter(restaurant=rp, status="closed")
     if start:
-        try:
-            recent_qs = recent_qs.filter(closed_at__date__gte=start)
-        except Exception:
-            pass
+        try: recent_qs = recent_qs.filter(closed_at__date__gte=start)
+        except Exception: pass
     if end:
-        try:
-            recent_qs = recent_qs.filter(closed_at__date__lte=end)
-        except Exception:
-            pass
+        try: recent_qs = recent_qs.filter(closed_at__date__lte=end)
+        except Exception: pass
 
     recent = []
     for tl in recent_qs.order_by("-closed_at")[:500]:
@@ -219,7 +257,7 @@ def manager_api_state(request: HttpRequest) -> JsonResponse:
             "server": tl.server_name or "",
             "closed_at": tl.closed_at.strftime("%Y-%m-%d %H:%M") if tl.closed_at else "",
             "total_cents": (tl.paid_cents or tl.total_cents or tl.last_total_cents or 0),
-            "ticket_link_id": tl.id,  # <-- NEW: used by the UI "Review" button
+            "ticket_link_id": tl.id,  # used by the UI "Review" button
         }
         if q:
             hay = f'{row["ticket_number"] or ""} {row["member"] or ""}'.lower()
@@ -228,6 +266,7 @@ def manager_api_state(request: HttpRequest) -> JsonResponse:
         recent.append(row)
 
     return JsonResponse({"ok": True, "staff": staff, "open": open_list, "recent": recent})
+
 
 
 
@@ -261,6 +300,8 @@ def manager_api_remove_staff(request: HttpRequest) -> JsonResponse:
 
 # DROP-IN: replace the whole function in core/views_manager.py
 
+# DROP-IN: replace the whole function in core/views_manager.py
+
 @require_GET
 @login_required
 def manager_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonResponse:
@@ -277,7 +318,7 @@ def manager_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespo
     if not tl:
         return JsonResponse({"ok": False, "error": "Ticket not found."}, status=404)
 
-    # ---------- OPEN: pull live from POS; expose unit and line totals ----------
+    # ---------- OPEN: compute totals from items, ignore Omnivore's 'due/total' ----------
     if tl.status == "open" and (rp.omnivore_location_id or "").strip():
         try:
             t = get_ticket(rp.omnivore_location_id, tl.ticket_id)
@@ -286,30 +327,28 @@ def manager_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespo
             return JsonResponse({"ok": False, "error": f"POS error: {e}"}, status=502)
 
         rows = []
+        subtotal = 0
         for it in items:
-            qty  = int(it.get("quantity", 1) or 1)
-            unit = int(it.get("price", 0) or 0)  # Omnivore price is per-unit cents
+            qty = int(it.get("quantity", 1) or 1)
+            unit = int(it.get("price", 0) or 0)  # Omnivore per-unit cents
+            line = unit * qty
+            subtotal += line
             rows.append({
                 "name": it.get("name"),
                 "qty": qty,
                 "unit_cents": unit,
-                "line_total_cents": unit * qty,
-                "cents": unit,  # back-compat for older UIs
+                "line_total_cents": line,
+                "cents": unit,  # back-compat
             })
 
         totals = (t or {}).get("totals") or {}
         tax = int(totals.get("tax", 0) or 0)
         tip = int(totals.get("tip", 0) or 0)
 
-        try:
-            due_val = totals.get("due")
-            total = int(due_val) if due_val is not None else int(totals.get("total", 0) or 0)
-        except Exception:
-            total = 0
-        if total <= 0:
-            total = sum(r["line_total_cents"] for r in rows) + tax + tip
+        # Desired display rule:
+        #   Total = sum(items) + tax  (tip shown separately, not included)
+        computed_total = subtotal + tax
 
-        # Display rule for OPEN tickets: Subtotal == Total
         return JsonResponse({
             "ok": True,
             "ticket_id": tl.ticket_id,
@@ -317,10 +356,10 @@ def manager_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespo
             "member": tl.member.number if tl.member else "",
             "server": tl.server_name or ((t.get("_embedded") or {}).get("employee") or {}).get("check_name", ""),
             "items": rows,
-            "subtotal_cents": total,
+            "subtotal_cents": subtotal,
             "tax_cents": tax,
             "tip_cents": tip,
-            "total_cents": total,
+            "total_cents": computed_total,
             "is_open": True,
         })
 
@@ -329,7 +368,6 @@ def manager_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespo
     for it in (tl.items_json or []):
         name  = it.get("name") or it.get("label") or "Item"
         qty   = int(it.get("qty") or it.get("quantity") or 1)
-        # Attempt multiple fields for unit; coerce to cents
         unit  = int(it.get("price_cents") or it.get("unit_cents") or it.get("cents") or it.get("price") or 0)
         line  = int(it.get("total_cents") or it.get("line_total_cents") or (unit * qty))
         rows.append({
@@ -346,7 +384,6 @@ def manager_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespo
         "ticket_number": tl.ticket_number or tl.ticket_id,
         "member": tl.member.number if tl.member else "",
         "server": tl.server_name or "",
-        # CLOSED mapping: Subtotal = total_cents, Total = paid_cents (if present)
         "items": rows,
         "subtotal_cents": int(tl.total_cents or 0),
         "tax_cents": int(tl.tax_cents or 0),
@@ -354,6 +391,7 @@ def manager_api_ticket_detail(request: HttpRequest, ticket_id: str) -> JsonRespo
         "total_cents": int(tl.paid_cents or (tl.total_cents or 0) + (tl.tax_cents or 0) + (tl.tip_cents or 0)),
         "is_open": False,
     })
+
 
 
 from io import BytesIO
