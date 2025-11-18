@@ -1,64 +1,132 @@
 # core/management/commands/add_item.py
 from django.core.management.base import BaseCommand, CommandError
-import json, time, requests
-from core.omnivore import BASE, HEADERS  # BASE="https://api.omnivore.io/1.0", HEADERS has Api-Key
+from django.utils import timezone
+from django.db import transaction
+import json
+
+from core.models import TicketLink, RestaurantProfile
+
 
 class Command(BaseCommand):
-    help = "Add a fixed order to an existing POS ticket (location always cgX7jbLi). Prompts only for ticket."
+    help = (
+        "FAKE MODE: Append a fixed set of items to a local ticket snapshot "
+        "(no external API calls). Accepts ticket ID or ticket NUMBER."
+    )
 
     def add_arguments(self, parser):
-        parser.add_argument("ticket", help="Existing, open Omnivore ticket id")
+        parser.add_argument(
+            "ticket",
+            help="Ticket ID (e.g., tkt_1011_55602) OR ticket number (e.g., 1011)",
+        )
+        parser.add_argument(
+            "--restaurant-id",
+            type=int,
+            help="Optional: restrict search to a specific RestaurantProfile id",
+        )
+        parser.add_argument(
+            "--debug",
+            action="store_true",
+            help="Print details of what was appended and new totals.",
+        )
 
     def handle(self, *args, **opts):
-        location_id = "cgX7jbLi"
-        ticket_id   = opts["ticket"]
+        ticket_key = str(opts["ticket"]).strip()
+        rest_id = opts.get("restaurant_id")
+        debug = bool(opts.get("debug"))
 
-        url = f"{BASE}/locations/{location_id}/tickets/{ticket_id}/items"
-        headers = dict(HEADERS)
+        # ---------- Resolve restaurant (optional) ----------
+        rp = None
+        if rest_id:
+            rp = RestaurantProfile.objects.filter(id=rest_id).first()
+            if not rp:
+                raise CommandError(f"Restaurant id={rest_id} not found.")
 
-        # Fixed order (no open-priced item)
-        payload = {
-            "items": [
-                # Pizza (101) with Special price level (2)
-                {"menu_item": "101", "quantity": 1, "price_level": "2", "seat": 1},
-                # Appetizers without required options
-                {"menu_item": "200", "quantity": 1, "seat": 1},
-                {"menu_item": "201", "quantity": 2, "seat": 1},
-                {"menu_item": "206", "quantity": 1, "seat": 2},
-                {"menu_item": "207", "quantity": 1, "seat": 2},
-            ]
+        # ---------- Build base queryset for TicketLink ----------
+        tl_qs = TicketLink.objects.all()
+        if rp:
+            tl_qs = tl_qs.filter(restaurant=rp)
+
+        # Try by ticket_id first
+        tl = (
+            tl_qs.filter(ticket_id=ticket_key)
+            .order_by("-opened_at")
+            .first()
+        )
+        # Fallback: ticket_number
+        if not tl:
+            tl = (
+                tl_qs.filter(ticket_number=str(ticket_key))
+                .order_by("-opened_at")
+                .first()
+            )
+
+        if not tl:
+            raise CommandError(
+                f"Ticket not found by id or number: {ticket_key}"
+                + (f" (restaurant_id={rest_id})" if rest_id else "")
+            )
+
+        if tl.status != "open":
+            self.stderr.write(
+                self.style.WARNING(
+                    f"Ticket {tl.ticket_id} is not open (status={tl.status}); "
+                    "adding items anyway and updating snapshot."
+                )
+            )
+
+        # ---------- Fixed items to append ----------
+        # These are your demo items. All prices are in cents.
+        fixed = [
+            {"name": "Pizza",            "menu_item_id": "101", "quantity": 1, "unit_cents": 1899},
+            {"name": "Garlic Bread",     "menu_item_id": "200", "quantity": 1, "unit_cents":  599},
+            {"name": "Taco Appetizers",  "menu_item_id": "201", "quantity": 2, "unit_cents":  995},
+            {"name": "Calamari",         "menu_item_id": "206", "quantity": 1, "unit_cents": 1295},
+            {"name": "Bruschetta",       "menu_item_id": "207", "quantity": 1, "unit_cents":  995},
+        ]
+
+        items = list(tl.items_json or [])
+        for it in fixed:
+            qty = int(it.get("quantity", 1))
+            unit = int(it.get("unit_cents", 0))
+            line = unit * qty
+            items.append({
+                "name": it.get("name") or "Item",
+                "menu_item_id": it.get("menu_item_id") or "",
+                "quantity": qty,
+                "unit_cents": unit,
+                "line_total_cents": line,
+            })
+
+        # ---------- Recompute snapshot totals ----------
+        subtotal = sum(int(r.get("line_total_cents") or 0) for r in items)
+
+        # keep existing tax/tip if already set; otherwise compute a simple demo tax
+        tax = int(tl.tax_cents or round(subtotal * 0.0825))  # ~8.25% demo tax
+        tip = int(tl.tip_cents or 0)
+
+        with transaction.atomic():
+            tl.items_json = items
+            tl.total_cents = subtotal           # pre-tax subtotal
+            tl.tax_cents = tax
+            tl.last_total_cents = subtotal      # used in some views as fallback
+            tl.save(update_fields=["items_json", "total_cents", "tax_cents", "last_total_cents"])
+
+        if debug:
+            self.stdout.write(self.style.NOTICE("Appended items:"))
+            self.stdout.write(json.dumps(fixed, indent=2))
+
+        self.stdout.write(self.style.SUCCESS("Order items added successfully (FAKE MODE)."))
+
+        out = {
+            "ticket_id": tl.ticket_id,
+            "ticket_number": tl.ticket_number,
+            "open": (tl.status == "open"),
+            "subtotal_cents": tl.total_cents or 0,
+            "tax_cents": tl.tax_cents or 0,
+            "total_cents": (tl.total_cents or 0) + (tl.tax_cents or 0),
+            "items_count": len(tl.items_json or []),
         }
+        self.stdout.write("\n[Final Ticket Totals]")
+        self.stdout.write(json.dumps(out, indent=2))
 
-        self.stdout.write(self.style.NOTICE(f"POST {url}"))
-        self.stdout.write(self.style.NOTICE(json.dumps(payload, indent=2)))
 
-        resp = self._post_with_retries(url, headers, payload)
-        try:
-            data = resp.json()
-        except Exception:
-            data = {"raw": resp.text}
-
-        if resp.status_code not in (200, 201, 202):
-            raise CommandError(f"Omnivore error {resp.status_code}: {json.dumps(data, indent=2)}")
-
-        self.stdout.write(self.style.SUCCESS("Order items added successfully!"))
-        self.stdout.write(json.dumps(data, indent=2))
-
-    def _post_with_retries(self, url, headers, payload, retries=2, timeout=12):
-        attempt = 0
-        while attempt <= retries:
-            try:
-                resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
-                if resp.status_code in (429, 500, 502, 503, 504):
-                    wait = 1.5 * (attempt + 1)
-                    self.stderr.write(self.style.WARNING(f"HTTP {resp.status_code}, retrying in {wait:.1f}s"))
-                    time.sleep(wait)
-                    attempt += 1
-                    continue
-                return resp
-            except requests.RequestException as e:
-                wait = 1.5 * (attempt + 1)
-                self.stderr.write(self.style.WARNING(f"Request error: {e}, retrying in {wait:.1f}s"))
-                time.sleep(wait)
-                attempt += 1
-        raise CommandError("Failed to POST to Omnivore after retries.")

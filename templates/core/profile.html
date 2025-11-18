@@ -126,32 +126,73 @@
         <div id="liveContent" class="hidden">
           <ul id="liveItems" class="divide-y"></ul>
 
-          <div class="mt-4 grid gap-2 text-sm">
-            <div class="flex items-center justify-between">
-              <span class="text-slate-500">Subtotal</span>
-              <span id="liveSubtotal" class="font-medium">$0.00</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-slate-500">Tax</span>
-              <span id="liveTax" class="font-medium">$0.00</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <label for="tipPct" class="text-slate-500">Tip</label>
-              <div class="flex items-center gap-2">
-                <input id="tipPct" type="number" min="0" max="100" step="1" value="15"
-                       class="w-16 rounded-xl border px-2 py-1 text-right"> <span>%</span>
-                <span id="liveTipAmt" class="font-medium">$0.00</span>
-              </div>
-            </div>
-            <div class="flex items-center justify-between border-t pt-2">
-              <span class="text-slate-700 font-semibold">Total</span>
-              <span id="liveTotal" class="text-lg font-semibold">$0.00</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-slate-700">Amount Due</span>
-              <span id="liveDue" class="font-semibold">$0.00</span>
-            </div>
-          </div>
+<div class="mt-4 grid gap-2 text-sm">
+  <div class="flex items-center justify-between">
+    <span class="text-slate-500">Subtotal</span>
+    <span id="liveSubtotal" class="font-medium">$0.00</span>
+  </div>
+  <div class="flex items-center justify-between">
+    <span class="text-slate-500">Tax</span>
+    <span id="liveTax" class="font-medium">$0.00</span>
+  </div>
+  <!-- Tip -->
+<div class="flex items-center justify-between">
+  <span class="text-slate-500">Tip</span>
+  <span id="liveTip" class="font-medium">$0.00</span>
+</div>
+
+
+  <!-- Total including tip (no separate tip line shown) -->
+  <div class="flex items-center justify-between border-t pt-2">
+    <span class="text-slate-700 font-semibold">Total</span>
+    <span id="liveTotal" class="text-lg font-semibold">$0.00</span>
+  </div>
+
+  <!-- Amount Due + Tip options at the bottom -->
+  <div class="flex flex-col gap-1 border-t pt-2">
+    <div class="flex items-center justify-between">
+      <span class="text-slate-700">Amount Due</span>
+      <span id="liveDue" class="text-xl font-semibold">$0.00</span>
+    </div>
+
+    <!-- Tip options -->
+<div class="flex justify-between gap-3 w-full" id="tipButtons">
+  <button type="button"
+          class="tipBtn flex-1 py-4 rounded-xl bg-emerald-600 text-white text-base font-semibold"
+          data-tip="15">15%</button>
+
+  <button type="button"
+          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
+          data-tip="18">18%</button>
+
+  <button type="button"
+          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
+          data-tip="20">20%</button>
+
+  <button type="button"
+          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
+          data-tip="custom">Custom</button>
+</div>
+
+
+    <!-- Custom tip input (percentage), shown only when "Custom" is active -->
+<div id="tipCustomWrap"
+     class="flex items-center justify-end gap-2 hidden">
+  <input
+    id="tipCustomPct"
+    type="tel"
+    inputmode="numeric"
+    pattern="[0-9]*"
+    min="0"
+    max="100"
+    class="w-20 rounded-xl border px-2 py-1 text-right text-sm"
+    placeholder="0"
+  />
+  <span class="text-sm text-slate-500">%</span>
+</div>
+  </div>
+</div>
+
 
           <div class="mt-6 flex items-center justify-end gap-3">
             <button id="refreshLive" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Refresh</button>
@@ -342,6 +383,51 @@
     window.__lastReceipt = null;
 
     const moneyInt = v => `$${(v/100).toFixed(2)}`;
+    const DEFAULT_TIP_PCT = 15;
+let tipPct = DEFAULT_TIP_PCT;
+
+function computeTipCents(rec, pct) {
+  const base = (rec.subtotal_cents && rec.subtotal_cents > 0)
+    ? rec.subtotal_cents
+    : Math.max((rec.total_cents || 0) - (rec.tax_cents || 0), 0);
+  const p = Math.max(0, Number(pct) || 0);
+  return Math.round(base * (p / 100));
+}
+
+function updateTotalsWithTip(rec) {
+  // use the passed rec, or fall back to the last receipt
+  rec = rec || (window.__lastReceipt || {});
+
+  const tip = computeTipCents(rec, tipPct);
+  $("#liveTip").textContent = moneyInt(tip);
+
+  const totalWithTip = (rec.total_cents || 0) + tip;
+  const dueWithTip   = (rec.due_cents   || rec.total_cents || 0) + tip;
+
+  $("#liveTotal").textContent = moneyInt(totalWithTip);
+
+  const dueEl = $("#liveDue");
+  if (dueEl) dueEl.textContent = moneyInt(dueWithTip);
+}
+
+
+
+// UI highlighting for tip buttons
+function setActiveTipButton(kind) {
+  $$(".tipBtn").forEach(btn => {
+    const active = btn.dataset.tip === String(kind);
+
+    const base =
+      "tipBtn flex-1 py-4 rounded-xl text-base font-semibold border";
+    const activePart =
+      " bg-emerald-600 text-white border-emerald-600";
+    const inactivePart =
+      " bg-white text-slate-700 border-slate-200 hover:bg-slate-50";
+
+    btn.className = base + (active ? activePart : inactivePart);
+  });
+}
+
     function fingerprint(d){
       const key = JSON.stringify({
         i: (d.items||[]).map(i => [i.name, i.qty, i.cents]),
@@ -356,15 +442,8 @@
       $("#liveSubtotal").textContent = moneyInt(d.subtotal_cents||0);
       $("#liveTax").textContent      = moneyInt(d.tax_cents||0);
 
-      const pct = Math.max(0, parseFloat($("#tipPct")?.value || "0"));
-      const tipBase = (d.subtotal_cents && d.subtotal_cents > 0)
-        ? d.subtotal_cents
-        : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
-
-      const tip = Math.round(tipBase * (pct/100));
-      $("#liveTipAmt").textContent = moneyInt(tip);
-      $("#liveTotal").textContent  = moneyInt((d.total_cents||0) + tip);
-      const dueEl = $("#liveDue"); if (dueEl) dueEl.textContent = moneyInt((d.due_cents||0) + tip);
+      // Totals including currently selected tip
+      updateTotalsWithTip(d);
 
       $("#liveItems").innerHTML = (d.items||[]).map(i => `
         <li class="flex items-center justify-between py-2">
@@ -397,26 +476,76 @@
       } catch { scheduleNext(Math.min(POLL_MS_BASE * 2, 30000)); }
     }
     function scheduleNext(ms){ clearTimeout(timer); timer = setTimeout(() => fetchReceipt({silent:true}), ms); }
-    $("#tipPct")?.addEventListener("input", () => {
-      const d = window.__lastReceipt || {};
-      const pct = Math.max(0, parseFloat($("#tipPct")?.value || "0"));
-      const base = (d.subtotal_cents && d.subtotal_cents > 0) ? d.subtotal_cents : Math.max((d.total_cents || 0) - (d.tax_cents || 0), 0);
-      const tip = Math.round(base * (pct/100));
-      $("#liveTipAmt").textContent = moneyInt(tip);
-      $("#liveTotal").textContent  = moneyInt((d.total_cents||0) + tip);
-      const dueEl = $("#liveDue"); if (dueEl) dueEl.textContent = moneyInt((d.due_cents||0) + tip);
-    });
     function getCSRFCookie(){ const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; }
     $("#refreshLive")?.addEventListener("click", () => fetchReceipt({silent:true}));
+// Tip buttons: 15 / 18 / 20 / Custom
+(function () {
+  const customWrap  = $("#tipCustomWrap");
+  const customInput = $("#tipCustomPct");
+
+  // initial highlight (15%)
+  setActiveTipButton("15");
+
+  // --- prevent weird keys like e, E, +, -, . on desktop ---
+  if (customInput) {
+    customInput.addEventListener("keydown", (e) => {
+      const blocked = ["e", "E", "+", "-", ".", ",", " "];
+      if (blocked.includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+
+    // --- sanitize input to digits only, clamp 0–100, update totals ---
+    customInput.addEventListener("input", () => {
+      // strip everything except digits
+      let raw = (customInput.value || "").replace(/[^\d]/g, "");
+
+      // max 3 digits
+      if (raw.length > 3) raw = raw.slice(0, 3);
+
+      // to number and clamp 0–100
+      let val = parseInt(raw || "0", 10);
+      if (isNaN(val)) val = 0;
+      if (val > 100) val = 100;
+
+      // write cleaned value back
+      customInput.value = val === 0 && raw === "" ? "" : String(val);
+
+      tipPct = val;
+      setActiveTipButton("custom");
+      updateTotalsWithTip();
+    });
+  }
+
+  // Buttons (15 / 18 / 20 / Custom)
+  $$(".tipBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.tip;
+
+      if (v === "custom") {
+        customWrap?.classList.remove("hidden");
+        setActiveTipButton("custom");
+        customInput?.focus(); // brings up keypad on phones
+        updateTotalsWithTip();
+      } else {
+        customWrap?.classList.add("hidden");
+        tipPct = parseFloat(v) || 0;
+        setActiveTipButton(v);
+        updateTotalsWithTip();
+      }
+    });
+  });
+})();
+
+
     $("#closeTabBtn")?.addEventListener("click", async (ev) => {
       const btn = ev.currentTarget; btn.disabled = true;
       try {
         if (!member) { showToast("No member found. Please sign in again.", {tone:"error"}); return; }
         if (!window.__lastReceipt) { showToast("No live receipt yet. Try Refresh.", {tone:"error"}); return; }
         const rec = window.__lastReceipt || {};
-        const pct = Math.max(0, parseFloat($("#tipPct")?.value || "0"));
-        const tipBase = (rec.subtotal_cents && rec.subtotal_cents > 0) ? rec.subtotal_cents : Math.max((rec.total_cents || 0) - (rec.tax_cents || 0), 0);
-        const tip_cents = Math.round(tipBase * (pct/100));
+        const tip_cents = computeTipCents(rec, tipPct);
+
         const resp = await fetch(`/api/member/${encodeURIComponent(member)}/close`, {
           method: "POST",
           headers: {"Accept":"application/json","Content-Type":"application/json","X-CSRFToken": getCSRFCookie()},

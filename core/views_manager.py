@@ -585,9 +585,10 @@ def get_ticket_rating_from_anywhere(ticket_link):
 @require_GET
 def manager_api_menu_item_ratings(request: HttpRequest) -> JsonResponse:
     """
-    Mirrors owner_api_menu_item_ratings but scoped to the manager's single restaurant.
-    Response shape:
-      { ok: True, items: [ {menu_item_id, name, category, price_cents, avg_rating, num_rated_tickets, total_qty_on_rated_tickets, num_all_tickets, total_qty_all_tickets} ... ] }
+    Manager analytics (menu items).
+    - De-dupes by id (preferred) or normalized name.
+    - Unit price picked as the MEDIAN of observed per-row unit_cents across tickets.
+      Falls back to menu_cache only if no sane observed price exists.
     """
     mp, rp = _require_manager(request)
     if not mp or not rp:
@@ -604,28 +605,129 @@ def manager_api_menu_item_ratings(request: HttpRequest) -> JsonResponse:
         try: qs = qs.filter(closed_at__date__lte=parse_date(end_s))
         except Exception: pass
 
-    # Menu metadata from RestaurantProfile.menu_cache, if present
-    item_meta = { str(x.get("id")): x for x in (getattr(rp, "menu_cache", None) or []) }
+    # ---------- helpers ----------
+    def norm_name(s: str) -> str:
+        s = (s or "").strip().lower()
+        return " ".join(s.replace("$", "").split())
 
+    def unit_cents_from_row(row: dict) -> int | None:
+        """
+        Best-effort unit price in cents. Order:
+          1) total_cents or line_total_cents / qty
+          2) explicit *_cents fields
+          3) dollar-looking 'price' with decimal -> dollars * 100
+          4) bare integer 'price' treated as CENTS (legacy), not dollars
+        """
+        # qty
+        try:
+            qty = int(row.get("quantity") or row.get("qty") or 1)
+            qty = max(qty, 1)
+        except Exception:
+            qty = 1
+
+        # 1) derive from totals
+        for k in ("total_cents", "line_total_cents"):
+            v = row.get(k)
+            if v is None: 
+                continue
+            try:
+                tc = int(v)
+                if tc >= 0:
+                    return int(round(tc / qty))
+            except Exception:
+                pass
+
+        # 2) explicit cents fields
+        for k in ("unit_cents", "price_cents", "cents", "unit_price_cents"):
+            v = row.get(k)
+            if v is None:
+                continue
+            try:
+                uc = int(v)
+                if uc >= 0:
+                    return uc
+            except Exception:
+                pass
+
+        # 3) dollar-looking strings/floats with a decimal
+        for k in ("unit_price", "price"):
+            v = row.get(k)
+            if v is None:
+                continue
+            s = str(v).strip()
+            if "." in s:
+                try:
+                    from decimal import Decimal
+                    return int(Decimal(s) * 100)
+                except Exception:
+                    continue
+
+        # 4) last resort: bare integer 'price' as CENTS (legacy exports)
+        for k in ("unit_price", "price"):
+            v = row.get(k)
+            if v is None:
+                continue
+            try:
+                iv = int(str(v).replace(",", ""))
+                # treat as cents
+                return max(iv, 0)
+            except Exception:
+                pass
+
+        return None
+
+    def median_int(vals):
+        vals = sorted(vals)
+        n = len(vals)
+        if n == 0:
+            return None
+        mid = n // 2
+        if n % 2:
+            return vals[mid]
+        return (vals[mid - 1] + vals[mid]) // 2
+
+    # plausible price band for a unit item (in cents)
+    MIN_CENTS, MAX_CENTS = 50, 4000
+
+    # Menu cache maps
+    menu_cache = getattr(rp, "menu_cache", None) or []
+    meta_by_id = {str(x.get("id")): x for x in menu_cache if str(x.get("id") or "")}
+    meta_by_name = {norm_name(x.get("name")): x for x in menu_cache if (x.get("name") or "").strip()}
+
+    # ---------- aggregate with de-dupe ----------
     agg = {}
+    id_to_key = {}
+    name_to_key = {}
+
     for tl in qs.iterator():
-        rating = get_ticket_rating_from_anywhere(tl)  # may be None
+        rating = get_ticket_rating_from_anywhere(tl)
 
         for row in (tl.items_json or []):
-            mid = str(row.get("menu_item_id") or row.get("id") or "").strip()
-            name = (row.get("name") or row.get("label") or "").strip() or "Unknown item"
-            key = mid or f"name:{name}"
+            mid   = str(row.get("menu_item_id") or row.get("id") or "").strip()
+            name  = (row.get("name") or row.get("label") or "").strip() or "Unknown item"
+            nname = norm_name(name)
 
-            try:
-                qty = int(row.get("quantity") or row.get("qty") or 1)
-            except Exception:
-                qty = 1
+            # resolve bucket key
+            if mid:
+                key = id_to_key.get(mid)
+                if not key and nname in name_to_key:
+                    key = name_to_key[nname]
+                    id_to_key[mid] = key
+                    agg[key]["menu_item_id"] = mid or agg[key]["menu_item_id"]
+                if not key:
+                    key = mid
+                    id_to_key[mid] = key
+                    name_to_key.setdefault(nname, key)
+            else:
+                key = name_to_key.get(nname) or f"name:{nname}"
+                name_to_key.setdefault(nname, key)
 
             rec = agg.setdefault(key, {
                 "menu_item_id": mid or None,
                 "name": name,
                 "category": "",
-                "price_cents": 0,
+                "observed_prices": [],   # collect per-row unit cents
+                "cache_price": None,     # from menu_cache if available
                 "sum": 0,
                 "n": 0,
                 "qty_rated_tickets": 0,
@@ -634,35 +736,29 @@ def manager_api_menu_item_ratings(request: HttpRequest) -> JsonResponse:
                 "num_all_tickets": 0,
             })
 
-            # enrich from cache
-            if mid and mid in item_meta:
-                meta = item_meta[mid]
-                if not rec["category"]:
-                    rec["category"] = meta.get("category") or ""
-                if not rec["price_cents"]:
-                    try:
-                        rec["price_cents"] = int(meta.get("price_cents") or 0)
-                    except Exception:
-                        pass
+            # enrich category + cache price
+            meta = meta_by_id.get(mid) or meta_by_name.get(nname)
+            if meta and not rec["category"]:
+                rec["category"] = (meta.get("category") or "").strip()
+            if meta and rec["cache_price"] is None:
+                try:
+                    pc = meta.get("price_cents")
+                    if pc is not None:
+                        rec["cache_price"] = int(pc)
+                except Exception:
+                    pass
 
-            # fallback to ticket unit price if cache has none
-            if not rec["price_cents"]:
-                for k in ("unit_cents", "price_cents", "cents", "unit_price", "price"):
-                    v = row.get(k)
-                    if v is None:
-                        continue
-                    try:
-                        iv = int(v)
-                        rec["price_cents"] = iv if iv >= 100 else iv * 100
-                        break
-                    except Exception:
-                        try:
-                            from decimal import Decimal
-                            rec["price_cents"] = int(Decimal(str(v)) * 100)
-                            break
-                        except Exception:
-                            pass
+            # derive per-row unit price and record if plausible
+            uc = unit_cents_from_row(row)
+            if uc is not None:
+                # keep all observations; we'll filter to plausible band when summarizing
+                rec["observed_prices"].append(int(uc))
 
+            # quantities + counters
+            try:
+                qty = int(row.get("quantity") or row.get("qty") or 1)
+            except Exception:
+                qty = 1
             rec["qty_all_tickets"] += qty
             rec["num_all_tickets"] += 1
 
@@ -672,18 +768,32 @@ def manager_api_menu_item_ratings(request: HttpRequest) -> JsonResponse:
                 rec["qty_rated_tickets"] += qty
                 rec["num_rated_tickets"] += 1
 
+    # ---------- shape + choose final price ----------
     out = []
     for _, r in agg.items():
+        # choose price: median of plausible observed, else any observed, else cache
+        observed_plausible = [p for p in r["observed_prices"] if MIN_CENTS <= p <= MAX_CENTS]
+        price_cents = median_int(observed_plausible)
+        if price_cents is None:
+            # if all observed are out-of-band (e.g., 5000), try to recompute a safer median anyway
+            price_cents = median_int(r["observed_prices"]) if r["observed_prices"] else None
+            # clamp clearly bogus high values by preferring cache if cache is plausible
+            if price_cents is not None and price_cents > MAX_CENTS and r["cache_price"] and MIN_CENTS <= r["cache_price"] <= MAX_CENTS:
+                price_cents = r["cache_price"]
+        if price_cents is None:
+            # final fallback: cache if plausible; else 0
+            cp = r["cache_price"]
+            price_cents = cp if (cp is not None and MIN_CENTS <= cp <= MAX_CENTS) else 0
+
         avg = (r["sum"] / r["n"]) if r["n"] else None
         out.append({
             "menu_item_id": r["menu_item_id"] or "",
             "name": r["name"],
             "category": r["category"],
-            "price_cents": int(r["price_cents"] or 0),
+            "price_cents": int(price_cents or 0),
             "avg_rating": round(avg, 3) if avg is not None else None,
             "num_rated_tickets": r["num_rated_tickets"],
             "total_qty_on_rated_tickets": r["qty_rated_tickets"],
-            # extras to match owner endpoint exactly
             "num_all_tickets": r["num_all_tickets"],
             "total_qty_all_tickets": r["qty_all_tickets"],
         })
@@ -694,6 +804,9 @@ def manager_api_menu_item_ratings(request: HttpRequest) -> JsonResponse:
 
     out.sort(key=sort_key)
     return JsonResponse({"ok": True, "items": out})
+
+
+
 
 @login_required
 @require_GET
