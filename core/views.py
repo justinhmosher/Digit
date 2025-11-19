@@ -141,6 +141,17 @@ def signup(request):
     except Exception:
         return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
 
+    if CustomerProfile.objects.filter(phone=phone_e164).exists():
+        signin_url = reverse("core:signin")  # adjust to your actual signin URL name
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "That phone number is already registered. Please sign in instead.",
+                "signin_url": signin_url,
+            },
+            status=409,
+        )
+
     # Create/update inactive user
     user = User.objects.filter(email=email).first()
     if user:
@@ -294,6 +305,17 @@ def customer_begin_api(request):
         if p1 != p2:
             return JsonResponse({"ok": False, "error": "Passwords didn't match."}, status=400)
         need_email_otp = True
+
+    if CustomerProfile.objects.filter(phone=phone_e164).exists():
+        signin_url = reverse("core:signin")  # change to your actual customer signin URL name if different
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "That phone number is already registered. Please sign in instead.",
+                "signin_url": signin_url,
+            },
+            status=409,
+        )
 
     # Send phone OTP
     try:

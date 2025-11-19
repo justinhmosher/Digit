@@ -125,11 +125,18 @@
   </footer>
 
 <script>
-  function csrf(){ const m=document.cookie.match(/csrftoken=([^;]+)/); return m?m[1]:''; }
+  function csrf(){
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
   function alertBox(msg, ok=false){
     const el = document.getElementById('alert');
-    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok?'bg-green-100 text-green-800':'bg-red-100 text-red-800');
-    el.textContent = msg; el.classList.remove('hidden');
+    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok
+      ? 'bg-green-100 text-green-800'
+      : 'bg-red-100 text-red-800');
+    el.textContent = msg;
+    el.classList.remove('hidden');
   }
 
   const emailForm          = document.getElementById('emailForm');
@@ -147,21 +154,32 @@
     e.preventDefault();
     const email = document.getElementById('email').value.trim().toLowerCase();
     if(!email) return alertBox('Enter your email.');
+
     const r = await fetch("{% url 'core:customer_precheck_api' %}", {
-      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
       body: JSON.stringify({ email })
     });
+
     const d = await r.json();
-    if(r.status == 409 && d.redirect) {
+
+    // If backend says "this email should sign in instead"
+    if (r.status === 409 && d.redirect) {
       window.location.href = d.redirect;
       return;
-      }
-    if(!r.ok || !d.ok) return alertBox(d.error || 'Precheck failed.');
+    }
+
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Precheck failed.');
+    }
+
     pre = { exists: d.exists, has_verified_phone: d.has_verified_phone, email };
     emailForm.classList.add('hidden');
-    if(d.exists){
+
+    if (d.exists) {
+      // Existing account flow
       existingUserForm.classList.remove('hidden');
-      if(d.has_verified_phone){
+      if (d.has_verified_phone) {
         existingPhoneBlock.classList.remove('hidden');
         collectPhoneBlock.classList.add('hidden');
         document.getElementById('phone_existing_display').value = 'Verified phone on file';
@@ -170,6 +188,7 @@
         collectPhoneBlock.classList.remove('hidden');
       }
     } else {
+      // New account flow
       newUserForm.classList.remove('hidden');
     }
   });
@@ -178,17 +197,25 @@
   document.getElementById('existingUserNext').addEventListener('click', async (e)=>{
     e.preventDefault();
     const payload = { email: pre.email };
-    if(!pre.has_verified_phone){
+
+    if (!pre.has_verified_phone) {
       const p = document.getElementById('phone_existing').value.trim();
-      if(!p) return alertBox('Enter your phone.');
+      if (!p) return alertBox('Enter your phone.');
       payload.phone = p;
     }
+
     const r = await fetch("{% url 'core:customer_begin_api' %}", {
-      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
       body: JSON.stringify(payload)
     });
+
     const d = await r.json();
-    if(!r.ok || !d.ok) return alertBox(d.error || 'Could not send SMS.');
+
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Could not send SMS.');
+    }
+
     existingUserForm.classList.add('hidden');
     phoneOtpForm.classList.remove('hidden');
     alertBox('Code sent. Check your phone.', true);
@@ -197,47 +224,65 @@
   // New -> begin
   document.getElementById('newUserNext').addEventListener('click', async (e)=>{
     e.preventDefault();
+
     const payload = {
-      email: document.getElementById('email').value.trim().toLowerCase(),
+      email:      document.getElementById('email').value.trim().toLowerCase(),
       first_name: document.getElementById('first_name').value.trim(),
       last_name:  document.getElementById('last_name').value.trim(),
       phone:      document.getElementById('phone_new').value.trim(),
       password1:  document.getElementById('password1').value,
       password2:  document.getElementById('password2').value
     };
-    if(!payload.first_name || !payload.last_name || !payload.phone || !payload.password1 || !payload.password2){
+
+    if (!payload.first_name || !payload.last_name || !payload.phone || !payload.password1 || !payload.password2){
       return alertBox('Please fill all fields.');
     }
+
     const r = await fetch("{% url 'core:customer_begin_api' %}", {
-      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
       body: JSON.stringify(payload)
     });
+
     const d = await r.json();
-    if (!r.ok) {
-      // e.g., 409 if profile already exists
-      alertBox(d.error || 'Precheck failed.');
-      if (d.signin_url) { /* optionally show a "Go to Sign In" link */ }
+
+    // 🔹 Phone already registered → backend returns 409 + signin_url
+    if (r.status === 409 && d.signin_url) {
+      alertBox(d.error || 'That phone number is already registered. Redirecting to sign in...');
+      setTimeout(() => {
+        window.location.href = d.signin_url;
+      }, 1500); // tiny pause so user sees the message
       return;
     }
-    if(!r.ok || !d.ok) return alertBox(d.error || 'Could not start signup.');
+
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Could not start signup.');
+    }
+
     newUserForm.classList.add('hidden');
     phoneOtpForm.classList.remove('hidden');
     alertBox('Code sent. Check your phone.', true);
-    });
+  });
 
   // Phone OTP -> verify_otp
   phoneOtpForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const code = document.getElementById('otpCode').value.trim();
-    if(!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+    if (!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+
     const r = await fetch("{% url 'core:verify_otp' %}", {
-      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
       body: JSON.stringify({ code })
     });
-    const d = await r.json();
-    if(!r.ok || !d.ok) return alertBox(d.error || 'Invalid or expired code.');
 
-    if(d.stage === 'email'){ // NEW users continue with email
+    const d = await r.json();
+
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Invalid or expired code.');
+    }
+
+    if (d.stage === 'email') { // NEW users continue with email
       document.getElementById('otpEmail').textContent = d.email || pre.email;
       phoneOtpForm.classList.add('hidden');
       emailOtpForm.classList.remove('hidden');
@@ -253,16 +298,24 @@
   emailOtpForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const code = document.getElementById('emailCode').value.trim();
-    if(!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+    if (!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+
     const r = await fetch("{% url 'core:verify_email_otp' %}", {
-      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
       body: JSON.stringify({ code })
     });
+
     const d = await r.json();
-    if(!r.ok || !d.ok) return alertBox(d.error || 'Invalid code.');
+
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Invalid code.');
+    }
+
     location.href = d.redirect || '/profile';
   });
 </script>
+
 </body>
 </html>
 
