@@ -1,7 +1,7 @@
 {
   "locations": {
     "cgX7jbLi": {
-      "seq": 1014,
+      "seq": 1017,
       "tender_types": [
         {
           "id": "cash",
@@ -923,6 +923,93 @@
               "total": 899
             }
           ],
+          "match_text": "tkt_1014_16911 1014 dine-in demo user",
+          "open": true,
+          "order_type": "2",
+          "paid": 5294,
+          "payments": [
+            {
+              "amount": 5294,
+              "created_at": "2025-11-22T02:10:49.029959Z",
+              "id": "pay_1763777449029",
+              "reference": "customer-close",
+              "tip": 1059,
+              "type": "cash"
+            }
+          ],
+          "revenue_center": "1",
+          "subtotal": 5294,
+          "tax": 437,
+          "ticket_number": 1014,
+          "tip": 1059,
+          "total": 5731,
+          "updated_at": "2025-11-22T02:10:49.029959Z"
+        },
+        "tkt_1015_89907": {
+          "_embedded": {
+            "employee": {
+              "check_name": "DINE-IN",
+              "first_name": "Demo",
+              "last_name": "User"
+            }
+          },
+          "auto_send": true,
+          "created_at": "2025-11-22T01:18:44.650713Z",
+          "employee": "100",
+          "id": "tkt_1015_89907",
+          "items": [
+            {
+              "id": "itm_1",
+              "menu_item": "101",
+              "name": "Pizza",
+              "price": 1499,
+              "price_level": "2",
+              "quantity": 1,
+              "seat": 1,
+              "total": 1499
+            },
+            {
+              "id": "itm_2",
+              "menu_item": "200",
+              "name": "Mozz Sticks",
+              "price": 799,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 1,
+              "total": 799
+            },
+            {
+              "id": "itm_3",
+              "menu_item": "201",
+              "name": "Garlic Bread",
+              "price": 499,
+              "price_level": null,
+              "quantity": 2,
+              "seat": 1,
+              "total": 998
+            },
+            {
+              "id": "itm_4",
+              "menu_item": "206",
+              "name": "Wings (6)",
+              "price": 1099,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 1099
+            },
+            {
+              "id": "itm_5",
+              "menu_item": "207",
+              "name": "Bruschetta",
+              "price": 899,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 899
+            }
+          ],
+          "match_text": "tkt_1015_89907 1015 dine-in demo user",
           "open": true,
           "order_type": "2",
           "paid": 0,
@@ -930,10 +1017,182 @@
           "revenue_center": "1",
           "subtotal": 5294,
           "tax": 437,
-          "ticket_number": 1014,
+          "ticket_number": 1015,
           "tip": 0,
           "total": 5731,
-          "updated_at": "2025-11-18T04:18:25.225358Z"
+          "updated_at": "2025-11-22T01:18:44.650713Z"
+        },
+        "tkt_1016_29711": {
+          "_embedded": {
+            "employee": {
+              "check_name": "DINE-IN",
+              "first_name": "Demo",
+              "last_name": "User"
+            }
+          },
+          "auto_send": true,
+          "created_at": "2025-11-22T22:27:42.114979Z",
+          "employee": "100",
+          "id": "tkt_1016_29711",
+          "items": [
+            {
+              "id": "itm_1",
+              "menu_item": "101",
+              "name": "Pizza",
+              "price": 1499,
+              "price_level": "2",
+              "quantity": 1,
+              "seat": 1,
+              "total": 1499
+            },
+            {
+              "id": "itm_2",
+              "menu_item": "200",
+              "name": "Mozz Sticks",
+              "price": 799,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 1,
+              "total": 799
+            },
+            {
+              "id": "itm_3",
+              "menu_item": "201",
+              "name": "Garlic Bread",
+              "price": 499,
+              "price_level": null,
+              "quantity": 2,
+              "seat": 1,
+              "total": 998
+            },
+            {
+              "id": "itm_4",
+              "menu_item": "206",
+              "name": "Wings (6)",
+              "price": 1099,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 1099
+            },
+            {
+              "id": "itm_5",
+              "menu_item": "207",
+              "name": "Bruschetta",
+              "price": 899,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 899
+            }
+          ],
+          "match_text": "tkt_1016_29711 1016 dine-in demo user",
+          "open": true,
+          "order_type": "2",
+          "paid": 5294,
+          "payments": [
+            {
+              "amount": 5294,
+              "created_at": "2025-11-22T22:40:33.090434Z",
+              "id": "pay_1763851233090",
+              "reference": "customer-close",
+              "tip": 1059,
+              "type": "cash"
+            }
+          ],
+          "revenue_center": "1",
+          "subtotal": 5294,
+          "tax": 437,
+          "ticket_number": 1016,
+          "tip": 1059,
+          "total": 5731,
+          "updated_at": "2025-11-22T22:40:33.090434Z"
+        },
+        "tkt_1017_89010": {
+          "_embedded": {
+            "employee": {
+              "check_name": "DINE-IN",
+              "first_name": "Demo",
+              "last_name": "User"
+            }
+          },
+          "auto_send": true,
+          "created_at": "2025-11-22T22:49:41.844282Z",
+          "employee": "100",
+          "id": "tkt_1017_89010",
+          "items": [
+            {
+              "id": "itm_1",
+              "menu_item": "101",
+              "name": "Pizza",
+              "price": 1499,
+              "price_level": "2",
+              "quantity": 1,
+              "seat": 1,
+              "total": 1499
+            },
+            {
+              "id": "itm_2",
+              "menu_item": "200",
+              "name": "Mozz Sticks",
+              "price": 799,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 1,
+              "total": 799
+            },
+            {
+              "id": "itm_3",
+              "menu_item": "201",
+              "name": "Garlic Bread",
+              "price": 499,
+              "price_level": null,
+              "quantity": 2,
+              "seat": 1,
+              "total": 998
+            },
+            {
+              "id": "itm_4",
+              "menu_item": "206",
+              "name": "Wings (6)",
+              "price": 1099,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 1099
+            },
+            {
+              "id": "itm_5",
+              "menu_item": "207",
+              "name": "Bruschetta",
+              "price": 899,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 899
+            }
+          ],
+          "match_text": "tkt_1017_89010 1017 dine-in demo user",
+          "open": true,
+          "order_type": "2",
+          "paid": 5294,
+          "payments": [
+            {
+              "amount": 5294,
+              "created_at": "2025-11-22T23:27:31.189126Z",
+              "id": "pay_1763854051189",
+              "reference": "customer-close",
+              "tip": 953,
+              "type": "cash"
+            }
+          ],
+          "revenue_center": "1",
+          "subtotal": 5294,
+          "tax": 437,
+          "ticket_number": 1017,
+          "tip": 953,
+          "total": 5731,
+          "updated_at": "2025-11-22T23:27:31.189126Z"
         },
         "tkt_1_71281": {
           "_embedded": {

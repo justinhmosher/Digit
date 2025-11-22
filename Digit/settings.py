@@ -29,7 +29,7 @@ SECRET_KEY = get_random_secret_key()
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['.ngrok-free.dev','localhost', '127.0.0.1','192.168.1.98']
 
 
 # Application definition
@@ -61,6 +61,9 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'Digit.urls'
+
+CSRF_TRUSTED_ORIGINS = ['https://*.ngrok-free.dev','http://192.168.1.98','http://localhost','http://127.0.0.1',]
+
 
 # Trust Google's email; phone OTP will gate *new* Google sign-ups before login
 ACCOUNT_EMAIL_VERIFICATION = "none"

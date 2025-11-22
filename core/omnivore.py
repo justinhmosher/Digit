@@ -111,7 +111,7 @@ if _FAKE_MODE:
                 "auto_send": True,
                 "_embedded": {
                     "employee": {
-                        "check_name": rnd.choice(["DINE-IN", "BAR", "TO-GO"]),
+                        "check_name": rnd.choice(["SAMPLE SERVER"]),
                         "first_name": rnd.choice(["Alex", "Sam", "Jordan", "Taylor", "Riley"]),
                         "last_name": rnd.choice(["M", "K", "P", "S", "D"]),
                     }

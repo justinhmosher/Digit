@@ -143,7 +143,7 @@ def send_sms(to_number: str, body: str) -> dict:
     try:
         client = Client(ACCOUNT_SID, AUTH_TOKEN)
         msg = client.messages.create(
-            to='+18777804236',
+            to=' +18777804236',
             from_=TWILIO_FROM_NUMBER,
             body=body,
         )

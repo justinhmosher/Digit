@@ -89,13 +89,11 @@
 
         <div class="grid gap-3">
           <input id="hint" class="h-12 rounded-xl border px-4" placeholder="Ticket # / table / server" />
-          <input id="lname" class="h-12 rounded-xl border px-4" placeholder="(Optional) last name" />
         </div>
 
         <div>
           <div class="flex items-center justify-between">
             <div class="text-sm font-medium">Members</div>
-            <button id="addMember" class="text-sm rounded-xl border px-3 py-1 hover:bg-slate-50">Add member</button>
           </div>
           <div id="memberList" class="mt-2 space-y-2">
             <!-- inputs injected here -->
@@ -314,31 +312,39 @@
       return row;
     }
     // initial one
-    $("#memberList").appendChild(memberInput());
-    $("#addMember").onclick = ()=>$("#memberList").appendChild(memberInput());
+    $("#memberList").innerHTML = `
+  <div class="flex items-center gap-2">
+    <input id="singleMember" class="h-12 rounded-xl border px-4 flex-1" placeholder="Member number">
+  </div>
+`;
 
     $("#sendLinks").onclick = async ()=>{
       const hint = $("#hint").value.trim();
-      const lname = $("#lname").value.trim();
-      const members = $$("#memberList .mem").map(i=>i.value.trim()).filter(Boolean);
-      if(!hint || members.length===0){ toast('Enter hint and at least one member','error'); return; }
+      const member = $("#singleMember").value.trim();
+      if (!hint || !member) {toast("Enter ticket hint and member number", "error");return;}
 
       $("#sendLinks").disabled = true; $("#drawerBusy").classList.remove('hidden');
       $("#drawerLog").innerHTML = "";
 
-      for(const m of members){
-        const r = await postJSON(linkUrl, {member_number: m, last_name: lname, check_hint: hint});
-        const li = document.createElement('li');
-        if(r.ok && r.data?.ok){
-          li.className = "text-emerald-700"; li.textContent = `${m} — link sent`;
-          addActivity(`Sent verification to ${m} (hint "${hint}")`);
-        }else if (r.ok && r.data?.multiple){
-          li.className = "text-amber-700"; li.textContent = `${m} — multiple tickets; refine hint`;
-        }else{
-          li.className = "text-red-700"; li.textContent = `${m} — ${r.data?.error || 'failed'}`;
-        }
-        $("#drawerLog").appendChild(li);
-      }
+const r = await postJSON(linkUrl, {
+    member_number: member,
+    check_hint: hint
+});
+
+let li = document.createElement("li");
+if (r.ok && r.data?.ok) {
+    li.className = "text-emerald-700";
+    li.textContent = `${member} — link sent`;
+    addActivity(`Sent verification to ${member} (hint "${hint}")`);
+} else if (r.data?.multiple) {
+    li.className = "text-amber-700";
+    li.textContent = `${member} — multiple tickets; refine hint`;
+} else {
+    li.className = "text-red-700";
+    li.textContent = `${member} — ${r.data?.error || "failed"}`;
+}
+$("#drawerLog").appendChild(li);
+
 
       $("#sendLinks").disabled = false; $("#drawerBusy").classList.add('hidden');
       // refresh board to show pending
