@@ -10,19 +10,35 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-900">
   <!-- Header -->
-  <header class="bg-white border-b border-slate-200">
-    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-      <div class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">D</div>
-        <h1 class="font-semibold">Manager Dashboard</h1>
-      </div>
-      <div class="flex items-center gap-2">
-        <button id="openAnalytics" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">Analytics</button>
-        <button id="openInvite" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm">Invite staff</button>
-        <a href="{% url 'core:signout' %}" class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm">Sign out</a>
-      </div>
+<header class="bg-white border-b border-slate-200">
+  <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-3">
+      <div class="h-9 w-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-semibold">D</div>
+      <h1 class="font-semibold">Manager Dashboard</h1>
     </div>
-  </header>
+    <div class="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
+      <button
+        id="openAnalytics"
+        class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm w-full sm:w-auto"
+      >
+        Analytics
+      </button>
+      <button
+        id="openInvite"
+        class="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm w-full sm:w-auto"
+      >
+        Invite staff
+      </button>
+      <a
+        href="{% url 'core:signout' %}"
+        class="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm w-full sm:w-auto"
+      >
+        Sign out
+      </a>
+    </div>
+  </div>
+</header>
+
 
   <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
     <!-- Welcome -->
@@ -43,9 +59,9 @@
       {% endif %}
     </section>
 
-    <!-- MAIN TABS -->
-    <section class="bg-white border border-slate-200 rounded-2xl p-4">
-      <div class="flex items-center justify-between flex-wrap gap-3 px-2">
+<section class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-2">
+
         <div class="inline-flex rounded-xl border p-1 text-sm" role="tablist" aria-label="Main tabs">
           <button id="tabAccess" class="px-3 py-1.5 rounded-lg hover:bg-slate-50" data-pane="access">Access</button>
           <button id="tabOpen"   class="px-3 py-1.5 rounded-lg hover:bg-slate-50" data-pane="open">Open tickets</button>
@@ -53,15 +69,51 @@
         </div>
 
         <!-- For convenience, replicate Orders filters when Orders tab is active (kept as-is) -->
-        <div id="ordersControls" class="flex items-center gap-2">
-          <label class="text-sm text-slate-600">From</label>
-          <input id="startDate" type="date" class="h-10 rounded-xl border px-3 text-sm" />
-          <label class="text-sm text-slate-600">To</label>
-          <input id="endDate" type="date" class="h-10 rounded-xl border px-3 text-sm" />
-          <input id="ordersQ" class="h-10 rounded-xl border px-3 text-sm" placeholder="Search ticket/member…" />
-          <button id="ordersRefresh" class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
-          <button id="exportBtn" class="rounded-xl bg-slate-900 text-white px-3 py-2 text-sm">Export to Excel</button>
-        </div>
+<div id="ordersControls" class="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
+  <!-- Inputs group -->
+  <div class="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+      <label class="text-sm text-slate-600 whitespace-nowrap">From</label>
+      <input
+        id="startDate"
+        type="date"
+        class="h-10 rounded-xl border px-3 text-sm w-full sm:w-40"
+      />
+    </div>
+
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+      <label class="text-sm text-slate-600 whitespace-nowrap">To</label>
+      <input
+        id="endDate"
+        type="date"
+        class="h-10 rounded-xl border px-3 text-sm w-full sm:w-40"
+      />
+    </div>
+
+    <input
+      id="ordersQ"
+      class="h-10 rounded-xl border px-3 text-sm w-full sm:w-56"
+      placeholder="Search ticket/member…"
+    />
+  </div>
+
+  <!-- Buttons group -->
+  <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+    <button
+      id="ordersRefresh"
+      class="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50 w-full sm:w-auto"
+    >
+      Refresh
+    </button>
+    <button
+      id="exportBtn"
+      class="rounded-xl bg-slate-900 text-white px-3 py-2 text-sm w-full sm:w-auto"
+    >
+      Export to Excel
+    </button>
+  </div>
+</div>
+
 
         <!-- Small per-tab controls -->
         <div id="openControls" class="hidden">

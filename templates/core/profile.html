@@ -154,15 +154,24 @@
       <span class="text-slate-700">Amount Due</span>
       <span id="liveDue" class="text-xl font-semibold">$0.00</span>
     </div>
+<!-- Server chat bubble message -->
+<div id="serverMessage" class="mt-3 flex justify-start hidden">
+  <div class="relative max-w-[85%] rounded-2xl bg-slate-100 px-4 py-3 text-slate-800 shadow-sm">
+
+    <!-- little tail -->
+    <div class="absolute left-[-6px] top-3 h-4 w-4 bg-slate-100 rotate-45"></div>
+
+    <p id="serverMessageText" class="text-[15px] leading-snug font-medium"></p>
+    <p id="serverMessageBy" class="mt-1 text-xs text-slate-500"></p>
+  </div>
+</div>
+
+
 
     <!-- Tip options -->
 <div class="flex justify-between gap-3 w-full" id="tipButtons">
   <button type="button"
           class="tipBtn flex-1 py-4 rounded-xl bg-emerald-600 text-white text-base font-semibold"
-          data-tip="15">15%</button>
-
-  <button type="button"
-          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
           data-tip="18">18%</button>
 
   <button type="button"
@@ -171,8 +180,13 @@
 
   <button type="button"
           class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
+          data-tip="22">22%</button>
+
+  <button type="button"
+          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
           data-tip="custom">Custom</button>
 </div>
+
 
 
     <!-- Custom tip input (percentage), shown only when "Custom" is active -->
@@ -391,7 +405,7 @@
     window.__lastReceipt = null;
 
     const moneyInt = v => `$${(v/100).toFixed(2)}`;
-    const DEFAULT_TIP_PCT = 15;
+    const DEFAULT_TIP_PCT = 20;
 let tipPct = DEFAULT_TIP_PCT;
 
 function computeTipCents(rec, pct) {
@@ -449,6 +463,19 @@ function setActiveTipButton(kind) {
       $("#liveServer").textContent   = d.server || "";
       $("#liveSubtotal").textContent = moneyInt(d.subtotal_cents||0);
       $("#liveTax").textContent      = moneyInt(d.tax_cents||0);
+      // Chat bubble message
+const msgWrap = $("#serverMessage");
+const msgText = $("#serverMessageText");
+const msgBy   = $("#serverMessageBy");
+
+if (d.server_message) {
+  msgWrap.classList.remove("hidden");
+  msgText.textContent = d.server_message;
+  msgBy.textContent   = d.server_message_by ? `– ${d.server_message_by}` : "";
+} else {
+  msgWrap.classList.add("hidden");
+}
+
 
       // Totals including currently selected tip
       updateTotalsWithTip(d);
@@ -492,7 +519,7 @@ function setActiveTipButton(kind) {
   const customInput = $("#tipCustomPct");
 
   // initial highlight (15%)
-  setActiveTipButton("15");
+  setActiveTipButton("20");
 
   // --- prevent weird keys like e, E, +, -, . on desktop ---
   if (customInput) {

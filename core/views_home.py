@@ -265,7 +265,12 @@ def api_ticket_receipt(request: HttpRequest, member_number: str) -> JsonResponse
         "tax_cents": tax,
         "total_cents": base_total,   # UI adds tip on top of this
         "due_cents": base_total,     # keep UI aligned; or drop this field if unused
+
+        # 👇 New: server chat bubble content
+        "server_message": "Thank you for dining with us!",
+        "server_message_by": "Amanda",
     })
+
 
 
 # --------------------
