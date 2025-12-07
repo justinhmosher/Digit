@@ -126,179 +126,286 @@
         <div id="liveContent" class="hidden">
           <ul id="liveItems" class="divide-y"></ul>
 
-<div class="mt-4 grid gap-2 text-sm">
-  <div class="flex items-center justify-between">
-    <span class="text-slate-500">Subtotal</span>
-    <span id="liveSubtotal" class="font-medium">$0.00</span>
-  </div>
-  <div class="flex items-center justify-between">
-    <span class="text-slate-500">Tax</span>
-    <span id="liveTax" class="font-medium">$0.00</span>
-  </div>
-  <!-- Tip -->
-<div class="flex items-center justify-between">
-  <span class="text-slate-500">Tip</span>
-  <span id="liveTip" class="font-medium">$0.00</span>
-</div>
+          <div class="mt-4 grid gap-2 text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Subtotal</span>
+              <span id="liveSubtotal" class="font-medium">$0.00</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Tax</span>
+              <span id="liveTax" class="font-medium">$0.00</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Tip</span>
+              <span id="liveTip" class="font-medium">$0.00</span>
+            </div>
 
+            <div class="flex items-center justify-between border-t pt-2">
+              <span class="text-slate-700 font-semibold">Total</span>
+              <span id="liveTotal" class="text-lg font-semibold">$0.00</span>
+            </div>
 
-  <!-- Total including tip (no separate tip line shown) -->
-  <div class="flex items-center justify-between border-t pt-2">
-    <span class="text-slate-700 font-semibold">Total</span>
-    <span id="liveTotal" class="text-lg font-semibold">$0.00</span>
-  </div>
+            <div class="flex flex-col gap-1 border-t pt-2">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-700">Amount Due</span>
+                <span id="liveDue" class="text-xl font-semibold">$0.00</span>
+              </div>
 
-  <!-- Amount Due + Tip options at the bottom -->
-  <div class="flex flex-col gap-1 border-t pt-2">
-    <div class="flex items-center justify-between">
-      <span class="text-slate-700">Amount Due</span>
-      <span id="liveDue" class="text-xl font-semibold">$0.00</span>
-    </div>
-<!-- Server chat bubble message -->
-<div id="serverMessage" class="mt-3 flex justify-start hidden">
-  <div class="relative max-w-[85%] rounded-2xl bg-slate-100 px-4 py-3 text-slate-800 shadow-sm">
+              <!-- Server chat bubble -->
+              <div id="serverMessage" class="mt-3 flex justify-start hidden">
+                <div class="relative max-w-[85%] rounded-2xl bg-slate-100 px-4 py-3 text-slate-800 shadow-sm">
+                  <div class="absolute left-[-6px] top-3 h-4 w-4 bg-slate-100 rotate-45"></div>
+                  <p id="serverMessageText" class="text-[15px] leading-snug font-medium"></p>
+                  <p id="serverMessageBy" class="mt-1 text-xs text-slate-500"></p>
+                </div>
+              </div>
 
-    <!-- little tail -->
-    <div class="absolute left-[-6px] top-3 h-4 w-4 bg-slate-100 rotate-45"></div>
+              <!-- Tip options -->
+              <div class="flex justify-between gap-3 w-full" id="tipButtons">
+                <button type="button"
+                        class="tipBtn flex-1 py-4 rounded-xl bg-emerald-600 text-white text-base font-semibold"
+                        data-tip="18">18%</button>
+                <button type="button"
+                        class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
+                        data-tip="20">20%</button>
+                <button type="button"
+                        class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
+                        data-tip="22">22%</button>
+                <button type="button"
+                        class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
+                        data-tip="custom">Custom</button>
+              </div>
 
-    <p id="serverMessageText" class="text-[15px] leading-snug font-medium"></p>
-    <p id="serverMessageBy" class="mt-1 text-xs text-slate-500"></p>
-  </div>
-</div>
+              <div id="tipCustomWrap"
+                   class="flex items-center justify-end gap-2 hidden">
+                <input
+                  id="tipCustomPct"
+                  type="tel"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  min="0"
+                  max="100"
+                  class="w-20 rounded-xl border px-2 py-1 text-right text-sm"
+                  placeholder="0"
+                />
+                <span class="text-sm text-slate-500">%</span>
+              </div>
+            </div>
+          </div>
 
-
-
-    <!-- Tip options -->
-<div class="flex justify-between gap-3 w-full" id="tipButtons">
-  <button type="button"
-          class="tipBtn flex-1 py-4 rounded-xl bg-emerald-600 text-white text-base font-semibold"
-          data-tip="18">18%</button>
-
-  <button type="button"
-          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
-          data-tip="20">20%</button>
-
-  <button type="button"
-          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
-          data-tip="22">22%</button>
-
-  <button type="button"
-          class="tipBtn flex-1 py-4 rounded-xl bg-white text-slate-700 text-base font-semibold border"
-          data-tip="custom">Custom</button>
-</div>
-
-
-
-    <!-- Custom tip input (percentage), shown only when "Custom" is active -->
-<div id="tipCustomWrap"
-     class="flex items-center justify-end gap-2 hidden">
-  <input
-    id="tipCustomPct"
-    type="tel"
-    inputmode="numeric"
-    pattern="[0-9]*"
-    min="0"
-    max="100"
-    class="w-20 rounded-xl border px-2 py-1 text-right text-sm"
-    placeholder="0"
-  />
-  <span class="text-sm text-slate-500">%</span>
-</div>
-  </div>
-</div>
-
-<div class="mt-6 flex items-center justify-end gap-3">
-  <button id="refreshLive" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Refresh</button>
-
-  <!-- NEW: split payment trigger -->
-  <button id="splitPaymentBtn"
-          type="button"
-          class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
-    Split payment
-  </button>
-
-  <button id="closeTabBtn" class="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm">
-    Close Out
-  </button>
-</div>
-
+          <div class="mt-6 flex items-center justify-end gap-3">
+            <button id="refreshLive" class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Refresh</button>
+            <button id="splitPaymentBtn"
+                    type="button"
+                    class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+              Split payment
+            </button>
+            <button id="closeTabBtn" class="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm">
+              Close Out
+            </button>
+          </div>
         </div>
       </div>
     </div>
   </main>
 
-  <!-- RECOMMENDATIONS (kept light; map optional) -->
-  <main id="panel-rec" class="mx-auto max-w-7xl px-4 py-8 grid lg:grid-cols-12 gap-6 hidden">
-    <section class="lg:col-span-8">
+  <!-- RECOMMENDATIONS -->
+  <main id="panel-rec" class="mx-auto max-w-5xl px-4 py-8 hidden">
+    <section class="w-full">
       <div class="flex items-start justify-between">
         <div>
-          <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Where everyone’s eating</h1>
-          <p class="text-slate-600 mt-1">Top restaurants by transaction volume</p>
+          <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Where everyone’s eating?</h1>
         </div>
       </div>
 
+      <!-- Map card -->
       <div class="mt-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex items-center gap-3">
-          <input id="citySearch" placeholder="Search a city (e.g., San Francisco)" class="flex-1 rounded-2xl border px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300" type="text" autocomplete="off" />
+          <input id="citySearch"
+                 placeholder="Search a city (e.g., San Francisco)"
+                 class="flex-1 rounded-2xl border px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                 type="text"
+                 autocomplete="off" />
           <button id="clearCity" class="rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Clear</button>
         </div>
         <div id="map" class="mt-4 rounded-2xl" style="height: 420px;"></div>
       </div>
 
+      <!-- Rankings list -->
       <div id="rankings" class="mt-6">
+        <h2 class="mb-2 text-sm font-semibold text-slate-700">Dyne restaurants near you</h2>
         <ul id="rankList" class="divide-y"></ul>
       </div>
-    </section>
 
-    <aside class="lg:col-span-4">
-      <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <!-- Details card (kept so scripts still work) -->
+      <section class="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 class="text-lg font-semibold">Details</h2>
-        <div id="detailsEmpty" class="mt-2 text-sm text-slate-600">Tap any bar on the left to see more info about a restaurant.</div>
+        <div id="detailsEmpty" class="mt-2 text-sm text-slate-600">
+          Tap any restaurant in the list or on the map to see more info.
+        </div>
         <div id="detailsBox" class="mt-4 space-y-2 hidden">
-          <div class="text-sm"><span class="text-slate-500">Name:</span> <span id="dName" class="font-medium"></span></div>
-          <div class="text-sm"><span class="text-slate-500">Address:</span> <span id="dAddr" class="font-medium"></span></div>
-          <div class="text-sm"><span class="text-slate-500">Transactions:</span> <span id="dTx" class="font-medium"></span></div>
+          <div class="text-sm">
+            <span class="text-slate-500">Name:</span>
+            <span id="dName" class="font-medium"></span>
+          </div>
+          <div class="text-sm">
+            <span class="text-slate-500">Address:</span>
+            <span id="dAddr" class="font-medium"></span>
+          </div>
           <div class="pt-2">
-            <a id="mapsLink" target="_blank" rel="noreferrer" class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">Open in Maps</a>
+            <a id="mapsLink"
+               target="_blank"
+               rel="noreferrer"
+               class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">
+              Open in Maps
+            </a>
           </div>
         </div>
-      </div>
-    </aside>
+      </section>
+
+      <!-- How Dyne works / restaurant pitch -->
+      <section
+        class="mt-10 overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-50 shadow-lg"
+      >
+        <div class="grid gap-6 lg:grid-cols-2">
+          <!-- Left: value props -->
+          <div class="p-6 md:p-8">
+            <div class="inline-flex items-center gap-2 rounded-full bg-slate-800/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              Dyne Network for Restaurants
+            </div>
+
+            <h2 class="mt-4 text-2xl md:text-3xl font-extrabold leading-tight">
+              Turn every visit into a <span class="text-emerald-300">repeat customer</span>.
+            </h2>
+
+            <p class="mt-3 text-sm md:text-base text-slate-200/90">
+              Dyne connects your POS to your guests’ phones. Diners see a live receipt, tip, and pay
+              from their seat. You see which menu items, nights, and staff actually bring people back.
+            </p>
+
+            <div class="mt-5 grid gap-3 md:grid-cols-2">
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-emerald-500/20 grid place-items-center">
+                  <span class="text-emerald-300 text-lg">📍</span>
+                </div>
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-50">Join the Dyne map</h3>
+                  <p class="mt-1 text-xs text-slate-200/80">
+                    Be featured in the Dyne app so local members can discover and try your restaurant.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-emerald-500/20 grid place-items-center">
+                  <span class="text-emerald-300 text-lg">📊</span>
+                </div>
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-50">See what works</h3>
+                  <p class="mt-1 text-xs text-slate-200/80">
+                    Track which dishes, days, and sections drive the most repeat Dyne visits.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-emerald-500/20 grid place-items-center">
+                  <span class="text-emerald-300 text-lg">💳</span>
+                </div>
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-50">Country-club checkout</h3>
+                  <p class="mt-1 text-xs text-slate-200/80">
+                    Guests tip and pay from their phone while sitting down. No guessing when they’re ready for the check.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-emerald-500/20 grid place-items-center">
+                  <span class="text-emerald-300 text-lg">🔌</span>
+                </div>
+                <div>
+                  <h3 class="text-sm font-semibold text-slate-50">Works with your POS</h3>
+                  <p class="mt-1 text-xs text-slate-200/80">
+                    Dyne runs alongside your existing POS setup.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: flow card -->
+          <div class="relative bg-slate-950/40">
+            <div class="pointer-events-none absolute -top-20 -right-10 h-56 w-56 rounded-full bg-emerald-500/20 blur-3xl"></div>
+            <div class="pointer-events-none absolute bottom-0 left-0 h-40 w-40 rounded-full bg-sky-500/10 blur-3xl"></div>
+
+            <div class="relative h-full p-6 md:p-8 flex flex-col justify-center">
+              <div class="rounded-3xl border border-slate-700/70 bg-slate-900/70 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  A night with Dyne
+                </p>
+
+                <ol class="mt-3 space-y-3 text-xs md:text-sm text-slate-100">
+                  <li class="flex gap-3">
+                    <span class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] font-semibold">1</span>
+                    <span>Guest gives their Dyne member number when they sit down.</span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] font-semibold">2</span>
+                    <span>Dyne links the table to their phone and shows a live receipt.</span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] font-semibold">3</span>
+                    <span>We send a secure SMS code so they can authenticate and pay.</span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] font-semibold">4</span>
+                    <span>Dyne logs visit + order data so you can see what brings them back.</span>
+                  </li>
+                </ol>
+
+                <p class="mt-4 text-[11px] leading-snug text-slate-400">
+                  <strong>SMS usage:</strong> Dyne only texts guests to verify their identity and send
+                  secure links to view their live receipt. No marketing or promotional texts. Message
+                  and data rates may apply. Reply <strong>STOP</strong> to opt out or <strong>HELP</strong> for help.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
   </main>
 
   {% if user.is_authenticated %}
-<!-- TRANSACTIONS (responsive, no subtotal/tip columns) -->
-<main id="panel-txn" class="mx-auto max-w-7xl px-4 py-10 hidden">
-  <div class="rounded-3xl border bg-white p-6">
-    <div class="flex items-center justify-between flex-wrap gap-3">
-      <h2 class="text-2xl font-bold tracking-tight">Your Transactions</h2>
-      <div id="txnCount" class="text-sm text-slate-600"></div>
+  <!-- TRANSACTIONS -->
+  <main id="panel-txn" class="mx-auto max-w-7xl px-4 py-10 hidden">
+    <div class="rounded-3xl border bg-white p-6">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h2 class="text-2xl font-bold tracking-tight">Your Transactions</h2>
+        <div id="txnCount" class="text-sm text-slate-600"></div>
+      </div>
+
+      <div id="txnMobile" class="mt-4 md:hidden divide-y"></div>
+
+      <div class="mt-4 overflow-x-auto -mx-4 sm:mx-0" style="-webkit-overflow-scrolling:touch">
+        <table class="hidden md:table min-w-full text-sm">
+          <thead class="text-left text-slate-500">
+            <tr>
+              <th class="py-3 pr-4">Date</th>
+              <th class="py-3 pr-4">Restaurant</th>
+              <th class="py-3 pr-4 hidden lg:table-cell">City</th>
+              <th class="py-3 pr-4 text-right">Total</th>
+              <th class="py-3 pr-0 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="txnBody" class="divide-y"></tbody>
+        </table>
+      </div>
     </div>
-
-    <!-- Mobile cards -->
-    <div id="txnMobile" class="mt-4 md:hidden divide-y"></div>
-
-    <!-- Desktop table -->
-    <div class="mt-4 overflow-x-auto -mx-4 sm:mx-0" style="-webkit-overflow-scrolling:touch">
-      <table class="hidden md:table min-w-full text-sm">
-        <thead class="text-left text-slate-500">
-          <tr>
-            <th class="py-3 pr-4">Date</th>
-            <th class="py-3 pr-4">Restaurant</th>
-            <th class="py-3 pr-4 hidden lg:table-cell">City</th>
-            <th class="py-3 pr-4 text-right">Total</th>
-            <th class="py-3 pr-0 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="txnBody" class="divide-y"></tbody>
-      </table>
-    </div>
-  </div>
-</main>
-
-
+  </main>
   {% endif %}
-
 
   {% if user.is_authenticated %}
   <!-- PROFILE -->
@@ -328,21 +435,127 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <div class="flex items-center gap-2">
-  <a href="{% url 'core:update_card' %}?next=/profile"
-     class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Update</a>
-</div>
+          <a href="{% url 'core:update_card' %}?next=/profile"
+             class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">Update</a>
         </div>
       </div>
     </section>
   </main>
   {% endif %}
 
+  <!-- Split Payment Modal -->
+  <div id="splitModal"
+       class="fixed inset-0 z-[192] hidden"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="splitTitle">
+    <div id="splitBackdrop" class="absolute inset-0 bg-black/40"></div>
+    <div class="absolute inset-0 grid place-items-center p-4">
+      <div class="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-xl p-6">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 id="splitTitle" class="text-lg font-semibold">Split payment</h3>
+            <p class="mt-1 text-sm text-slate-500">
+              Add the member numbers for everyone sharing this check.
+            </p>
+          </div>
+          <button id="splitClose"
+                  type="button"
+                  class="rounded-xl border px-2 py-1 text-sm hover:bg-slate-50">
+            Close
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <div id="splitList" class="space-y-2"></div>
+          <button id="splitAdd"
+                  type="button"
+                  class="mt-3 inline-flex items-center rounded-2xl border px-3 py-2 text-sm hover:bg-slate-50">
+            + Add another member
+          </button>
+        </div>
+
+        <div class="mt-6 flex items-center justify-end gap-3">
+          <button id="splitCancel"
+                  type="button"
+                  class="rounded-2xl border px-4 py-2 text-sm hover:bg-slate-50">
+            Cancel
+          </button>
+          <button id="splitDone"
+                  type="button"
+                  class="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Receipt Modal -->
+  <div id="receiptModal"
+       class="fixed inset-0 z-[190] hidden"
+       role="dialog" aria-modal="true" aria-labelledby="rcptTitle">
+    <div id="rcptBackdrop" class="absolute inset-0 bg-black/40"></div>
+    <div class="absolute inset-0 grid place-items-center p-4">
+      <div class="w-full max-w-xl rounded-3xl bg-white border border-slate-200 shadow-xl p-6">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 id="rcptTitle" class="text-lg font-semibold">Receipt</h3>
+            <p id="rcptMeta" class="text-sm text-slate-500 mt-1"></p>
+          </div>
+          <button id="rcptClose"
+                  type="button"
+                  class="rounded-xl border px-2 py-1 text-sm hover:bg-slate-50"
+                  aria-label="Close receipt">
+            Close
+          </button>
+        </div>
+
+        <div id="rcptBody" class="mt-4">
+          <div id="rcptLoading" class="text-slate-600">Loading…</div>
+          <div id="rcptError" class="hidden text-red-600 text-sm"></div>
+
+          <table id="rcptTable" class="hidden min-w-full text-sm">
+            <thead class="text-slate-500 border-b">
+              <tr>
+                <th class="py-2 text-left">Item</th>
+                <th class="py-2 text-right">Qty</th>
+                <th class="py-2 text-right">Price</th>
+                <th class="py-2 text-right">Line</th>
+              </tr>
+            </thead>
+            <tbody id="rcptItems" class="divide-y"></tbody>
+          </table>
+
+          <div id="rcptTotals" class="hidden mt-4 grid gap-1 text-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Subtotal</span>
+              <span id="rcptSub" class="font-medium">$0.00</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Tax</span>
+              <span id="rcptTax" class="font-medium">$0.00</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500">Tip</span>
+              <span id="rcptTip" class="font-medium">$0.00</span>
+            </div>
+            <div class="flex items-center justify-between border-t pt-2">
+              <span class="text-slate-700 font-semibold">Paid</span>
+              <span id="rcptPaid" class="text-lg font-semibold">$0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <footer class="border-t border-slate-200">
     <div class="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-slate-600">
       © <span id="year"></span> Dyne
     </div>
   </footer>
+
 
   <script>
     /* ===================== Server/Constants ===================== */
@@ -669,7 +882,6 @@ if (d.server_message) {
         <div style="min-width:220px">
           <div style="font-weight:600">${r.name || ""}</div>
           <div style="color:#64748b;font-size:12px">${r.address || ""}</div>
-          <div style="margin-top:6px;font-size:12px">Transactions: <b>${r.tx ?? "-"}</b></div>
           <div style="margin-top:8px">
             <a target="_blank" rel="noreferrer"
                href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address||"")}"
@@ -741,10 +953,6 @@ if (d.server_message) {
                 <div class="text-xs text-slate-500 truncate">${r.address || ""}</div>
               </div>
             </div>
-            <div class="text-sm text-slate-600 whitespace-nowrap">${r.tx||0} tx</div>
-          </div>
-          <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
-            <div class="h-full bg-slate-900/80" style="width:${pct}%"></div>
           </div>
         </button>`;
       ul.appendChild(li);
