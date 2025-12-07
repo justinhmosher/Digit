@@ -10,7 +10,10 @@ try:
     import win32com.client as win32
 except ImportError:
     win32 = None
-import pythoncom
+try:
+    import pythoncom
+except ImportError:
+    pass
 import smtplib
 from django.urls import reverse
 from . tokens import generate_token
