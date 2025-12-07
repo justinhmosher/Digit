@@ -28,7 +28,7 @@ from .views_processing import charge_customer_off_session, refund_payment_intent
 
 # ---------- Config ----------
 LOCATION_ID = config("OMNIVORE_LOCATION_ID", default="").strip()
-AUTO_TIP_PCT = float(config("AUTO_TIP_PCT", default="18"))  # staff close uses this, e.g. 18 for 18%
+AUTO_TIP_PCT = float(config("AUTO_TIP_PCT", default="20"))  # staff close uses this, e.g. 18 for 18%
 
 # ---------- Helpers ----------
 def _emp_name(ticket: dict) -> str:

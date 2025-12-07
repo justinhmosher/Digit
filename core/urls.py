@@ -9,6 +9,7 @@ app_name = 'core'
 
 urlpatterns = [
 	path('',views_home.customer_home,name="homepage"),
+    path("home",views.discovery,name="home"),
     path("customer/signup", views.signup, name="signup"),
 	path('customer/signup/api/',views.customer_begin_api,name="customer_begin_api"),
     path('customer/precheck/',views.customer_precheck_api, name ="customer_precheck_api"),
@@ -23,6 +24,8 @@ urlpatterns = [
     path("restaurants/connect/start",  views_restaurants.connect_onboard_start,  name="connect_onboard_start"),
     path("restaurants/connect/return", views_restaurants.connect_onboard_return, name="connect_onboard_return"),
     path("restaurants/connect/dashboard", views_restaurants.connect_dashboard_login, name="connect_dashboard_login"),
+    path("owner/signup/existing", views.owner_begin_existing_api, name = "owner_begin_existing_api"),
+    path("owner/verify/existing", views.owner_existing_verify_phone_api, name = "owner_existing_verify_phone_api"),
     path("api/reviews", views_home.api_submit_review, name="api_submit_review"),
     # dashboards
     # OWNER (standard, JSON-only)
@@ -30,6 +33,7 @@ urlpatterns = [
     path("owner/signup/api", views.owner_signup_api, name="owner_signup_api"),      # POST JSON, sends phone OTP
     path("owner/otp/verify", views.owner_verify_phone_api, name="owner_verify_phone_api"),
     path("owner/email/verify", views.owner_verify_email_api, name="owner_verify_email_api"),
+    path("owner/contact/", views.owner_contact, name="owner_contact"),
     #path("owner/restaurant", views.owner_restaurant_page, name="owner_restaurant_page"),  # renders form
     path("owner/restaurant/save", views.owner_restaurant_save_api, name="owner_restaurant_save_api"),
     path("owner/", views_owner.owner_dashboard, name="owner_dashboard"),

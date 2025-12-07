@@ -1092,6 +1092,12 @@ from .utils import to_e164_us, send_sms_otp, check_sms_otp
 
 OWNER_EXISTING_KEY = "owner_existing_begin"
 
+def owner_contact(request):
+    return render(request, "core/owner_new.html")
+
+def discovery(request):
+    return render(request, "core/home.html")
+
 @require_POST
 def owner_begin_existing_api(request):
     """

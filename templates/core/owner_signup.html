@@ -195,8 +195,9 @@
       blockHasPhone.classList.toggle('hidden', !d.has_verified_phone);
       blockNeedPhone.classList.toggle('hidden', d.has_verified_phone);
     }else{
-      flow = "new";
-      show('stepNew', true);
+      //flow = "new";
+      //show('stepNew', true);
+      window.location.href = "{% url 'core:owner_contact' %}";
     }
   });
 
