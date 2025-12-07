@@ -172,6 +172,6 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 try:
-    import local_settings
+    from .local_settings import *
 except ImportError:
     pass
