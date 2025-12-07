@@ -6,7 +6,10 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
-import win32com.client as win32
+try:
+    import win32com.client as win32
+except ImportError:
+    win32 = None
 import pythoncom
 import smtplib
 from django.urls import reverse
