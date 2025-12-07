@@ -122,10 +122,17 @@ def precheck_user_api(request):
 # -------------------------
 CUSTOMER_SSR = "customer_signup"
 
+import json
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.urls import reverse
+
 def signup(request):
-    if request.method != "POST":
+    # GET → serve the signup page
+    if request.method == "GET":
         return render(request, "core/signup.html")
 
+    # POST → process signup
     try:
         data = json.loads(request.body.decode() or "{}")
     except Exception:
@@ -142,13 +149,25 @@ def signup(request):
     if password1 != password2:
         return JsonResponse({"ok": False, "error": "Passwords didn't match!"}, status=400)
 
+    # Block if a CustomerProfile already exists for this email
+    if CustomerProfile.objects.filter(user__email=email).exists():
+        signin_url = reverse("core:signin")
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "You already have a customer account. Please sign in.",
+                "signin_url": signin_url,
+            },
+            status=409,
+        )
+
     try:
-        phone_e164 = to_e164_us(phone_raw)  # or replace with a full E.164 normalizer if you want intl later
+        phone_e164 = to_e164_us(phone_raw)
     except Exception:
         return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
 
     if CustomerProfile.objects.filter(phone=phone_e164).exists():
-        signin_url = reverse("core:signin")  # adjust to your actual signin URL name
+        signin_url = reverse("core:signin")
         return JsonResponse(
             {
                 "ok": False,
@@ -162,7 +181,10 @@ def signup(request):
     user = User.objects.filter(email=email).first()
     if user:
         if user.is_active:
-            return JsonResponse({"ok": False, "error": "Email already registered with an active account."}, status=400)
+            return JsonResponse(
+                {"ok": False, "error": "Email already registered with an active account."},
+                status=400,
+            )
         user.username = email
         user.email = email
         user.set_password(password1)
@@ -175,9 +197,6 @@ def signup(request):
 
     profile, _ = CustomerProfile.objects.get_or_create(user=user)
     profile.phone = phone_e164
-    # optional: track flags if you added them
-    # profile.phone_verified = False
-    # profile.email_verified = False
     try:
         profile.save()
     except Exception:
@@ -189,8 +208,11 @@ def signup(request):
     except Exception as e:
         return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
 
-    # IMPORTANT: return normalized phone so the client uses the same value
-    return JsonResponse({"ok": True, "message": "OTP sent", "phone_e164": phone_e164, "next": next_url})
+    return JsonResponse(
+        {"ok": True, "message": "OTP sent", "phone_e164": phone_e164, "next": next_url}
+    )
+
+
 
 # Session bucket for multi-step customer signup
 CUSTOMER_SSR = "customer_signup"

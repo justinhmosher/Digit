@@ -26,77 +26,122 @@
         <div id="alert" class="hidden mb-4 text-sm px-4 py-3 rounded-md"></div>
 
         <h1 class="text-2xl font-bold text-center">Customer Sign Up</h1>
-        <p class="mt-1 text-center text-sm text-slate-600">Start with your email.</p>
+        <p class="mt-1 text-center text-sm text-slate-600">Create your Dyne account.</p>
 
-        <!-- Step 0: email only -->
-        <form id="emailForm" class="space-y-4 mt-6">
+        <!-- Single full sign-up form -->
+        <form id="newUserForm" class="space-y-4 mt-6">
           {% csrf_token %}
+
           <div>
             <label class="block text-sm font-medium mb-1">Email</label>
-            <input id="email" type="email" class="w-full h-12 rounded-2xl border px-4" placeholder="you@example.com" required>
+            <input id="email"
+                   type="email"
+                   class="w-full h-12 rounded-2xl border px-4"
+                   placeholder="you@example.com"
+                   autocomplete="email"
+                   required>
           </div>
-          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">Continue</button>
-        </form>
 
-        <!-- Step 1a: details for NEW users -->
-        <form id="newUserForm" class="space-y-4 mt-6 hidden">
-          {% csrf_token %}
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-sm font-medium mb-1">First name</label>
-              <input id="first_name" class="w-full h-12 rounded-2xl border px-4" autocomplete="given-name">
+              <input id="first_name"
+                     class="w-full h-12 rounded-2xl border px-4"
+                     autocomplete="given-name"
+                     required>
             </div>
             <div>
               <label class="block text-sm font-medium mb-1">Last name</label>
-              <input id="last_name" class="w-full h-12 rounded-2xl border px-4" autocomplete="family-name">
+              <input id="last_name"
+                     class="w-full h-12 rounded-2xl border px-4"
+                     autocomplete="family-name"
+                     required>
             </div>
           </div>
+
           <div>
             <label class="block text-sm font-medium mb-1">Phone</label>
-            <input id="phone_new" type="tel" inputmode="tel" class="w-full h-12 rounded-2xl border px-4" placeholder="+15551234567">
+            <input id="phone_new"
+                   type="tel"
+                   inputmode="tel"
+                   class="w-full h-12 rounded-2xl border px-4"
+                   placeholder="+1 (555) 123-4567"
+                   required>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+
+          <!-- SMS opt-in block -->
+          <div class="space-y-1 text-xs text-slate-600">
+            <div class="flex items-start gap-2">
+              <input id="sms_opt_in"
+                     type="checkbox"
+                     class="mt-0.5 h-4 w-4 rounded border-slate-300">
+              <label for="sms_opt_in" class="leading-snug">
+                I agree to receive SMS messages from Dyne for account authentication
+                and to view my live receipt while dining. No marketing messages will be sent.
+                Message and data rates may apply.
+                Opt-in is required to create an account.
+              </label>
+            </div>
+            <button
+              type="button"
+              id="smsDisclosureBtn"
+              class="text-xs underline text-blue-600 hover:text-blue-700">
+              Read the full disclosure
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 pt-2">
             <div>
               <label class="block text-sm font-medium mb-1">Password</label>
-              <input id="password1" type="password" class="w-full h-12 rounded-2xl border px-4">
+              <input id="password1"
+                     type="password"
+                     class="w-full h-12 rounded-2xl border px-4"
+                     required>
             </div>
             <div>
               <label class="block text-sm font-medium mb-1">Confirm</label>
-              <input id="password2" type="password" class="w-full h-12 rounded-2xl border px-4">
+              <input id="password2"
+                     type="password"
+                     class="w-full h-12 rounded-2xl border px-4"
+                     required>
             </div>
           </div>
-          <button id="newUserNext" class="w-full h-12 rounded-2xl bg-slate-900 text-white">Continue</button>
+
+          <button id="newUserNext"
+                  class="w-full h-12 rounded-2xl bg-slate-900 text-white mt-2">
+            Continue
+          </button>
         </form>
 
-        <!-- Step 1b: minimal for EXISTING users -->
-        <form id="existingUserForm" class="space-y-4 mt-6 hidden">
-          {% csrf_token %}
-          <p class="text-sm text-slate-600">We found your account. We’ll verify it’s you via SMS.</p>
-          <div id="existing_phone_block" class="hidden">
-            <label class="block text-sm font-medium mb-1">We’ll text your verified phone</label>
-            <input id="phone_existing_display" class="w-full h-12 rounded-2xl border px-4 bg-slate-50" readonly>
-          </div>
-          <div id="collect_phone_block">
-            <label class="block text-sm font-medium mb-1">Phone</label>
-            <input id="phone_existing" type="tel" inputmode="tel" class="w-full h-12 rounded-2xl border px-4" placeholder="+15551234567">
-          </div>
-          <button id="existingUserNext" class="w-full h-12 rounded-2xl bg-slate-900 text-white">Send Code</button>
-        </form>
-
-        <!-- Step 2: PHONE OTP (both paths) -->
+        <!-- Step 2: PHONE OTP -->
         <form id="phoneOtpForm" class="space-y-4 mt-6 hidden">
           {% csrf_token %}
           <p class="text-sm text-slate-600">Enter the 6-digit SMS code.</p>
-          <input id="otpCode" maxlength="6" inputmode="numeric" class="w-full h-12 rounded-2xl border px-4" placeholder="123456">
-          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">Verify phone</button>
+          <input id="otpCode"
+                 maxlength="6"
+                 inputmode="numeric"
+                 class="w-full h-12 rounded-2xl border px-4"
+                 placeholder="123456">
+          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">
+            Verify phone
+          </button>
         </form>
 
-        <!-- Step 3: EMAIL OTP (new users only) -->
+        <!-- Step 3: EMAIL OTP -->
         <form id="emailOtpForm" class="space-y-4 mt-6 hidden">
           {% csrf_token %}
-          <p class="text-sm text-slate-600">Enter the 6-digit email code we sent to <span id="otpEmail" class="font-medium"></span>.</p>
-          <input id="emailCode" maxlength="6" inputmode="numeric" class="w-full h-12 rounded-2xl border px-4" placeholder="123456">
-          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">Verify email</button>
+          <p class="text-sm text-slate-600">
+            Enter the 6-digit email code we sent to
+            <span id="otpEmail" class="font-medium"></span>.
+          </p>
+          <input id="emailCode"
+                 maxlength="6"
+                 inputmode="numeric"
+                 class="w-full h-12 rounded-2xl border px-4"
+                 placeholder="123456">
+          <button class="w-full h-12 rounded-2xl bg-slate-900 text-white">
+            Verify email
+          </button>
         </form>
 
         <div class="my-6 flex items-center gap-3">
@@ -105,15 +150,15 @@
           <div class="h-px flex-1 bg-slate-200"></div>
         </div>
 
-<!-- Google Sign In -->
-<div class="mt-4">
-  <a href="{% url 'core:customer_google_start' %}"
-     class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
-    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-         class="h-5 w-5" alt="Google">
-    <span class="font-medium">Continue with Google</span>
-  </a>
-</div>
+        <!-- Google Sign In -->
+        <div class="mt-4">
+          <a href="{% url 'core:customer_google_start' %}"
+             class="w-full h-12 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 transition">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                 class="h-5 w-5" alt="Google">
+            <span class="font-medium">Continue with Google</span>
+          </a>
+        </div>
 
       </div>
     </section>
@@ -125,198 +170,224 @@
     </div>
   </footer>
 
-<script>
-  function csrf(){
-    const m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? m[1] : '';
-  }
+  <!-- SMS Disclosure Modal -->
+  <div id="smsDisclosureModal"
+       class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40">
+    <div class="mx-4 max-w-lg rounded-2xl bg-white p-6 shadow-xl relative">
+      <button type="button"
+              id="smsDisclosureClose"
+              class="absolute right-3 top-3 text-slate-400 hover:text-slate-600 text-sm">
+        ✕
+      </button>
+      <h2 class="text-lg font-semibold mb-3">SMS Disclosure</h2>
+      <div class="space-y-3 text-sm text-slate-700 max-h-72 overflow-y-auto pr-1">
+        <p>
+          By providing your mobile phone number and checking the box on the sign-up form,
+          you agree to receive SMS text messages from Dyne for the limited purposes of:
+        </p>
+        <ul class="list-disc list-inside space-y-1">
+          <li>Authenticating your account and logging you in securely</li>
+          <li>Sending links to view your live receipt while dining</li>
+        </ul>
+        <p>
+          Dyne will not use your phone number to send marketing or promotional messages.
+        </p>
+        <p>
+          Message and data rates may apply from your mobile carrier. Message frequency
+          will vary depending on your usage (for example, when you sign in or view a
+          live receipt at participating restaurants).
+        </p>
+        <p>
+          You can opt out of SMS messages at any time by replying <strong>STOP</strong> to any message.
+          For help, reply <strong>HELP</strong> or contact us at
+          <a href="mailto:support@dynepay.com" class="text-blue-600 underline">support@dynepay.com</a>.
+        </p>
+        <p>
+          For more information about how we handle your data, please review our
+          <a href="/privacy" class="text-blue-600 underline">Privacy Policy</a>.
+        </p>
+      </div>
+      <div class="mt-4 flex justify-end">
+        <button type="button"
+                id="smsDisclosureOk"
+                class="rounded-2xl bg-slate-900 text-white px-4 py-2 text-sm">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
 
-  function alertBox(msg, ok=false){
-    const el = document.getElementById('alert');
-    el.className = 'mb-4 text-sm px-4 py-3 rounded-md ' + (ok
-      ? 'bg-green-100 text-green-800'
-      : 'bg-red-100 text-red-800');
-    el.textContent = msg;
-    el.classList.remove('hidden');
-  }
-
-  const emailForm          = document.getElementById('emailForm');
-  const newUserForm        = document.getElementById('newUserForm');
-  const existingUserForm   = document.getElementById('existingUserForm');
-  const existingPhoneBlock = document.getElementById('existing_phone_block');
-  const collectPhoneBlock  = document.getElementById('collect_phone_block');
-  const phoneOtpForm       = document.getElementById('phoneOtpForm');
-  const emailOtpForm       = document.getElementById('emailOtpForm');
-
-  let pre = { exists:false, has_verified_phone:false, email:"" };
-
-  // Step 0: precheck
-  emailForm.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const email = document.getElementById('email').value.trim().toLowerCase();
-    if(!email) return alertBox('Enter your email.');
-
-    const r = await fetch("{% url 'core:customer_precheck_api' %}", {
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
-      body: JSON.stringify({ email })
-    });
-
-    const d = await r.json();
-
-    // If backend says "this email should sign in instead"
-    if (r.status === 409 && d.redirect) {
-      window.location.href = d.redirect;
-      return;
+  <script>
+    function csrf() {
+      const m = document.cookie.match(/csrftoken=([^;]+)/);
+      return m ? m[1] : '';
     }
 
-    if (!r.ok || !d.ok) {
-      return alertBox(d.error || 'Precheck failed.');
+    function alertBox(msg, ok = false) {
+      const el = document.getElementById('alert');
+      el.className =
+        'mb-4 text-sm px-4 py-3 rounded-md ' +
+        (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+      el.textContent = msg;
+      el.classList.remove('hidden');
     }
 
-    pre = { exists: d.exists, has_verified_phone: d.has_verified_phone, email };
-    emailForm.classList.add('hidden');
+    const newUserForm   = document.getElementById('newUserForm');
+    const phoneOtpForm  = document.getElementById('phoneOtpForm');
+    const emailOtpForm  = document.getElementById('emailOtpForm');
+    const smsOptIn      = document.getElementById('sms_opt_in');
 
-    if (d.exists) {
-      // Existing account flow
-      existingUserForm.classList.remove('hidden');
-      if (d.has_verified_phone) {
-        existingPhoneBlock.classList.remove('hidden');
-        collectPhoneBlock.classList.add('hidden');
-        document.getElementById('phone_existing_display').value = 'Verified phone on file';
-      } else {
-        existingPhoneBlock.classList.add('hidden');
-        collectPhoneBlock.classList.remove('hidden');
+    const smsDisclosureBtn    = document.getElementById('smsDisclosureBtn');
+    const smsDisclosureModal  = document.getElementById('smsDisclosureModal');
+    const smsDisclosureClose  = document.getElementById('smsDisclosureClose');
+    const smsDisclosureOk     = document.getElementById('smsDisclosureOk');
+
+    function openSmsModal() {
+      smsDisclosureModal.classList.remove('hidden');
+      smsDisclosureModal.classList.add('flex');
+    }
+
+    function closeSmsModal() {
+      smsDisclosureModal.classList.add('hidden');
+      smsDisclosureModal.classList.remove('flex');
+    }
+
+    smsDisclosureBtn.addEventListener('click', openSmsModal);
+    smsDisclosureClose.addEventListener('click', closeSmsModal);
+    smsDisclosureOk.addEventListener('click', closeSmsModal);
+
+    smsDisclosureModal.addEventListener('click', (e) => {
+      if (e.target === smsDisclosureModal) {
+        closeSmsModal();
       }
-    } else {
-      // New account flow
-      newUserForm.classList.remove('hidden');
-    }
-  });
-
-  // Existing -> begin
-  document.getElementById('existingUserNext').addEventListener('click', async (e)=>{
-    e.preventDefault();
-    const payload = { email: pre.email };
-
-    if (!pre.has_verified_phone) {
-      const p = document.getElementById('phone_existing').value.trim();
-      if (!p) return alertBox('Enter your phone.');
-      payload.phone = p;
-    }
-
-    const r = await fetch("{% url 'core:customer_begin_api' %}", {
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
-      body: JSON.stringify(payload)
     });
 
-    const d = await r.json();
+    // Submit full signup form
+    document.getElementById('newUserNext').addEventListener('click', async (e) => {
+      e.preventDefault();
 
-    if (!r.ok || !d.ok) {
-      return alertBox(d.error || 'Could not send SMS.');
-    }
+      const payload = {
+        email:      document.getElementById('email').value.trim().toLowerCase(),
+        first_name: document.getElementById('first_name').value.trim(),
+        last_name:  document.getElementById('last_name').value.trim(),
+        phone:      document.getElementById('phone_new').value.trim(),
+        password1:  document.getElementById('password1').value,
+        password2:  document.getElementById('password2').value,
+        sms_opt_in: smsOptIn.checked ? true : false,
+      };
 
-    existingUserForm.classList.add('hidden');
-    phoneOtpForm.classList.remove('hidden');
-    alertBox('Code sent. Check your phone.', true);
-  });
+      if (
+        !payload.email ||
+        !payload.first_name ||
+        !payload.last_name ||
+        !payload.phone ||
+        !payload.password1 ||
+        !payload.password2
+      ) {
+        return alertBox('Please fill all fields.');
+      }
 
-  // New -> begin
-  document.getElementById('newUserNext').addEventListener('click', async (e)=>{
-    e.preventDefault();
+      if (!smsOptIn.checked) {
+        return alertBox('You must agree to SMS authentication messages to create an account.');
+      }
 
-    const payload = {
-      email:      document.getElementById('email').value.trim().toLowerCase(),
-      first_name: document.getElementById('first_name').value.trim(),
-      last_name:  document.getElementById('last_name').value.trim(),
-      phone:      document.getElementById('phone_new').value.trim(),
-      password1:  document.getElementById('password1').value,
-      password2:  document.getElementById('password2').value
-    };
+      const r = await fetch("{% url 'core:signup' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf(),
+        },
+        body: JSON.stringify(payload),
+      });
 
-    if (!payload.first_name || !payload.last_name || !payload.phone || !payload.password1 || !payload.password2){
-      return alertBox('Please fill all fields.');
-    }
+      const d = await r.json();
 
-    const r = await fetch("{% url 'core:customer_begin_api' %}", {
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
-      body: JSON.stringify(payload)
+      // Existing account → redirect to sign-in
+      if (r.status === 409 && d.signin_url) {
+        alertBox(d.error || 'Account already exists. Redirecting to sign in...');
+        setTimeout(() => {
+          window.location.href = d.signin_url;
+        }, 1500);
+        return;
+      }
+
+      if (!r.ok || !d.ok) {
+        return alertBox(d.error || 'Could not start signup.');
+      }
+
+      newUserForm.classList.add('hidden');
+      phoneOtpForm.classList.remove('hidden');
+      alertBox('Code sent. Check your phone.', true);
     });
 
-    const d = await r.json();
+    // Phone OTP submit
+    phoneOtpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-    // 🔹 Phone already registered → backend returns 409 + signin_url
-    if (r.status === 409 && d.signin_url) {
-      alertBox(d.error || 'That phone number is already registered. Redirecting to sign in...');
-      setTimeout(() => {
-        window.location.href = d.signin_url;
-      }, 1500); // tiny pause so user sees the message
-      return;
-    }
+      const code = document.getElementById('otpCode').value.trim();
+      if (!/^\d{6}$/.test(code)) {
+        return alertBox('Enter the 6-digit code.');
+      }
 
-    if (!r.ok || !d.ok) {
-      return alertBox(d.error || 'Could not start signup.');
-    }
+      const r = await fetch("{% url 'core:verify_otp' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf(),
+        },
+        body: JSON.stringify({ code }),
+      });
 
-    newUserForm.classList.add('hidden');
-    phoneOtpForm.classList.remove('hidden');
-    alertBox('Code sent. Check your phone.', true);
-  });
+      const d = await r.json();
 
-  // Phone OTP -> verify_otp
-  phoneOtpForm.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const code = document.getElementById('otpCode').value.trim();
-    if (!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+      if (!r.ok || !d.ok) {
+        return alertBox(d.error || 'Invalid or expired code.');
+      }
 
-    const r = await fetch("{% url 'core:verify_otp' %}", {
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
-      body: JSON.stringify({ code })
+      if (d.stage === 'email') {
+        const emailFromBackend = d.email;
+        const emailFromForm = document.getElementById('email').value.trim().toLowerCase();
+        document.getElementById('otpEmail').textContent = emailFromBackend || emailFromForm;
+
+        phoneOtpForm.classList.add('hidden');
+        emailOtpForm.classList.remove('hidden');
+        alertBox(d.message || 'Phone verified. Check your email for a code.', true);
+      } else if (d.redirect) {
+        location.href = d.redirect;
+      } else {
+        alertBox('Unexpected response.');
+      }
     });
 
-    const d = await r.json();
+    // Email OTP submit
+    emailOtpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-    if (!r.ok || !d.ok) {
-      return alertBox(d.error || 'Invalid or expired code.');
-    }
+      const code = document.getElementById('emailCode').value.trim();
+      if (!/^\d{6}$/.test(code)) {
+        return alertBox('Enter the 6-digit code.');
+      }
 
-    if (d.stage === 'email') { // NEW users continue with email
-      document.getElementById('otpEmail').textContent = d.email || pre.email;
-      phoneOtpForm.classList.add('hidden');
-      emailOtpForm.classList.remove('hidden');
-      alertBox(d.message || 'Phone verified. Check your email for a code.', true);
-    } else if (d.redirect) { // EXISTING users are done
-      location.href = d.redirect;
-    } else {
-      alertBox('Unexpected response.');
-    }
-  });
+      const r = await fetch("{% url 'core:verify_email_otp' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf(),
+        },
+        body: JSON.stringify({ code }),
+      });
 
-  // Email OTP (new only)
-  emailOtpForm.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const code = document.getElementById('emailCode').value.trim();
-    if (!/^\d{6}$/.test(code)) return alertBox('Enter the 6-digit code.');
+      const d = await r.json();
 
-    const r = await fetch("{% url 'core:verify_email_otp' %}", {
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
-      body: JSON.stringify({ code })
+      if (!r.ok || !d.ok) {
+        return alertBox(d.error || 'Invalid code.');
+      }
+
+      location.href = d.redirect || '/profile';
     });
-
-    const d = await r.json();
-
-    if (!r.ok || !d.ok) {
-      return alertBox(d.error || 'Invalid code.');
-    }
-
-    location.href = d.redirect || '/profile';
-  });
-</script>
-
+  </script>
 </body>
 </html>
+
+
 
