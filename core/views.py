@@ -1126,6 +1126,12 @@ def owner_contact(request):
 def discovery(request):
     return render(request, "core/home.html")
 
+def terms(request):
+    return render(request, "core/terms.html")
+
+def privacy(request):
+    return render(request, "core/privacy.html")
+
 @require_POST
 def owner_begin_existing_api(request):
     """
