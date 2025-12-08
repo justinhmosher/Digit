@@ -11,6 +11,7 @@ urlpatterns = [
 	path('',views_home.customer_home,name="homepage"),
     path("home",views.discovery,name="home"),
     path("terms", views.terms,name="terms"),
+    path("about", views.about_us,name="about_us"),
     path("privacy", views.privacy,name="privacy"),
     path("customer/signup", views.signup, name="signup"),
 	path('customer/signup/api/',views.customer_begin_api,name="customer_begin_api"),

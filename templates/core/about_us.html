@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About Us — Dyne</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen bg-black text-slate-50">
+  <div class="relative overflow-hidden">
+    <!-- Subtle gradient glow -->
+    <div class="pointer-events-none absolute inset-0">
+      <div class="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-emerald-500/10 blur-3xl"></div>
+      <div class="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl"></div>
+    </div>
+
+    <main class="relative z-10 max-w-6xl mx-auto px-6 py-16 space-y-24">
+
+      <!-- Hero -->
+      <section class="text-center space-y-6">
+        <span class="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-4 py-1 text-xs uppercase tracking-[0.2em] text-emerald-300">
+          About Dyne
+        </span>
+
+        <h1 class="text-4xl md:text-5xl font-semibold tracking-tight">
+          The modern way to dine and get paid.
+        </h1>
+
+        <p class="max-w-2xl mx-auto text-slate-400 text-lg leading-relaxed">
+          Dyne turns every table into a frictionless, data-driven experience.
+          Guests pay from their phone. Restaurants discover what actually brings
+          people back.
+        </p>
+      </section>
+
+      <!-- What is Dyne -->
+      <section class="grid md:grid-cols-[1.6fr,1.2fr] gap-10 items-center">
+        <div class="space-y-5">
+          <h2 class="text-2xl md:text-3xl font-semibold">
+            What we do
+          </h2>
+          <p class="text-slate-300 leading-relaxed">
+            Dyne connects restaurants and guests through a simple, browser-based
+            checkout. No app download. No waiting for a check. Just tap, pay,
+            and go.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            Behind the scenes, Dyne quietly captures the signals that matter:
+            which dishes guests crave, which experiences feel special, and which
+            visits turn into regulars.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            The result is a smoother night for staff, a better experience for
+            guests, and a smarter playbook for owners.
+          </p>
+        </div>
+
+        <div class="bg-gradient-to-br from-emerald-500/15 via-slate-900 to-black border border-emerald-500/30 rounded-3xl p-6 md:p-8 shadow-[0_0_40px_rgba(16,185,129,0.15)]">
+          <p class="text-sm font-medium text-emerald-300 mb-3">
+            Why restaurants choose Dyne
+          </p>
+          <ul class="space-y-3 text-slate-200 text-sm">
+            <li class="flex gap-3">
+              <span class="mt-1 h-1.5 w-6 rounded-full bg-emerald-400"></span>
+              <span>Guests close out from their phone, without interrupting the floor.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="mt-1 h-1.5 w-6 rounded-full bg-emerald-400"></span>
+              <span>Owners see which menu items and experiences lead to repeat visits.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="mt-1 h-1.5 w-6 rounded-full bg-emerald-400"></span>
+              <span>Service feels more like a private club: no running checks, no chasing cards.</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Split: Restaurants vs Guests -->
+      <section class="grid md:grid-cols-2 gap-10">
+        <!-- Restaurants -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 space-y-4">
+          <h2 class="text-xl md:text-2xl font-semibold flex items-center gap-2">
+            <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
+            For restaurants
+          </h2>
+          <p class="text-slate-300 leading-relaxed">
+            Dyne is built for operators who care about hospitality and growth.
+            We remove friction at checkout and give you clarity on what’s
+            working in the room.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            Understand which dishes keep guests coming back, how different
+            shifts perform, and where your most loyal customers love to sit.
+            Use Dyne to refine service, coach staff, and design experiences
+            that feel intentionally crafted.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            All of this happens without changing your core service style—
+            Dyne plugs in quietly and lets your team do what they do best.
+          </p>
+        </div>
+
+        <!-- Guests -->
+        <div class="bg-slate-900/40 border border-slate-800 rounded-3xl p-8 space-y-4">
+          <h2 class="text-xl md:text-2xl font-semibold flex items-center gap-2">
+            <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
+            For guests
+          </h2>
+          <p class="text-slate-300 leading-relaxed">
+            Guests get the experience they already want: arrive, enjoy,
+            and leave on their own terms—without the awkward “check dance.”
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            Dyne lets people review their live receipt, tip confidently,
+            and walk out when they’re ready. Their loyalty is tied to
+            the restaurants they love, not another app on their phone.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            And when guests share feedback, it goes straight to the teams
+            that can act on it—helping elevate each return visit.
+          </p>
+        </div>
+      </section>
+
+      <!-- Stripe + Trust -->
+      <section class="grid md:grid-cols-[1.4fr,1.6fr] gap-10 items-center">
+        <div class="space-y-4">
+          <h2 class="text-2xl font-semibold">
+            Secure payments, from day one.
+          </h2>
+          <p class="text-slate-300 leading-relaxed">
+            Dyne partners with Stripe to power secure, compliant payments.
+            Cards are handled by a world-class payment processor so you
+            can focus on hospitality, not infrastructure.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            Your guests see a clean, trusted checkout flow. You get fast,
+            reliable processing that aligns with the standards of modern
+            restaurant groups.
+          </p>
+        </div>
+
+        <div class="bg-slate-900/60 border border-emerald-500/30 rounded-3xl p-6 md:p-8 flex flex-col gap-4">
+          <p class="text-sm uppercase tracking-[0.18em] text-emerald-300">
+            Trusted rails
+          </p>
+          <div class="flex flex-wrap items-center gap-4">
+            <div class="inline-flex items-center gap-2 rounded-2xl border border-slate-700 px-4 py-2 bg-black/40">
+              <div class="h-2 w-2 rounded-full bg-emerald-400"></div>
+              <span class="text-sm text-slate-200">Stripe-powered payments</span>
+            </div>
+            <div class="inline-flex items-center gap-2 rounded-2xl border border-slate-700 px-4 py-2 bg-black/40">
+              <div class="h-2 w-2 rounded-full bg-emerald-400"></div>
+              <span class="text-sm text-slate-200">Secure by design</span>
+            </div>
+          </div>
+          <p class="text-xs text-slate-500">
+            Dyne never tries to be your bank. We partner with specialists
+            so payments feel simple, safe, and invisible.
+          </p>
+        </div>
+      </section>
+
+      <!-- Vision -->
+      <section class="max-w-3xl mx-auto text-center space-y-6">
+        <h2 class="text-2xl md:text-3xl font-semibold">
+          Our vision
+        </h2>
+        <p class="text-slate-300 text-lg leading-relaxed">
+          We want dining to feel like a modern version of the private club:
+          personal, unhurried, and effortless.
+        </p>
+        <p class="text-slate-400 leading-relaxed">
+          Dyne exists to strengthen the relationship between restaurants and
+          the people who love them. Less friction at the table, more insight
+          behind the scenes, and experiences that guests talk about long after
+          the night is over.
+        </p>
+      </section>
+
+      <!-- Contact / CTA -->
+      <section class="border border-emerald-500/40 rounded-3xl bg-gradient-to-r from-emerald-500/15 via-slate-900 to-black p-8 md:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div class="space-y-3">
+          <h2 class="text-2xl font-semibold">
+            Ready to explore Dyne?
+          </h2>
+          <p class="text-slate-200 leading-relaxed">
+            If you’re a restaurant operator or group interested in bringing
+            Dyne to your dining room, we’d love to talk.
+          </p>
+          <p class="text-slate-400 text-sm">
+            Share a bit about your concept, and we’ll walk you through how Dyne
+            can fit into your guest experience and tech stack.
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-xs uppercase tracking-[0.2em] text-emerald-300">
+            Contact
+          </p>
+          <a href="mailto:support@dynepay.com"
+             class="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-400 px-5 py-2.5 text-sm font-medium text-black shadow-lg transition">
+            Email us at support@dynepay.com
+          </a>
+          <p class="text-xs text-slate-500 mt-1">
+            You’ll hear directly from someone on the Dyne team.
+          </p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>
+

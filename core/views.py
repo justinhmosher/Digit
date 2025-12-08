@@ -1132,6 +1132,9 @@ def terms(request):
 def privacy(request):
     return render(request, "core/privacy.html")
 
+def about_us(request):
+    return render(request, "core/about_us.html")
+
 @require_POST
 def owner_begin_existing_api(request):
     """

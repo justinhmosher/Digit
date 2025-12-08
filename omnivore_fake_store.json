@@ -1,7 +1,7 @@
 {
   "locations": {
     "cgX7jbLi": {
-      "seq": 1020,
+      "seq": 1021,
       "tender_types": [
         {
           "id": "cash",
@@ -1451,6 +1451,92 @@
           "tip": 1059,
           "total": 5731,
           "updated_at": "2025-11-25T23:10:47.417576Z"
+        },
+        "tkt_1021_22253": {
+          "_embedded": {
+            "employee": {
+              "check_name": "DINE-IN",
+              "first_name": "Demo",
+              "last_name": "User"
+            }
+          },
+          "auto_send": true,
+          "created_at": "2025-12-08T03:03:06.177310Z",
+          "employee": "100",
+          "id": "tkt_1021_22253",
+          "items": [
+            {
+              "id": "itm_1",
+              "menu_item": "101",
+              "name": "Pizza",
+              "price": 1499,
+              "price_level": "2",
+              "quantity": 1,
+              "seat": 1,
+              "total": 1499
+            },
+            {
+              "id": "itm_2",
+              "menu_item": "200",
+              "name": "Mozz Sticks",
+              "price": 799,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 1,
+              "total": 799
+            },
+            {
+              "id": "itm_3",
+              "menu_item": "201",
+              "name": "Garlic Bread",
+              "price": 499,
+              "price_level": null,
+              "quantity": 2,
+              "seat": 1,
+              "total": 998
+            },
+            {
+              "id": "itm_4",
+              "menu_item": "206",
+              "name": "Wings (6)",
+              "price": 1099,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 1099
+            },
+            {
+              "id": "itm_5",
+              "menu_item": "207",
+              "name": "Bruschetta",
+              "price": 899,
+              "price_level": null,
+              "quantity": 1,
+              "seat": 2,
+              "total": 899
+            }
+          ],
+          "match_text": "tkt_1021_22253 1021 dine-in demo user",
+          "open": true,
+          "order_type": "2",
+          "paid": 5294,
+          "payments": [
+            {
+              "amount": 5294,
+              "created_at": "2025-12-08T03:04:30.774590Z",
+              "id": "pay_1765163070774",
+              "reference": "customer-close",
+              "tip": 1059,
+              "type": "cash"
+            }
+          ],
+          "revenue_center": "1",
+          "subtotal": 5294,
+          "tax": 437,
+          "ticket_number": 1021,
+          "tip": 1059,
+          "total": 5731,
+          "updated_at": "2025-12-08T03:04:30.774590Z"
         },
         "tkt_1_71281": {
           "_embedded": {
