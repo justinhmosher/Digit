@@ -11,7 +11,14 @@
   class="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900"
   data-live="{{ has_live_order|yesno:'1,0' }}"
   data-member="{{ member_number|default_if_none:'' }}"
+  lass="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900"
+  data-live="{{ has_live_order|yesno:'1,0' }}"
+  data-member="{{ member_number|default_if_none:'' }}"
 >
+  <!-- Launch banner -->
+  <div class="bg-emerald-500 text-white text-center text-sm md:text-base py-2">
+    We are live starting February 2026
+  </div>
   <!-- Toast -->
   <div id="toast" class="pointer-events-none fixed inset-x-0 top-3 z-[100] flex justify-center px-4 hidden">
     <div id="toastBox"
