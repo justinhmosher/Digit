@@ -128,89 +128,11 @@ from django.shortcuts import render
 from django.urls import reverse
 
 def signup(request):
-    # GET → serve the signup page
+    # Only serve the signup page; actual signup logic is via customer_begin_api
     if request.method == "GET":
         return render(request, "core/signup.html")
+    return HttpResponseBadRequest("Use /api/customer/begin for signup.")
 
-    # POST → process signup
-    try:
-        data = json.loads(request.body.decode() or "{}")
-    except Exception:
-        data = request.POST
-
-    email = (data.get('email') or "").strip().lower()
-    phone_raw = (data.get('phone') or "").strip()
-    password1 = data.get('password1') or ""
-    password2 = data.get('password2') or ""
-    next_url = request.GET.get('next') or "/"
-
-    if not email or not phone_raw:
-        return JsonResponse({"ok": False, "error": "Email and phone are required."}, status=400)
-    if password1 != password2:
-        return JsonResponse({"ok": False, "error": "Passwords didn't match!"}, status=400)
-
-    # Block if a CustomerProfile already exists for this email
-    if CustomerProfile.objects.filter(user__email=email).exists():
-        signin_url = reverse("core:signin")
-        return JsonResponse(
-            {
-                "ok": False,
-                "error": "You already have a customer account. Please sign in.",
-                "signin_url": signin_url,
-            },
-            status=409,
-        )
-
-    try:
-        phone_e164 = to_e164_us(phone_raw)
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Enter a valid US phone number."}, status=400)
-
-    if CustomerProfile.objects.filter(phone=phone_e164).exists():
-        signin_url = reverse("core:signin")
-        return JsonResponse(
-            {
-                "ok": False,
-                "error": "That phone number is already registered. Please sign in instead.",
-                "signin_url": signin_url,
-            },
-            status=409,
-        )
-
-    # Create/update inactive user
-    user = User.objects.filter(email=email).first()
-    if user:
-        if user.is_active:
-            return JsonResponse(
-                {"ok": False, "error": "Email already registered with an active account."},
-                status=400,
-            )
-        user.username = email
-        user.email = email
-        user.set_password(password1)
-        user.is_active = False
-        user.save()
-    else:
-        user = User.objects.create_user(username=email, email=email, password=password1)
-        user.is_active = False
-        user.save()
-
-    profile, _ = CustomerProfile.objects.get_or_create(user=user)
-    profile.phone = phone_e164
-    try:
-        profile.save()
-    except Exception:
-        return JsonResponse({"ok": False, "error": "Phone already in use."}, status=400)
-
-    # Send phone OTP via Verify
-    try:
-        send_sms_otp(phone_e164)
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": f"Failed to send SMS: {e}"}, status=500)
-
-    return JsonResponse(
-        {"ok": True, "message": "OTP sent", "phone_e164": phone_e164, "next": next_url}
-    )
 
 
 

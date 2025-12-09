@@ -82,7 +82,8 @@
             <div class="flex items-start gap-2">
               <input id="sms_opt_in"
                      type="checkbox"
-                     class="mt-0.5 h-4 w-4 rounded border-slate-300">
+                     class="mt-0.5 h-4 w-4 rounded border-slate-300"
+                     required>
               <label for="sms_opt_in" class="leading-snug">
                 I agree to receive SMS messages from Dyne for account authentication
                 and to view my live receipt while dining. No marketing messages will be sent.
@@ -112,6 +113,24 @@
                      type="password"
                      class="w-full h-12 rounded-2xl border px-4"
                      required>
+            </div>
+          </div>
+                                <!-- New required agreements -->
+          <div class="space-y-2 pt-2 text-xs text-slate-600">
+            <div class="flex items-start gap-2">
+              <input id="agree_terms"
+                     name="agree_terms"
+                     type="checkbox"
+                     class="mt-0.5 h-4 w-4 rounded border-slate-300"
+                     required>
+              <label for="agree_terms" class="leading-snug">
+                I have read and agree to the
+                <a href="/terms" class="text-blue-600 underline hover:text-blue-700">
+                  Terms and Conditions
+                </a> and <a href="/privacy" class="text-blue-600 underline hover:text-blue-700">
+                  Privacy Policy
+                </a>.
+              </label>
             </div>
           </div>
 
@@ -227,81 +246,90 @@
     </div>
   </div>
 
-  <script>
-    function csrf() {
-      const m = document.cookie.match(/csrftoken=([^;]+)/);
-      return m ? m[1] : '';
+<script>
+  function csrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function alertBox(msg, ok = false) {
+    const el = document.getElementById('alert');
+    el.className =
+      'mb-4 text-sm px-4 py-3 rounded-md ' +
+      (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  const newUserForm   = document.getElementById('newUserForm');
+  const phoneOtpForm  = document.getElementById('phoneOtpForm');
+  const emailOtpForm  = document.getElementById('emailOtpForm');
+
+  const smsOptIn      = document.getElementById('sms_opt_in');
+  const agreeTerms    = document.getElementById('agree_terms');
+
+  const smsDisclosureBtn    = document.getElementById('smsDisclosureBtn');
+  const smsDisclosureModal  = document.getElementById('smsDisclosureModal');
+  const smsDisclosureClose  = document.getElementById('smsDisclosureClose');
+  const smsDisclosureOk     = document.getElementById('smsDisclosureOk');
+
+  function openSmsModal() {
+    smsDisclosureModal.classList.remove('hidden');
+    smsDisclosureModal.classList.add('flex');
+  }
+
+  function closeSmsModal() {
+    smsDisclosureModal.classList.add('hidden');
+    smsDisclosureModal.classList.remove('flex');
+  }
+
+  smsDisclosureBtn.addEventListener('click', openSmsModal);
+  smsDisclosureClose.addEventListener('click', closeSmsModal);
+  smsDisclosureOk.addEventListener('click', closeSmsModal);
+
+  smsDisclosureModal.addEventListener('click', (e) => {
+    if (e.target === smsDisclosureModal) {
+      closeSmsModal();
+    }
+  });
+
+  // Submit full signup form → hits customer_begin_api (NOT signup)
+  document.getElementById('newUserNext').addEventListener('click', async (e) => {
+    e.preventDefault();
+
+    const payload = {
+      email:      document.getElementById('email').value.trim().toLowerCase(),
+      first_name: document.getElementById('first_name').value.trim(),
+      last_name:  document.getElementById('last_name').value.trim(),
+      phone:      document.getElementById('phone_new').value.trim(),
+      password1:  document.getElementById('password1').value,
+      password2:  document.getElementById('password2').value,
+      sms_opt_in: smsOptIn.checked ? true : false,
+      agree_terms: agreeTerms.checked ? true : false,
+    };
+
+    if (
+      !payload.email ||
+      !payload.first_name ||
+      !payload.last_name ||
+      !payload.phone ||
+      !payload.password1 ||
+      !payload.password2
+    ) {
+      return alertBox('Please fill all fields.');
     }
 
-    function alertBox(msg, ok = false) {
-      const el = document.getElementById('alert');
-      el.className =
-        'mb-4 text-sm px-4 py-3 rounded-md ' +
-        (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-      el.textContent = msg;
-      el.classList.remove('hidden');
+    if (!smsOptIn.checked) {
+      return alertBox('You must agree to SMS authentication messages to create an account.');
     }
 
-    const newUserForm   = document.getElementById('newUserForm');
-    const phoneOtpForm  = document.getElementById('phoneOtpForm');
-    const emailOtpForm  = document.getElementById('emailOtpForm');
-    const smsOptIn      = document.getElementById('sms_opt_in');
-
-    const smsDisclosureBtn    = document.getElementById('smsDisclosureBtn');
-    const smsDisclosureModal  = document.getElementById('smsDisclosureModal');
-    const smsDisclosureClose  = document.getElementById('smsDisclosureClose');
-    const smsDisclosureOk     = document.getElementById('smsDisclosureOk');
-
-    function openSmsModal() {
-      smsDisclosureModal.classList.remove('hidden');
-      smsDisclosureModal.classList.add('flex');
+    if (!agreeTerms.checked) {
+      return alertBox('You must agree to the Terms and Conditions and Privacy Policy to create an account.');
     }
 
-    function closeSmsModal() {
-      smsDisclosureModal.classList.add('hidden');
-      smsDisclosureModal.classList.remove('flex');
-    }
-
-    smsDisclosureBtn.addEventListener('click', openSmsModal);
-    smsDisclosureClose.addEventListener('click', closeSmsModal);
-    smsDisclosureOk.addEventListener('click', closeSmsModal);
-
-    smsDisclosureModal.addEventListener('click', (e) => {
-      if (e.target === smsDisclosureModal) {
-        closeSmsModal();
-      }
-    });
-
-    // Submit full signup form
-    document.getElementById('newUserNext').addEventListener('click', async (e) => {
-      e.preventDefault();
-
-      const payload = {
-        email:      document.getElementById('email').value.trim().toLowerCase(),
-        first_name: document.getElementById('first_name').value.trim(),
-        last_name:  document.getElementById('last_name').value.trim(),
-        phone:      document.getElementById('phone_new').value.trim(),
-        password1:  document.getElementById('password1').value,
-        password2:  document.getElementById('password2').value,
-        sms_opt_in: smsOptIn.checked ? true : false,
-      };
-
-      if (
-        !payload.email ||
-        !payload.first_name ||
-        !payload.last_name ||
-        !payload.phone ||
-        !payload.password1 ||
-        !payload.password2
-      ) {
-        return alertBox('Please fill all fields.');
-      }
-
-      if (!smsOptIn.checked) {
-        return alertBox('You must agree to SMS authentication messages to create an account.');
-      }
-
-      const r = await fetch("{% url 'core:signup' %}", {
+    let r, d;
+    try {
+      r = await fetch("{% url 'core:customer_begin_api' %}", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -309,37 +337,43 @@
         },
         body: JSON.stringify(payload),
       });
+      d = await r.json();
+    } catch (err) {
+      console.error(err);
+      return alertBox('Network error. Please try again.');
+    }
 
-      const d = await r.json();
+    // Existing account → redirect to sign-in (if backend returns that)
+    if (r.status === 409 && d.signin_url) {
+      alertBox(d.error || 'Account already exists. Redirecting to sign in...');
+      setTimeout(() => {
+        window.location.href = d.signin_url;
+      }, 1500);
+      return;
+    }
 
-      // Existing account → redirect to sign-in
-      if (r.status === 409 && d.signin_url) {
-        alertBox(d.error || 'Account already exists. Redirecting to sign in...');
-        setTimeout(() => {
-          window.location.href = d.signin_url;
-        }, 1500);
-        return;
-      }
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Could not start signup.');
+    }
 
-      if (!r.ok || !d.ok) {
-        return alertBox(d.error || 'Could not start signup.');
-      }
+    // At this point, customer_begin_api has sent the SMS and stashed the session bundle.
+    newUserForm.classList.add('hidden');
+    phoneOtpForm.classList.remove('hidden');
+    alertBox(d.message || 'Code sent. Check your phone.', true);
+  });
 
-      newUserForm.classList.add('hidden');
-      phoneOtpForm.classList.remove('hidden');
-      alertBox('Code sent. Check your phone.', true);
-    });
+  // Phone OTP submit
+  phoneOtpForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-    // Phone OTP submit
-    phoneOtpForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    const code = document.getElementById('otpCode').value.trim();
+    if (!/^\d{6}$/.test(code)) {
+      return alertBox('Enter the 6-digit code.');
+    }
 
-      const code = document.getElementById('otpCode').value.trim();
-      if (!/^\d{6}$/.test(code)) {
-        return alertBox('Enter the 6-digit code.');
-      }
-
-      const r = await fetch("{% url 'core:verify_otp' %}", {
+    let r, d;
+    try {
+      r = await fetch("{% url 'core:verify_otp' %}", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -347,38 +381,44 @@
         },
         body: JSON.stringify({ code }),
       });
+      d = await r.json();
+    } catch (err) {
+      console.error(err);
+      return alertBox('Network error. Please try again.');
+    }
 
-      const d = await r.json();
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Invalid or expired code.');
+    }
 
-      if (!r.ok || !d.ok) {
-        return alertBox(d.error || 'Invalid or expired code.');
-      }
+    if (d.stage === 'email') {
+      const emailFromBackend = d.email;
+      const emailFromForm = document.getElementById('email').value.trim().toLowerCase();
+      document.getElementById('otpEmail').textContent = emailFromBackend || emailFromForm;
 
-      if (d.stage === 'email') {
-        const emailFromBackend = d.email;
-        const emailFromForm = document.getElementById('email').value.trim().toLowerCase();
-        document.getElementById('otpEmail').textContent = emailFromBackend || emailFromForm;
+      phoneOtpForm.classList.add('hidden');
+      emailOtpForm.classList.remove('hidden');
+      alertBox(d.message || 'Phone verified. Check your email for a code.', true);
+    } else if (d.redirect) {
+      // Existing-user path may go straight to add-card
+      location.href = d.redirect;
+    } else {
+      alertBox('Unexpected response.');
+    }
+  });
 
-        phoneOtpForm.classList.add('hidden');
-        emailOtpForm.classList.remove('hidden');
-        alertBox(d.message || 'Phone verified. Check your email for a code.', true);
-      } else if (d.redirect) {
-        location.href = d.redirect;
-      } else {
-        alertBox('Unexpected response.');
-      }
-    });
+  // Email OTP submit
+  emailOtpForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-    // Email OTP submit
-    emailOtpForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    const code = document.getElementById('emailCode').value.trim();
+    if (!/^\d{6}$/.test(code)) {
+      return alertBox('Enter the 6-digit code.');
+    }
 
-      const code = document.getElementById('emailCode').value.trim();
-      if (!/^\d{6}$/.test(code)) {
-        return alertBox('Enter the 6-digit code.');
-      }
-
-      const r = await fetch("{% url 'core:verify_email_otp' %}", {
+    let r, d;
+    try {
+      r = await fetch("{% url 'core:verify_email_otp' %}", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -386,16 +426,21 @@
         },
         body: JSON.stringify({ code }),
       });
+      d = await r.json();
+    } catch (err) {
+      console.error(err);
+      return alertBox('Network error. Please try again.');
+    }
 
-      const d = await r.json();
+    if (!r.ok || !d.ok) {
+      return alertBox(d.error || 'Invalid code.');
+    }
 
-      if (!r.ok || !d.ok) {
-        return alertBox(d.error || 'Invalid code.');
-      }
+    // For new users, backend should redirect them to /add-card/?next=/profile
+    location.href = d.redirect || '/profile';
+  });
+</script>
 
-      location.href = d.redirect || '/profile';
-    });
-  </script>
 </body>
 </html>
 
